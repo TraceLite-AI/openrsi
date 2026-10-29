@@ -27,6 +27,13 @@ from openrsi.types import canonical_json, content_hash, now_iso
 from .data import episodes_to_sft_rows, write_rows
 
 
+def _natural_key(p: Path) -> list:
+    """global_step_10 排在 global_step_9 后面。"""
+    import re
+
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(p))]
+
+
 class WeightsEvolvable(Evolvable):
     """with:
     base_model  初始模型路径或名字（根快照）
@@ -34,13 +41,16 @@ class WeightsEvolvable(Evolvable):
     trainer     训练命令模板（字符串列表）；不给时只能用 dry_run
     dry_run     True 时不调用训练命令，只建一个标记目录（本地调通流程用）
     timeout     单次训练的超时（秒）
+    model_glob  训练输出里模型所在的子路径（glob），比如 "global_step_*/huggingface"；匹配多个时取步数最大的。
+                不给就把整个输出目录当作模型。verl 的 SFT / PPO 会把 checkpoint 放在 global_step_N 子目录里
     """
 
     name = "openrsi/weights"
     version = "0.4.0"
 
     def __init__(self, base_model: str, path: str | Path, target: str = "weights", trainer: list[str] | None = None,
-                 dry_run: bool = False, timeout: float = 24 * 3600):
+                 dry_run: bool = False, timeout: float = 24 * 3600, model_glob: str | None = None):
+        self.model_glob = model_glob
         self.base_model = base_model
         self.path = Path(path).resolve()
         self.target = target
@@ -118,6 +128,12 @@ class WeightsEvolvable(Evolvable):
             raise ComponentError(f"训练失败：{tail}")
         if not out.exists():
             raise ComponentError(f"训练命令成功退出，但没有生成 {out}")
+        if self.model_glob:
+            found = sorted(out.glob(self.model_glob), key=_natural_key)
+            if not found:
+                listing = ", ".join(sorted(p.name for p in out.iterdir())[:10]) or "空目录"
+                raise ComponentError(f"训练输出里没有匹配 {self.model_glob} 的模型（{out} 下有：{listing}）")
+            return found[-1]
         return out
 
     def rollback(self, snapshot_id: str) -> Snapshot:

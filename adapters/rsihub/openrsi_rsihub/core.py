@@ -147,7 +147,8 @@ def guard_checkout(checkout: Path, *, protected_paths: list[str] | None = None, 
     findings = [f.model_dump(mode="json") for f in report.findings]
     blocks = [f for f in report.findings if f.severity == "block"]
     if blocks:
-        return False, "; ".join(f"{f.rule}: {f.message}" + (f"（{f.item_id}）" if f.item_id else "")
+        return False, "; ".join(f"{f.rule}: {f.message}"
+                                + (f"（{f.item_id}）" if f.item_id and f.item_id not in f.message else "")
                                 for f in blocks)[:800], findings
     warns = [f.rule for f in report.findings if f.severity == "warn"]
     return True, f"{len(ops)} 个文件改动通过检查" + (f"（警告：{', '.join(warns)}）" if warns else ""), findings

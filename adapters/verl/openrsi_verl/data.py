@@ -24,13 +24,22 @@ def default_prompt(task: Task) -> str:
 
 
 def tasks_to_rl_rows(tasks: Iterable[Task], data_source: str, *, ability: str = "agent",
-                     prompt_fn: Callable[[Task], str] = default_prompt) -> list[dict[str, Any]]:
+                     prompt_fn: Callable[[Task], str] = default_prompt,
+                     for_validation: bool = False) -> list[dict[str, Any]]:
+    """for_validation=True 时导出 verl 的验证集（data.val_files）：只接受非 train 的题，反过来防止训练题混进评估。"""
     rows = []
     for t in tasks:
-        if t.split != "train":
+        if for_validation and t.split == "train":
+            raise DataLeakError(f"{t.id} 属于 train，不能放进验证集")
+        if not for_validation and t.split != "train":
             raise DataLeakError(f"{t.id} 属于 {t.split}，不能导出成训练数据")
         ref = t.reference
-        ground_truth = json.dumps(ref, ensure_ascii=False, sort_keys=True) if isinstance(ref, dict) else ref
+        if isinstance(ref, dict) and set(ref) == {"expected"}:
+            ground_truth = ref["expected"]  # 只有标准答案时直接放值，和 verl 自带奖励（如 gsm8k）的格式一致
+        elif isinstance(ref, dict):
+            ground_truth = json.dumps(ref, ensure_ascii=False, sort_keys=True)
+        else:
+            ground_truth = ref
         rows.append({
             "data_source": data_source,
             "prompt": [{"role": "user", "content": prompt_fn(t)}],
