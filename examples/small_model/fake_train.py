@@ -10,7 +10,7 @@ ap.add_argument("--model", required=True)
 ap.add_argument("--data", required=True)
 ap.add_argument("--output", required=True)
 args = ap.parse_args()
-rows = [json.loads(x) for x in Path(args.data).read_text().splitlines() if x.strip()]
+rows = [json.loads(x) for x in Path(args.data).read_text().split("\n") if x.strip()]
 assert rows and all(r["messages"][-1]["role"] == "assistant" for r in rows), "SFT 数据格式不对"
 assert all(r["messages"][0]["role"] == "system" for r in rows), "SFT 数据里缺系统提示"
 out = Path(args.output)

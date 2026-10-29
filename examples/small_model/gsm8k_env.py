@@ -24,7 +24,7 @@ def _load(path: Path) -> list[dict]:
 
         rows = pd.read_parquet(path).to_dict("records")
     else:
-        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").split("\n") if x.strip()]
     out = []
     for r in rows:
         if "question" in r:  # jsonl：{"question", "answer"}，answer 可以是 GSM8K 原始解答（以 #### 结尾）

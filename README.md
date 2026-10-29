@@ -36,6 +36,7 @@ components/
   attribution/            沿判决引用的证据追责到轨迹步骤和 memory 条目
   proposer/               教训提案器（无需 LLM）、Claude 提案器、判别器漏判审计、组合提案器
   harness/                agent 代码仓库作为可进化体（git 快照、可改范围、受保护路径），子进程运行 agent
+  llm/                    接 OpenAI 兼容接口的执行体（换权重时自动重启 vLLM）和改写系统提示的提案器
   algorithm/              6 种进化算法：greedy、archive、pareto、shinka、islands、map-elites
   gate/                   holdout 准入，可选显著性检验、anchor、成本上限、逐题不回退
   lineage/                谱系，被拒绝的候选也留档
@@ -44,7 +45,7 @@ adapters/rsihub/          OpenRSI 组件装成 RSIHub 算子（护栏 validate�
 adapters/dspy/            判别器当 DSPy metric 用（含 GEPA 反馈）
 adapters/langgraph/       LangGraph 状态转轨迹再判别
 examples/                 能直接跑的例子
-tests/                    136 个测试
+tests/                    146 个测试
 field_tests/              在真实 verl、RSIHub 上跑的现场测试（见 field_tests/README.md）
 ```
 
@@ -104,6 +105,16 @@ openrsi log                    # 查看谱系
 第 2 代，审计提案器发现"判了通过、但证据显示改了受保护的测试文件"，补上检查项；holdout 下降是因为作弊被识破了，准入看的是 anchor 一致率。第 3 代，失败原因被写成教训，agent 改走正路，holdout 回到 1.0。
 
 几条保证：判别器的修改只看 anchor，不看 holdout，所以把判别器改宽松来刷分的补丁会被拒绝（有测试覆盖）；agent 和判别器轮流进化；判别器的 rubric 不会出现在 agent 的上下文里。
+
+## 小模型跑通全流程：同时进化系统提示和权重
+
+```bash
+cd examples/small_model
+python make_toy_data.py toy_data && openrsi run openrsi.mock.yaml   # 不需要模型，几秒跑完
+openrsi run openrsi.yaml                                             # 1 张 GPU，Qwen2.5-0.5B + vLLM + GSM8K
+```
+
+小模型做 GSM8K。每一代由 Shinka 的 UCB 选一个提案器：要么让小模型自己读错题、改写系统提示，要么把判别器判为通过的轨迹拿去 SFT（拒绝采样式自我蒸馏）。版本 = 系统提示快照 + 权重 checkpoint，换了权重 `ChatAgent` 会重启推理服务。没有 GPU 时用 `openrsi.cpu.yaml`（transformers 推理，少量题目）。详见 [examples/small_model](examples/small_model/README.md)。
 
 ## 进化 agent 自己的代码（harness）
 
