@@ -1,6 +1,6 @@
-protocol: openrsi/0.2
+protocol: openrsi/0.3
 name: openrsi/evidence-judge
-version: 0.2.0
+version: 0.3.0
 description: 从轨迹和工作目录收集可核验证据，再按 rubric 判别；每条结论引用证据。
 kinds: [evidence, judge]
 implements:

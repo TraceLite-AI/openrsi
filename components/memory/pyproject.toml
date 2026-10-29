@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-memory"
-version = "0.2.0"
+version = "0.3.0"
 description = "Evolvable memory with versioned snapshots and rollback, served over MCP"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.2,<0.3"]
+dependencies = ["openrsi-sdk>=0.3,<0.4"]
 
 [project.scripts]
 openrsi-memory = "openrsi_memory.__main__:main"

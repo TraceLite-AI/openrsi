@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.2/GateRequest.json",
+  "$id": "https://openrsi.dev/schemas/0.3/GateRequest.json",
   "additionalProperties": true,
   "properties": {
     "candidate_id": {
@@ -21,6 +21,19 @@
       },
       "title": "Candidate",
       "type": "object"
+    },
+    "primary_metric": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "本次要求提升的指标；判别器自身的修改用 anchor，因为它会改变 holdout 的打分标准（0.3）",
+      "title": "Primary Metric"
     }
   },
   "required": [

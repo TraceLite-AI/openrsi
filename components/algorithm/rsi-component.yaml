@@ -1,6 +1,6 @@
-protocol: openrsi/0.2
+protocol: openrsi/0.3
 name: openrsi/archive
-version: 0.2.0
+version: 0.3.0
 description: 保留所有被接受的快照，按分数加权抽样父代；也提供贪心版本（--kind greedy）。
 kinds: [algorithm]
 implements:

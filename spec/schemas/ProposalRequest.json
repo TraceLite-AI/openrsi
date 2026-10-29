@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.2/ProposalRequest.json",
+  "$id": "https://openrsi.dev/schemas/0.3/ProposalRequest.json",
   "$defs": {
     "Attribution": {
       "additionalProperties": true,
@@ -570,7 +570,7 @@
     }
   },
   "additionalProperties": true,
-  "description": "给提案器的输入。episodes 只能来自 train 划分。",
+  "description": "给提案器的输入。episodes 只能来自 train 划分。\n\n只有一个可进化体时看 target / state 即可。同时进化多个时，targets 和 states 列出全部，\n补丁的 target 字段决定改哪一个；parent_snapshot 是组合快照的 id。",
   "properties": {
     "target": {
       "$ref": "#/$defs/EvolvableInfo"
@@ -578,6 +578,20 @@
     "parent_snapshot": {
       "title": "Parent Snapshot",
       "type": "string"
+    },
+    "targets": {
+      "description": "全部可进化体（0.3）",
+      "items": {
+        "$ref": "#/$defs/EvolvableInfo"
+      },
+      "title": "Targets",
+      "type": "array"
+    },
+    "states": {
+      "additionalProperties": true,
+      "description": "每个可进化体在父版本里的完整内容（0.3）",
+      "title": "States",
+      "type": "object"
     },
     "episodes": {
       "items": {

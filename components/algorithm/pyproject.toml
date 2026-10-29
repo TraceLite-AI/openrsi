@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-algorithm"
-version = "0.2.0"
+version = "0.3.0"
 description = "Search strategies (greedy, archive-based open-ended) over snapshot lineages"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.2,<0.3"]
+dependencies = ["openrsi-sdk>=0.3,<0.4"]
 
 [project.scripts]
 openrsi-algorithm = "openrsi_algorithm:main"

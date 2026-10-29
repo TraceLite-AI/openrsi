@@ -26,6 +26,7 @@ jobs:
           pip install -e sdk/python -e runtime \
             -e components/judge -e components/memory -e components/attribution -e components/proposer \
             -e components/algorithm -e components/gate -e components/lineage \
+            -e components/evolvables -e components/guard \
             -e adapters/dspy -e adapters/langgraph pytest ruff
       - name: Lint
         run: ruff check .
@@ -35,8 +36,18 @@ jobs:
         run: |
           python -m openrsi.export_spec spec
           git diff --exit-code spec
-      - name: End-to-end example
+      - name: End-to-end example (memory)
         working-directory: examples/secret_ops
         run: |
           openrsi run
           openrsi best
+      - name: End-to-end example (skills + guard)
+        working-directory: examples/skill_ops
+        run: |
+          openrsi run
+          openrsi log | grep -q "护栏拦截"
+      - name: End-to-end example (judge co-evolution)
+        working-directory: examples/judge_coevolution
+        run: |
+          openrsi run
+          openrsi best | grep -q '"progress": 3.0'

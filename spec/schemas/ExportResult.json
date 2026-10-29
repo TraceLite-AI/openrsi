@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.2/ExportResult.json",
+  "$id": "https://openrsi.dev/schemas/0.3/ExportResult.json",
   "additionalProperties": true,
   "properties": {
     "snapshot_id": {

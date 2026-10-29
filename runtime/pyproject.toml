@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-runtime"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reference runtime that wires OpenRSI components (local or MCP) into a self-improvement loop"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.2,<0.3"]
+dependencies = ["openrsi-sdk>=0.3,<0.4"]
 
 [project.scripts]
 openrsi = "openrsi_runtime.cli:main"

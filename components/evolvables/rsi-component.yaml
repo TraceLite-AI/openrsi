@@ -1,0 +1,19 @@
+protocol: openrsi/0.3
+name: openrsi/skills
+version: 0.3.0
+description: skill 库。条目是 Python 函数（data.code），在独立子进程里执行，有 CPU、内存和超时限制。
+kinds: [evolvable, skill]
+implements:
+  - rsi_component_info
+  - rsi_evolvable_describe
+  - rsi_evolvable_snapshot
+  - rsi_evolvable_apply
+  - rsi_evolvable_rollback
+  - rsi_evolvable_diff
+  - rsi_evolvable_export
+  - rsi_skill_invoke
+capabilities: {sandbox: subprocess, snapshot_tree: true}
+runtime:
+  transport: stdio
+  command: [openrsi-evolvables, --kind, skills, --path, ./skills-store]
+evolvable_surfaces: [skills]

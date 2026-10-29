@@ -24,7 +24,7 @@ def two_proportion_z(p1: float, n1: float, p2: float, n2: float) -> float:
 
 class HoldoutGate(Gate):
     name = "openrsi/holdout-gate"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, metric: str = "holdout", min_gain: float = 0.0, significance_z: float | None = None,
                  anchor_tolerance: float = 0.0, max_cost: float | None = None):
@@ -36,17 +36,18 @@ class HoldoutGate(Gate):
 
     def check(self, request: GateRequest) -> GateDecision:
         base, cand = request.baseline, request.candidate
+        metric = request.primary_metric or self.metric
         checks: list[GateCheck] = []
 
-        if self.metric not in cand or self.metric not in base:
-            checks.append(GateCheck(name="improvement", passed=False, detail=f"缺少指标 {self.metric}"))
+        if metric not in cand or metric not in base:
+            checks.append(GateCheck(name="improvement", passed=False, detail=f"缺少指标 {metric}"))
         else:
-            b, c = base[self.metric], cand[self.metric]
+            b, c = base[metric], cand[metric]
             ok = c > b + self.min_gain
             checks.append(GateCheck(name="improvement", passed=ok,
-                                    detail=f"{self.metric} {b:.4f} → {c:.4f}（要求提升 > {self.min_gain}）"))
+                                    detail=f"{metric} {b:.4f} → {c:.4f}（要求提升 > {self.min_gain}）"))
             if self.significance_z is not None:
-                n_key = f"n_{self.metric}"
+                n_key = f"n_{metric}"
                 if n_key in base and n_key in cand:
                     z = two_proportion_z(b, base[n_key], c, cand[n_key])
                     checks.append(GateCheck(name="significance", passed=z >= self.significance_z,

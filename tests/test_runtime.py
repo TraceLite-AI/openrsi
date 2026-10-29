@@ -158,5 +158,5 @@ def test_resume_detects_lost_memory(tmp_path):
     cfg = config(tmp_path)
     run(cfg, generations=2)
     shutil.rmtree(tmp_path / "state" / "memory")
-    with pytest.raises(RuntimeError, match="memory 里没有它"):
+    with pytest.raises(RuntimeError, match="可进化体里没有它的快照"):
         run(cfg, generations=1)

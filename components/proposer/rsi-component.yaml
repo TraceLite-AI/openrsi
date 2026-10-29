@@ -1,6 +1,6 @@
-protocol: openrsi/0.2
+protocol: openrsi/0.3
 name: openrsi/lesson-proposer
-version: 0.2.0
+version: 0.3.0
 description: 把 train 上的失败原因写成按标签归类的教训，删除多次只带来失败的条目。ClaudeProposer 用 Claude 写经验（openrsi-proposer --kind claude）。
 kinds: [proposer]
 implements:
