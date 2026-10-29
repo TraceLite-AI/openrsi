@@ -24,7 +24,7 @@ def two_proportion_z(p1: float, n1: float, p2: float, n2: float) -> float:
 
 class HoldoutGate(Gate):
     name = "openrsi/holdout-gate"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, metric: str = "holdout", min_gain: float = 0.0, significance_z: float | None = None,
                  anchor_tolerance: float = 0.0, max_cost: float | None = None):

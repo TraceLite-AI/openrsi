@@ -14,14 +14,16 @@ from pathlib import Path
 from mcp import Client
 
 from .components import (
-    Agent, Algorithm, Attributor, Environment, EvidenceCollector, Gate, Judge, Lineage, Memory, Proposer,
+    Agent, Algorithm, Attributor, Environment, EvidenceCollector, Gate, Guard, Judge, Lineage, Memory, Proposer,
+    Skills,
 )
 from .protocol import TOOLS_BY_NAME
 from .server import build_server
 from .types import PROTOCOL_VERSION, SCHEMA_MODELS
 
 
-class _AllKinds(Environment, Agent, EvidenceCollector, Judge, Attributor, Memory, Proposer, Algorithm, Gate, Lineage):
+class _AllKinds(Environment, Agent, EvidenceCollector, Judge, Attributor, Memory, Skills, Proposer, Algorithm, Gate,
+                Guard, Lineage):
     """只用来生成工具定义，方法不会被调用。"""
 
     def export(self, snapshot_id=None):  # 让可选的 export 工具也出现在定义里

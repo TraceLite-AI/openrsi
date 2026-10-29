@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PROTOCOL_VERSION = "openrsi/0.2"
+PROTOCOL_VERSION = "openrsi/0.3"
 
 
 class _Model(BaseModel):
@@ -228,6 +228,32 @@ class RetrieveResult(_Model):
     snapshot_id: str | None = None
 
 
+class SkillResult(_Model):
+    """一次 skill 调用的结果。代码在隔离的子进程里运行。"""
+
+    ok: bool
+    result: Any = None
+    error: str | None = None
+    stdout: str = ""
+    duration_ms: float = 0.0
+
+
+# ---------------------------------------------------------------- 护栏
+
+class GuardFinding(_Model):
+    rule: str
+    severity: Literal["block", "warn"]
+    message: str
+    op_index: int | None = None
+    item_id: str | None = None
+
+
+class GuardReport(_Model):
+    allowed: bool = Field(description="有任何 block 级别的发现就是 False")
+    findings: list[GuardFinding] = Field(default_factory=list)
+    guard_ref: str | None = None
+
+
 class ExportResult(_Model):
     snapshot_id: str
     content: Any = None
@@ -271,10 +297,16 @@ class AttributionBundle(_Model):
 # ---------------------------------------------------------------- 提案
 
 class ProposalRequest(_Model):
-    """给提案器的输入。episodes 只能来自 train 划分。"""
+    """给提案器的输入。episodes 只能来自 train 划分。
+
+    只有一个可进化体时看 target / state 即可。同时进化多个时，targets 和 states 列出全部，
+    补丁的 target 字段决定改哪一个；parent_snapshot 是组合快照的 id。
+    """
 
     target: EvolvableInfo
     parent_snapshot: str
+    targets: list[EvolvableInfo] = Field(default_factory=list, description="全部可进化体（0.3）")
+    states: dict[str, Any] = Field(default_factory=dict, description="每个可进化体在父版本里的完整内容（0.3）")
     episodes: list[Episode] = Field(default_factory=list)
     attributions: list[Attribution] = Field(default_factory=list)
     state: Any = Field(default=None, description="父快照的完整内容（rsi_evolvable_export 的结果）")
@@ -343,6 +375,8 @@ class LineageEntry(_Model):
     metrics: dict[str, float] = Field(default_factory=dict)
     decision: GateDecision | None = None
     patch: Patch | None = None
+    snapshots: dict[str, str] = Field(default_factory=dict,
+                                      description="同时进化多个可进化体时，每个目标对应的快照 id（0.3）")
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -365,5 +399,5 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     for m in (Task, Step, Trajectory, Evidence, Verdict, RubricResult, AnchorExample, CalibrationReport,
               Item, Patch, MemoryOp, Snapshot, Diff, EvolvableInfo, ExportResult, Episode, Attribution,
               ProposalRequest, AskResult, TellRequest, AlgorithmStatus, GateRequest, GateDecision,
-              LineageEntry, ComponentInfo)
+              LineageEntry, SkillResult, GuardReport, ComponentInfo)
 }

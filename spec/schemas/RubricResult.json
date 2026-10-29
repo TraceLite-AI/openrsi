@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.2/RubricResult.json",
+  "$id": "https://openrsi.dev/schemas/0.3/RubricResult.json",
   "additionalProperties": true,
   "properties": {
     "id": {

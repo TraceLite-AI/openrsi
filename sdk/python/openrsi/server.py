@@ -9,14 +9,14 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from .components import (
     Agent, Algorithm, Attributor, Component, ComponentError, Environment, EvidenceCollector, Evolvable, Gate,
-    Judge, Lineage, Memory, Proposer,
+    Guard, Judge, Lineage, Memory, Proposer, Skills,
 )
 from .protocol import TOOLS_BY_NAME
 from .types import (
     AlgorithmStatus, AnchorExample, AskResult, AttributionBundle, CalibrationReport, ComponentInfo, Diff,
-    Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, Item,
+    Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, GuardReport, Item,
     LineageEntry, LineageLog, PROTOCOL_VERSION, Patch, ProposalBundle, ProposalRequest, RetrieveResult,
-    Snapshot, Task, TaskBundle, TellRequest, Trajectory, Verdict, VerifyResult,
+    SkillResult, Snapshot, Task, TaskBundle, TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 
@@ -112,6 +112,18 @@ def build_server(component: Component, *, name: str | None = None) -> MCPServer:
             return RetrieveResult(items=items, snapshot_id=snapshot_id or c.snapshot().id)
 
         add(retrieve, "rsi_memory_retrieve")
+
+    if isinstance(component, Skills):
+        def invoke(skill_id: str, arguments: dict | None = None, snapshot_id: str | None = None) -> SkillResult:
+            return c.invoke(skill_id, arguments or {}, snapshot_id)
+
+        add(invoke, "rsi_skill_invoke")
+
+    if isinstance(component, Guard):
+        def inspect(patch: Patch, target: EvolvableInfo | None = None) -> GuardReport:
+            return c.inspect(patch, target)
+
+        add(inspect, "rsi_guard_inspect")
 
     if isinstance(component, Proposer):
         def propose(request: ProposalRequest) -> ProposalBundle:

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.3/SkillResult.json",
+  "additionalProperties": true,
+  "description": "一次 skill 调用的结果。代码在隔离的子进程里运行。",
+  "properties": {
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "result": {
+      "default": null,
+      "title": "Result"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "stdout": {
+      "default": "",
+      "title": "Stdout",
+      "type": "string"
+    },
+    "duration_ms": {
+      "default": 0.0,
+      "title": "Duration Ms",
+      "type": "number"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "title": "SkillResult",
+  "type": "object"
+}

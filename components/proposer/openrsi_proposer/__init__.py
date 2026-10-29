@@ -40,7 +40,7 @@ class LessonProposer(Proposer):
     """with: prune_after（某条目至少被用多少次且从未帮上忙才删除，默认 2）"""
 
     name = "openrsi/lesson-proposer"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, prune_after: int = 2):
         self.prune_after = prune_after
@@ -112,7 +112,7 @@ class ClaudeProposer(Proposer):
     """with: model（默认 claude-opus-5-5）、effort、max_ops。需要 anthropic 和 API 凭证。"""
 
     name = "openrsi/claude-proposer"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, model: str = DEFAULT_MODEL, effort: str = "high", max_ops: int = 5, client=None):
         self.model, self.effort, self.max_ops = model, effort, max_ops
