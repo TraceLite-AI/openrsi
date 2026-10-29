@@ -96,7 +96,7 @@ def check_output_equals(item: RubricItem, task: Task, traj: Trajectory, ev: ByTy
         found = re.findall(item.params["extract"], str(value or ""))
         if not found:
             return "fail", ids, f"输出里没有匹配 /{item.params['extract']}/ 的答案"
-        last = found[-1][0] if isinstance(found[-1], tuple) else found[-1]
+        last = next((g for g in found[-1] if g), "") if isinstance(found[-1], tuple) else found[-1]
         value = last.translate({ord(c): None for c in item.params.get("strip", ",$")})
     if "value" in item.params:
         expected = item.params["value"]
