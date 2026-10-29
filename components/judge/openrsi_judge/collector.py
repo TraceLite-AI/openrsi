@@ -47,7 +47,7 @@ class TrajectoryCollector(EvidenceCollector):
     """
 
     name = "openrsi/trajectory-collector"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def __init__(self, *, test_tools: list[str] | None = None, edit_tools: list[str] | None = None,
                  protect: list[str] | None = None, workspace: str | Path | None = None):

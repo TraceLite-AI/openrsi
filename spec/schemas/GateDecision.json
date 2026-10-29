@@ -1,6 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.1/GateDecision.json",
+  "$id": "https://openrsi.dev/schemas/0.2/GateDecision.json",
+  "$defs": {
+    "GateCheck": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "name",
+        "passed"
+      ],
+      "title": "GateCheck",
+      "type": "object"
+    }
+  },
   "additionalProperties": true,
   "properties": {
     "candidate_id": {
@@ -13,8 +46,7 @@
     },
     "checks": {
       "items": {
-        "additionalProperties": true,
-        "type": "object"
+        "$ref": "#/$defs/GateCheck"
       },
       "title": "Checks",
       "type": "array"

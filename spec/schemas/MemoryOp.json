@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.1/MemoryOp.json",
+  "$id": "https://openrsi.dev/schemas/0.2/MemoryOp.json",
   "$defs": {
     "Item": {
       "additionalProperties": true,
