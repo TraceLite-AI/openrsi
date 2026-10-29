@@ -61,6 +61,27 @@ openrsi log openrsi.yaml
 `.openrsi/lineage.jsonl`（谱系）、`openrsi log openrsi.yaml` 的输出、`.openrsi/vllm-logs/`（推理服务日志）、
 `.openrsi/weights/checkpoints/*.log`（训练日志）、`.openrsi/sft/` 里任意一个文件的前几行。
 
+## 在 CPU 上实际跑过的结果
+
+在开发环境（4 核 CPU，无 GPU）用 `openrsi.cpu.yaml` 跑过 Qwen2.5-0.5B-Instruct，每代 12 道 train、15 道 holdout、3 代，约 1 小时：
+
+| 代 | 提案器 | 结果 |
+|---|---|---|
+| 根 | — | holdout 0.20（3 / 15） |
+| 1 | prompt | 没有可用的改写（被过滤或和原来一样），本代跳过 |
+| 2 | weights | 用 4 条答对的 train 轨迹 SFT 3 步（loss 0.11～0.18），换上新 checkpoint 重启推理服务后 holdout 0.133，准入拒绝 |
+| 3 | prompt | 同第 1 代 |
+
+整条链路都走通了：推理服务按权重快照启动和重启、判别器抽答案打分、两种提案器轮流、真实训练产出完整的 Hugging Face 模型目录、准入拒绝了没变好的候选、谱系可续跑。
+分数没有提升在意料之中：15 道题的 holdout 噪声很大（2 道和 3 道的差别），4 条样本的 SFT 也太少。要看到提升，需要 GPU 上的规模（每代 64 道 train、200 道 holdout）。
+
+跑的过程中发现并修掉的问题：
+
+- GSM8K 题目里有 U+2028 这类字符，`str.splitlines()` 会在那里断行，读 JSONL 出错。谱系、anchor 集等所有 JSONL 读取都改成按 `\n` 切分
+- Qwen2.5-0.5B 不听"按 #### 作答"，几乎总是写 `\boxed{}`，长推导还会超过 256 token。判别器现在两种格式都认，输出长度放宽
+- 0.5B 改写自己的系统提示时，会把错题原文抄进去还开始解题（被准入拒绝）。现在抄题的改写会被丢掉；配置里建议把改写换成更强的模型
+- 起点没有按格式作答的提示时，一道题都答不对，权重进化无从开始。`PromptEvolvable` 现在可以给初始版本
+
 ## 文件
 
 - `gsm8k_env.py`：GSM8K 环境，读 verl 的 parquet 或 jsonl；题目用原始问题，不带 verl 加的格式提示
