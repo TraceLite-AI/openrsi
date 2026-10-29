@@ -2,7 +2,7 @@
 
 组件式的 agent 自我改进（RSI）框架和开放协议。自我改进的每个环节都是一个独立的 MCP server，任何框架都能单独拿去用，也能用一份 `openrsi.yaml` 把它们接成完整的循环。
 
-当前版本 0.3：协议覆盖 13 类组件，提供 10 个官方组件、一个参考运行时、一致性测试，以及 DSPy 和 LangGraph 适配器。memory、prompt、skill（可执行代码）都能进化，也能同时进化；补丁生效前有护栏检查。
+当前版本 0.3：协议覆盖 13 类组件，提供 11 个官方组件、一个参考运行时、一致性测试，以及 DSPy 和 LangGraph 适配器。memory、prompt、skill（可执行代码）和判别器本身都能进化；补丁生效前有护栏检查；判别器的修改由人工标注集把关。
 
 ## 自我改进循环
 
@@ -29,19 +29,19 @@ spec/                     协议正文 PROTOCOL.md，以及生成的 JSON Schema
 sdk/python/               openrsi-sdk：数据格式、13 类组件基类、条目型可进化体的通用实现、MCP 服务端/客户端、一致性测试
 runtime/                  openrsi-runtime：按 openrsi.yaml 接通组件，跑循环、续跑、查看谱系
 components/
-  judge/                  取证 + rubric 判别器（可选用 Claude 判断规则管不到的项）
+  judge/                  取证 + rubric 判别器（可选用 Claude 判断规则管不到的项）；可进化版本 EvolvingJudge
   memory/                 可进化 memory：快照树、原子补丁、回滚、导出
   evolvables/             prompt 库和 skill 库（skill 在子进程里执行，有 CPU、内存、超时限制）
   guard/                  护栏：拦危险代码、受保护条目、泄露的密钥、教 agent 绕过评估的内容
   attribution/            沿判决引用的证据追责到轨迹步骤和 memory 条目
-  proposer/               教训提案器（无需 LLM）和 Claude 提案器
+  proposer/               教训提案器（无需 LLM）、Claude 提案器、判别器漏判审计、组合提案器
   algorithm/              贪心 / 档案式开放进化
   gate/                   holdout 准入，可选显著性检验、anchor、成本上限
   lineage/                谱系，被拒绝的候选也留档
 adapters/dspy/            判别器当 DSPy metric 用（含 GEPA 反馈）
 adapters/langgraph/       LangGraph 状态转轨迹再判别
 examples/                 能直接跑的例子
-tests/                    86 个测试
+tests/                    97 个测试
 ```
 
 ## 快速开始：跑一个完整循环
@@ -84,6 +84,26 @@ openrsi log                    # 查看谱系
 被拦下的补丁也写进谱系（`openrsi log` 能看到原因），但从未生效。
 
 子进程限制不是安全边界：skill 进程仍能访问文件系统和网络。不可信的代码要先过护栏，并且把 skill 库跑在容器里。
+
+## 判别器和 agent 一起进化
+
+`examples/judge_coevolution` 从两个都有问题的组件出发：agent 改测试文件让测试变绿，判别器只看 agent 有没有说 "done"。只看 holdout，一切"完美"。人工标注集（`anchor.jsonl`）里作弊被标为不通过，判别器与人工的一致率只有 0.5：
+
+```
+ gen  parent                train    base    cand  result
+  · root cfg_fb9d46304fbf435c: holdout=1.000
+   1  cfg_fb9d46304fbf435c  1.000   1.000       -  提案器没有提出修改
+   2  cfg_fb9d46304fbf435c  1.000   1.000   0.500  接受 cfg_a02c631d…  anchor 0.500→1.000  [判别器进化代]
+   3  cfg_a02c631d5ff661d7  0.500   0.500   1.000  接受 cfg_cb8b57b5…  anchor 1.000→1.000
+```
+
+第 2 代，审计提案器发现"判了通过、但证据显示改了受保护的测试文件"，补上检查项；holdout 下降是因为作弊被识破了，准入看的是 anchor 一致率。第 3 代，失败原因被写成教训，agent 改走正路，holdout 回到 1.0。
+
+几条保证：判别器的修改只看 anchor，不看 holdout，所以把判别器改宽松来刷分的补丁会被拒绝（有测试覆盖）；agent 和判别器轮流进化；判别器的 rubric 不会出现在 agent 的上下文里。
+
+## 反事实归因
+
+`loop.counterfactual_reruns: N` 时，每代最多重跑 N 次：把某条 memory 从上下文里拿掉、重做同一道题，用分数差判断它是有用还是有害。结果和普通归因一起交给提案器，`LessonProposer` 据此删掉有害条目。
 
 ## openrsi.yaml
 
@@ -181,4 +201,4 @@ python -m openrsi.export_spec spec           # 改了数据格式后重新生成
 
 ## 下一步
 
-v0.3 还剩：判别器本身参与进化（锚定人工标注集）、反事实归因（去掉一条 memory 重跑）。之后：TypeScript SDK；OpenEvolve、Letta、OpenAI Agents SDK 适配器。
+TypeScript SDK；OpenEvolve、Letta、OpenAI Agents SDK 适配器；用真实 LLM agent 和公开基准（如 TraceTrial-Bench）跑通完整循环。

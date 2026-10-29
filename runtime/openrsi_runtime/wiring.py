@@ -68,6 +68,7 @@ class Wiring:
         self._stack = AsyncExitStack()
         self.components: dict[str, Any] = {}
         self.evolvables: dict[str, Any] = {}  # 名字 → 门面；包括 memory
+        self._built: dict[str, Any] = {}
         self.refs: dict[str, str] = {}
 
     async def __aenter__(self) -> "Wiring":
@@ -83,7 +84,7 @@ class Wiring:
                 spec = self.config.components.get(slot)
                 if spec and spec.same_as:
                     wanted.add(spec.same_as)
-            built: dict[str, Any] = {}
+            built: dict[str, Any] = self._built
             for slot in [s for s in self.config.components if s in wanted]:
                 spec = self.config.components[slot]
                 if not spec.same_as:
@@ -96,7 +97,11 @@ class Wiring:
                 if "memory" in self.components:
                     self.evolvables["memory"] = self.components["memory"]
                 for name, spec in self.config.evolvables.items():
-                    source = await self._build(f"evolvables.{name}", spec)
+                    if spec.same_as:  # 比如判别器同时是可进化体
+                        source = self._built[spec.same_as]
+                        self.refs[f"evolvables.{name}"] = f"same as {spec.same_as}"
+                    else:
+                        source = await self._build(f"evolvables.{name}", spec)
                     self.evolvables[name] = self._evolvable_facade(name, source)
         except BaseException:
             await self._stack.aclose()
