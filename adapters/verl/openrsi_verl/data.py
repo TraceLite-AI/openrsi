@@ -50,20 +50,26 @@ def tasks_to_rl_rows(tasks: Iterable[Task], data_source: str, *, ability: str = 
     return rows
 
 
+def _text(x: Any) -> str:
+    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False)
+
+
 def episode_messages(ep: Episode, prompt_fn: Callable[[Task], str] = default_prompt) -> list[dict[str, Any]]:
-    """轨迹转成对话：题目作为 user，工具调用和结果按顺序展开，最终输出作为最后一条 assistant。"""
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": prompt_fn(ep.task)}]
-    for s in ep.trajectory.steps:
+    """轨迹转成对话。agent 自己记下了 user 消息（比如 ChatAgent）就原样用轨迹里的对话（含系统提示）；
+    否则用 prompt_fn(task) 作为 user。工具调用和结果按顺序展开，最终输出作为最后一条 assistant。"""
+    steps = ep.trajectory.steps
+    own = any(s.type == "message" and s.role == "user" for s in steps)
+    msgs: list[dict[str, Any]] = [] if own else [{"role": "user", "content": prompt_fn(ep.task)}]
+    for s in steps:
         if s.type == "message" and s.role in ("assistant", "user", "system"):
-            msgs.append({"role": s.role, "content": s.content if isinstance(s.content, str) else json.dumps(s.content)})
+            msgs.append({"role": s.role, "content": _text(s.content)})
         elif s.type == "tool_call":
             msgs.append({"role": "assistant", "content": json.dumps({"tool": s.name, "arguments": s.arguments or {}},
                                                                     ensure_ascii=False)})
         elif s.type == "tool_result":
-            msgs.append({"role": "tool", "content": s.content if isinstance(s.content, str) else json.dumps(s.content)})
-    out = ep.trajectory.output
-    final = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False)
-    if not (msgs[-1]["role"] == "assistant" and msgs[-1]["content"] == final):
+            msgs.append({"role": "tool", "content": _text(s.content)})
+    final = _text(ep.trajectory.output)
+    if not (msgs and msgs[-1]["role"] == "assistant" and msgs[-1]["content"] == final):
         msgs.append({"role": "assistant", "content": final})
     return msgs
 
