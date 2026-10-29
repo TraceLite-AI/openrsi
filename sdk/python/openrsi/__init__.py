@@ -1,5 +1,5 @@
 """OpenRSI Python SDK：协议数据格式、组件基类、MCP 服务端与客户端、一致性测试。"""
-from .client import RemoteComponent, ToolCallError, connect
+from .client import ComponentUnavailableError, RemoteComponent, ToolCallError, connect
 from .components import (
     Agent, Algorithm, Attributor, Component, ComponentError, Environment, EvidenceCollector, Evolvable, Gate,
     Guard, Judge, Lineage, Memory, Proposer, Skills, StaleSnapshotError,
@@ -24,6 +24,6 @@ __all__ = [
     "GateDecision", "GateRequest", "Guard", "GuardFinding", "GuardReport", "Item", "ItemStore", "Judge",
     "Lineage", "LineageEntry", "Manifest", "Memory", "MemoryOp", "PROTOCOL_VERSION", "Patch",
     "ProposalRequest", "Proposer", "RemoteComponent", "RubricResult", "ScreenResult", "SkillResult", "Skills", "Snapshot",
-    "StaleSnapshotError", "Step", "Task", "TellRequest", "ToolCallError", "Trajectory", "Verdict",
+    "StaleSnapshotError", "Step", "Task", "TellRequest", "ToolCallError", "ComponentUnavailableError", "Trajectory", "Verdict",
     "VerifyResult", "build_server", "connect", "content_hash", "from_messages", "load_manifest", "serve",
 ]
