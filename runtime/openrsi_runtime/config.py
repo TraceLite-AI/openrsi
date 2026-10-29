@@ -57,7 +57,12 @@ class LoopConfig(BaseModel):
     max_patches: int = Field(default=1, ge=1, description="每代最多评估几个候选补丁")
     train_limit: int | None = None
     holdout_limit: int | None = None
-    metric: str = Field(default="holdout", description="谱系里选最佳快照用的指标")
+    metric: str = Field(default="holdout", description="谱系里选最佳快照用的指标；判别器参与进化时用 progress")
+    anchor: str | None = Field(default=None, description="人工标注集（AnchorExample 的 JSONL），判别器参与进化时必需")
+    judge_every: int | None = Field(default=None, ge=2,
+                                    description="每隔几代轮到判别器进化；其余代只改 agent 侧。不填则判别器不进化")
+    counterfactual_reruns: int = Field(default=0, ge=0,
+                                       description="每代最多做几次反事实重跑（拿掉一条 memory 重跑同一道题），0 表示不做")
 
 
 class RunConfig(BaseModel):
@@ -83,14 +88,27 @@ class RunConfig(BaseModel):
         if "memory" not in self.components and not self.evolvables:
             raise ValueError("至少要有一个可进化体：components.memory 或 evolvables")
         for name, spec in self.evolvables.items():
-            if spec.same_as:
-                raise ValueError(f"evolvables.{name} 不支持 same_as")
+            if spec.same_as and spec.same_as not in self.components:
+                raise ValueError(f"evolvables.{name}.same_as 只能指向 components 里的位置（如 judge）")
+        if self.loop.judge_every and not self.loop.anchor:
+            raise ValueError("判别器参与进化（loop.judge_every）必须配置人工标注集 loop.anchor")
         for slot, spec in self.components.items():
             if spec.same_as and spec.same_as not in self.components:
                 raise ValueError(f"{slot}.same_as 指向不存在的位置 {spec.same_as}")
             if spec.same_as and self.components[spec.same_as].same_as:
                 raise ValueError(f"{slot}.same_as 不能指向另一个 same_as")
         return self
+
+
+def load_anchor(config: RunConfig) -> list:
+    """读人工标注集：每行一个 AnchorExample。"""
+    from openrsi import AnchorExample
+
+    if not config.loop.anchor:
+        return []
+    path = (config.base_dir / config.loop.anchor).resolve()
+    return [AnchorExample.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
 
 
 def load_config(path: str | Path) -> RunConfig:

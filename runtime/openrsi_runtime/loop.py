@@ -11,10 +11,16 @@
 和 0.2 完全一致；有多个时是组合的哈希，谱系里的 snapshots 字段记录每个可进化体对应的快照。
 
 硬规则（由本模块保证，不依赖组件自觉）：
-  - 交给 agent 的题目去掉了 reference（标准答案）
+  - 交给 agent 的题目去掉了 reference（标准答案）；判别器的 rubric 不进 agent 的上下文
   - 只有 train 的 episode 会进入归因和提案；holdout 只用来打分
   - env 返回的题目划分不对时直接报错
   - 配置了护栏时，被拦下的补丁不会生效
+
+判别器参与进化时（loop.judge_every）：
+  - agent 侧和判别器轮流进化，同一代只改一边，分数变化才能归因
+  - 判别器的修改会改变 holdout 的打分标准，所以它的准入看 anchor（与人工标注的一致率），不看 holdout
+  - 每接受一次判别器的修改，版本进入新的"纪元"（judge_epoch）。progress = 2 × 纪元 + holdout，
+    新纪元总是优先：旧纪元的高分是在更宽松的标准下得到的
 """
 from __future__ import annotations
 
@@ -23,8 +29,9 @@ from dataclasses import dataclass, field
 from statistics import fmean
 from typing import Any, Callable
 
-from openrsi import (ComponentError, Episode, EvolvableInfo, GateCheck, GateDecision, GateRequest, Item, LineageEntry,
-                     Patch, ProposalRequest, Task, TellRequest, ToolCallError, content_hash)
+from openrsi import (AnchorExample, Attribution, AttributionTarget, ComponentError, Episode, EvolvableInfo, GateCheck,
+                     GateDecision, GateRequest, Item, LineageEntry, Patch, ProposalRequest, Task, TellRequest,
+                     ToolCallError, content_hash)
 from openrsi.types import canonical_json, for_agent
 
 from .config import LoopConfig
@@ -85,11 +92,16 @@ def _check_split(tasks: list[Task], split: str) -> None:
 
 class Runner:
     def __init__(self, w: Any, loop: LoopConfig, on_generation: Callable[[GenerationReport], None] | None = None,
-                 log: Callable[[str], None] = lambda s: None):
+                 log: Callable[[str], None] = lambda s: None, anchor: list[AnchorExample] | None = None):
         self.w = w
         self.cfg = loop
         self.on_generation = on_generation
         self.log = log
+        if anchor is None and loop.anchor and getattr(w, "config", None) is not None:
+            from .config import load_anchor
+            anchor = load_anchor(w.config)
+        self.anchor = anchor or []
+        self.judge_target: str | None = None
         self.targets: dict[str, _Target] = {}
         self.genomes: dict[str, Genome] = {}
         self.metrics: dict[str, dict[str, float]] = {}
@@ -102,8 +114,12 @@ class Runner:
             if info.target in self.targets:
                 raise ValueError(f"两个可进化体用了同一个 target 名 {info.target}")
             self.targets[info.target] = _Target(facade, info, list(facade.kinds))
+            if "judge" in facade.kinds:
+                self.judge_target = info.target
         if not self.targets:
             raise ValueError("没有可进化体")
+        if self.judge_target and not self.cfg.judge_every:
+            self.log(f"判别器 {self.judge_target} 是可进化体，但没有配置 loop.judge_every，本次不进化它")
         self.lineage_target = "+".join(sorted(self.targets))
 
     async def checkout(self, genome: Genome) -> None:
@@ -119,10 +135,12 @@ class Runner:
 
     # ------------------------------------------------------------ 执行与打分
 
-    async def context(self, task: Task, genome: Genome) -> list[Item]:
-        """agent 能看到的内容：memory 按题目检索，其他可进化体（prompt、skill）整个给。"""
+    async def context(self, task: Task, genome: Genome, exclude: set[str] | None = None) -> list[Item]:
+        """agent 能看到的内容：memory 按题目检索，其他可进化体（prompt、skill）整个给；判别器的 rubric 不给。"""
         out: list[Item] = []
         for t, tgt in self.targets.items():
+            if t == self.judge_target:
+                continue
             if "memory" in tgt.kinds:
                 out += await tgt.facade.retrieve(query=_query(task), tags=task.tags or None, k=self.cfg.retrieve_k,
                                                  snapshot_id=genome[t])
@@ -130,11 +148,11 @@ class Runner:
                 exported = await tgt.facade.export(genome[t])
                 if isinstance(exported, list):
                     out += [Item.model_validate(d) for d in exported if isinstance(d, dict) and "id" in d]
-        return out
+        return [i for i in out if not exclude or i.id not in exclude]
 
-    async def episode(self, task: Task, genome: Genome) -> Episode:
+    async def episode(self, task: Task, genome: Genome, exclude: set[str] | None = None) -> Episode:
         visible = for_agent(task)
-        context = await self.context(visible, genome)
+        context = await self.context(visible, genome, exclude)
         gid = genome_id(genome)
         traj = await self.w.agent.run(visible, context, gid)
         traj.snapshot_id = traj.snapshot_id or gid
@@ -145,14 +163,51 @@ class Runner:
         return Episode(task=task, trajectory=traj, verdict=verdict, evidence=[*evidence, *verdict.collected])
 
     async def score(self, tasks: list[Task], genome: Genome, prefix: str) -> tuple[dict[str, float], list[Episode]]:
+        await self.checkout(genome)  # 判别器按当前快照打分，所以先把所有可进化体切到这个版本
         episodes = [await self.episode(t, genome) for t in tasks]
         if not episodes:
-            return {prefix: 0.0, f"{prefix}_pass": 0.0, f"n_{prefix}": 0.0}, []
-        return {
-            prefix: fmean(e.verdict.score for e in episodes),
-            f"{prefix}_pass": fmean(1.0 if e.verdict.passed else 0.0 for e in episodes),
-            f"n_{prefix}": float(len(episodes)),
-        }, episodes
+            m = {prefix: 0.0, f"{prefix}_pass": 0.0, f"n_{prefix}": 0.0}
+        else:
+            m = {
+                prefix: fmean(e.verdict.score for e in episodes),
+                f"{prefix}_pass": fmean(1.0 if e.verdict.passed else 0.0 for e in episodes),
+                f"n_{prefix}": float(len(episodes)),
+            }
+        if self.anchor:
+            rep = await self.w.judge.calibrate(self.anchor)
+            m["anchor"], m["n_anchor"] = rep.agreement, float(rep.n)
+        return m, episodes
+
+    @staticmethod
+    def _with_epoch(m: dict[str, float], epoch: float) -> dict[str, float]:
+        return {**m, "judge_epoch": epoch, "progress": 2 * epoch + m.get("holdout", 0.0)}
+
+    def _allowed_targets(self, gen: int) -> list[str]:
+        if self.judge_target is None:
+            return list(self.targets)
+        if self.cfg.judge_every and gen % self.cfg.judge_every == 0:
+            return [self.judge_target]
+        return [t for t in self.targets if t != self.judge_target]
+
+    async def counterfactual(self, episodes: list[Episode], genome: Genome) -> list[Attribution]:
+        """拿掉一条用过的条目，重跑同一道题：分数掉了说明它有用，涨了说明它有害。"""
+        budget = self.cfg.counterfactual_reruns
+        out = []
+        for ep in episodes:
+            targets = []
+            for item_id in ep.trajectory.used_items:
+                if budget <= 0:
+                    break
+                budget -= 1
+                alt = await self.episode(ep.task, genome, exclude={item_id})
+                delta = ep.verdict.score - alt.verdict.score
+                targets.append(AttributionTarget(kind="item", ref=item_id, weight=max(-1.0, min(1.0, delta)),
+                                                 note=f"拿掉后分数 {ep.verdict.score:.2f} → {alt.verdict.score:.2f}"))
+            if targets:
+                out.append(Attribution(episode_id=ep.trajectory.id, targets=targets, method="counterfactual"))
+            if budget <= 0:
+                break
+        return out
 
     # ------------------------------------------------------------ 主循环
 
@@ -171,6 +226,7 @@ class Runner:
         if not entries:
             genome = {t: (await tgt.facade.snapshot()).id for t, tgt in self.targets.items()}
             m, _ = await self.score(holdout, genome, "holdout")
+            m = self._with_epoch(m, 0.0)
             root = LineageEntry(id=genome_id(genome), target=self.lineage_target, generation=0, status="root",
                                 metrics=m, snapshots=genome)
             entries = [await w.lineage.record(root)]
@@ -233,12 +289,21 @@ class Runner:
                                   train_score=fmean(e.verdict.score for e in episodes) if episodes else 0.0)
 
         attributions = await w.attribution.explain(episodes) if w.attribution and episodes else []
+        if self.cfg.counterfactual_reruns and episodes:
+            attributions += await self.counterfactual(episodes, parent_genome)
+            await self.checkout(parent_genome)
         states = {t: await tgt.facade.export(parent_genome[t]) for t, tgt in self.targets.items()}
-        primary = next(iter(self.targets))
+        allowed = self._allowed_targets(gen)
+        if not allowed:
+            report.note = "本代没有可以修改的对象"
+            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
+            return report
+        if allowed == [self.judge_target]:
+            report.note = "判别器进化代"
         patches = await w.proposer.propose(ProposalRequest(
-            target=self.targets[primary].info, targets=[tgt.info for tgt in self.targets.values()],
+            target=self.targets[allowed[0]].info, targets=[self.targets[t].info for t in allowed],
             parent_snapshot=parent, episodes=episodes, attributions=attributions,
-            state=states[primary], states=states, max_patches=self.cfg.max_patches))
+            state=states[allowed[0]], states=states, max_patches=self.cfg.max_patches))
 
         if not patches:
             report.note = "提案器没有提出修改"
@@ -246,20 +311,30 @@ class Runner:
             return report
 
         for patch in patches[: self.cfg.max_patches]:
-            report.candidates.append(await self._candidate(gen, parent, parent_genome, patch, report.train_score))
+            report.candidates.append(await self._candidate(gen, parent, parent_genome, patch, report.train_score,
+                                                           allowed))
         await self.checkout(parent_genome)
         return report
 
     async def _candidate(self, gen: int, parent: str, parent_genome: Genome, patch: Patch,
-                         train_score: float) -> Candidate:
+                         train_score: float, allowed: list[str]) -> Candidate:
         w = self.w
+
+        async def reject(reason: str, t: str | None = None) -> Candidate:
+            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
+            return Candidate(id=None, reason=reason, target=t)
+
         if len(self.targets) == 1:
             t = next(iter(self.targets))
         elif patch.target in self.targets:
             t = patch.target
         else:
-            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
-            return Candidate(id=None, reason=f"补丁目标 {patch.target} 不存在，可选：{sorted(self.targets)}")
+            return await reject(f"补丁目标 {patch.target} 不存在，可选：{sorted(self.targets)}")
+        if t not in allowed:
+            return await reject(f"本代只允许修改 {', '.join(allowed)}，不能改 {t}", t)
+        judge_change = t == self.judge_target
+        if judge_change and not self.anchor:
+            return await reject("判别器的修改必须用人工标注集验证，没有配置 loop.anchor", t)
         tgt = self.targets[t]
         await self.checkout(parent_genome)
         patch = patch.model_copy(update={"target": tgt.info.target, "base_snapshot": parent_genome[t]})
@@ -283,14 +358,15 @@ class Runner:
         try:
             snap = await tgt.facade.apply(patch)
         except (ToolCallError, ComponentError, ValueError, KeyError) as e:
-            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
-            return Candidate(id=None, reason=f"补丁被拒：{e}", target=t)
+            return await reject(f"补丁被拒：{e}", t)
 
         genome = {**parent_genome, t: snap.id}
         cid = genome_id(genome)
         m, _ = await self.score(self.holdout, genome, "holdout")
         m["train_of_parent"] = train_score
-        decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=self.metrics[parent], candidate=m))
+        m = self._with_epoch(m, self.metrics[parent].get("judge_epoch", 0.0) + (1.0 if judge_change else 0.0))
+        decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=self.metrics[parent], candidate=m,
+                                                  primary_metric="anchor" if judge_change else None))
         decision.checks += guard_checks  # 护栏的警告也留档
         status = "accepted" if decision.accepted else "rejected"
         await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,

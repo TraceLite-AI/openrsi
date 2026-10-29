@@ -349,6 +349,8 @@ class GateRequest(_Model):
     candidate_id: str
     baseline: dict[str, float] = Field(description="父快照的分数，如 holdout、anchor、cost、n_holdout")
     candidate: dict[str, float]
+    primary_metric: str | None = Field(
+        default=None, description="本次要求提升的指标；判别器自身的修改用 anchor，因为它会改变 holdout 的打分标准（0.3）")
 
 
 class GateCheck(_Model):

@@ -46,3 +46,8 @@ jobs:
         run: |
           openrsi run
           openrsi log | grep -q "护栏拦截"
+      - name: End-to-end example (judge co-evolution)
+        working-directory: examples/judge_coevolution
+        run: |
+          openrsi run
+          openrsi best | grep -q '"progress": 3.0'

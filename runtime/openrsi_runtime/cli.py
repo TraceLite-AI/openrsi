@@ -27,8 +27,13 @@ def _print_generation(r: GenerationReport) -> None:
     for c in r.candidates:
         verdict = "接受" if c.accepted else "拒绝"
         cid = c.id or "-"
+        extra = ""
+        if "anchor" in c.metrics and "anchor" in r.parent_metrics:
+            extra = f"  anchor {_fmt(r.parent_metrics['anchor'])}→{_fmt(c.metrics['anchor'])}"
+        if r.note:
+            extra += f"  [{r.note}]"
         print(f"{r.generation:>4}  {r.parent_id[:20]:<20} {_fmt(r.train_score):>6} {_fmt(base):>7} "
-              f"{_fmt(c.metrics.get('holdout')):>7}  {verdict} {cid}  {c.reason}")
+              f"{_fmt(c.metrics.get('holdout')):>7}  {verdict} {cid}  {c.reason}{extra}")
 
 
 async def _run(path: str, generations: int | None) -> int:
@@ -52,8 +57,9 @@ async def _log(path: str) -> int:
         for e in await w.lineage.log():
             parent = e.parent_ids[0] if e.parent_ids else "-"
             reason = e.decision.reason if e.decision else ""
+            anchor = f" anchor={_fmt(e.metrics['anchor'])}" if "anchor" in e.metrics else ""
             print(f"{e.generation:>4}  {e.status:<8} {e.id:<24} ← {parent:<24} "
-                  f"holdout={_fmt(e.metrics.get('holdout'))}  {reason}")
+                  f"holdout={_fmt(e.metrics.get('holdout'))}{anchor}  {reason}")
     return 0
 
 

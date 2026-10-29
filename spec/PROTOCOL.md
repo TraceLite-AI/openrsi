@@ -89,7 +89,19 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 - 编排方可以同时进化多个可进化体。一个**版本**是每个可进化体各取一个快照的组合，`LineageEntry.snapshots` 记录 target 到快照 id 的映射。
 - 只有一个可进化体时，版本 id 就是它的快照 id；多个时是组合的哈希（参考实现用 `cfg_` 前缀）。谱系的 `target` 是全部 target 名排序后用 `+` 连接。
 - `ProposalRequest.targets` 和 `states` 列出全部可进化体及其父版本内容；补丁的 `target` 决定改哪一个。一个补丁只改一个可进化体。
-- 交给 agent 的上下文：memory 按题目检索，其他可进化体（prompt、skill）导出全部条目。
+- 交给 agent 的上下文：memory 按题目检索，其他可进化体（prompt、skill）导出全部条目。判别器自身（同时是 judge 和 evolvable 的组件）的内容不得交给 agent。
+
+### 判别器参与进化
+
+判别器的修改会改变打分标准：判别器变宽松，holdout 分数就会虚高。所以：
+
+- 判别器的修改必须用人工标注集（anchor）验证。编排方用 `rsi_judge_calibrate` 计算与人工判断的一致率，记为指标 `anchor`；`GateRequest.primary_metric` 设为 `anchor`，判别器的修改只有在一致率提升时才被接受，与 holdout 怎么变无关。没有 anchor 集时，编排方不得接受判别器的修改。
+- agent 侧和判别器必须轮流进化，同一代只改一边，分数变化才能归因到一方。
+- 每接受一次判别器的修改，版本进入新的纪元（`judge_epoch` 加 1）。不同纪元的 holdout 不可直接比较；参考运行时用 `progress = 2 × judge_epoch + holdout` 选最佳版本，新纪元优先。
+
+### 反事实归因
+
+编排方可以把某个条目从上下文里拿掉、重跑同一道题，用分数差作为该条目的权重（`method: counterfactual`）：拿掉后分数下降说明它有用，上升说明它有害。这需要重跑 agent，代价较高，应当有预算上限。
 
 ## 10. 错误
 

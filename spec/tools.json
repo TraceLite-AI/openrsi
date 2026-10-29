@@ -2144,6 +2144,19 @@
                 },
                 "title": "Candidate",
                 "type": "object"
+              },
+              "primary_metric": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "本次要求提升的指标；判别器自身的修改用 anchor，因为它会改变 holdout 的打分标准（0.3）",
+                "title": "Primary Metric"
               }
             },
             "required": [
