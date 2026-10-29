@@ -32,11 +32,11 @@ def _items_hash(items: dict[str, Item]) -> str:
 
 class MemoryEvolvable(Memory):
     name = "openrsi/memory"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def __init__(self, target: str = "memory", path: str | Path | None = None):
         self.target = target
-        self.path = Path(path) if path else None
+        self.path = Path(path).resolve() if path else None
         self._snapshots: dict[str, Snapshot] = {}
         self._ops: dict[str, list[MemoryOp]] = {}
         self._cache: dict[str, dict[str, Item]] = {}
@@ -128,6 +128,11 @@ class MemoryEvolvable(Memory):
                 ops.append({"op": "replace", "item": b[k].model_dump(mode="json")})
         return Diff(from_id=from_id, to_id=to_id, ops=ops)
 
+    def export(self, snapshot_id: str | None = None) -> list[dict]:
+        """快照里的全部条目，按 id 排序。"""
+        items = self.items(snapshot_id)
+        return [items[k].model_dump(mode="json") for k in sorted(items)]
+
     def history(self, snapshot_id: str | None = None) -> list[Snapshot]:
         """从某个快照沿第一个父快照回溯到根，新的在前。"""
         out, cur = [], snapshot_id or self._head
@@ -141,25 +146,27 @@ class MemoryEvolvable(Memory):
 
     def retrieve(self, query: str = "", tags: list[str] | None = None, k: int = 5,
                  snapshot_id: str | None = None) -> list[Item]:
-        """简单的词重叠打分（带 IDF）+ 标签加分。只给标签不给查询时按标签过滤。"""
-        items = list(self.items(snapshot_id).values())
+        """标签是过滤条件，查询只用来排序。
+
+        - 给了标签：返回带这些标签的条目，按与查询的相关度排序（不相关的也保留，排在后面）
+        - 只给查询：返回与查询有词重叠的条目（词重叠打分，带 IDF）
+        - 都不给：返回前 k 条
+        """
+        items = sorted(self.items(snapshot_id).values(), key=lambda it: it.id)
         want = set(tags or [])
         if want:
-            items = [it for it in items if want & set(it.tags)] or []
-        q = _tokens(query)
+            items = [it for it in items if want & set(it.tags)]
+        q = set(_tokens(query))
         if not q:
             return items[:k]
         docs = {it.id: Counter(_tokens(it.text + " " + " ".join(it.tags))) for it in items}
         df = Counter(t for c in docs.values() for t in c)
         n = len(items) or 1
-        scored = []
-        for it in items:
-            c = docs[it.id]
-            s = sum(math.log(1 + n / df[t]) for t in set(q) if t in c)
-            if s > 0:
-                scored.append((s, it.id, it))
-        scored.sort(key=lambda x: (-x[0], x[1]))
-        return [it for _, _, it in scored[:k]]
+        scored = [(sum(math.log(1 + n / df[t]) for t in q if t in docs[it.id]), it) for it in items]
+        if not want:
+            scored = [(s, it) for s, it in scored if s > 0]
+        scored.sort(key=lambda x: (-x[0], x[1].id))
+        return [it for _, it in scored[:k]]
 
 
 def _apply_ops(items: dict[str, Item], ops: list[MemoryOp]) -> dict[str, Item]:

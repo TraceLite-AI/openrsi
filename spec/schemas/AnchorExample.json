@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.1/AnchorExample.json",
+  "$id": "https://openrsi.dev/schemas/0.2/AnchorExample.json",
   "$defs": {
     "Evidence": {
       "additionalProperties": true,
@@ -163,7 +163,7 @@
     },
     "Task": {
       "additionalProperties": true,
-      "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。",
+      "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。\n\nreference 放标准答案等只给判别器看的信息；运行时交给 agent 之前会去掉它。",
       "properties": {
         "id": {
           "title": "Id",
@@ -172,6 +172,11 @@
         "input": {
           "default": null,
           "title": "Input"
+        },
+        "reference": {
+          "default": null,
+          "description": "只给判别器看，不得交给 agent",
+          "title": "Reference"
         },
         "split": {
           "default": "train",

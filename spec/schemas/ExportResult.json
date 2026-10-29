@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.2/ExportResult.json",
+  "additionalProperties": true,
+  "properties": {
+    "snapshot_id": {
+      "title": "Snapshot Id",
+      "type": "string"
+    },
+    "content": {
+      "default": null,
+      "title": "Content"
+    }
+  },
+  "required": [
+    "snapshot_id"
+  ],
+  "title": "ExportResult",
+  "type": "object"
+}

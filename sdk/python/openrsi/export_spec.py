@@ -13,14 +13,19 @@ from pathlib import Path
 
 from mcp import Client
 
-from .components import EvidenceCollector, Judge, Memory
+from .components import (
+    Agent, Algorithm, Attributor, Environment, EvidenceCollector, Gate, Judge, Lineage, Memory, Proposer,
+)
 from .protocol import TOOLS_BY_NAME
 from .server import build_server
 from .types import PROTOCOL_VERSION, SCHEMA_MODELS
 
 
-class _AllKinds(EvidenceCollector, Judge, Memory):
+class _AllKinds(Environment, Agent, EvidenceCollector, Judge, Attributor, Memory, Proposer, Algorithm, Gate, Lineage):
     """只用来生成工具定义，方法不会被调用。"""
+
+    def export(self, snapshot_id=None):  # 让可选的 export 工具也出现在定义里
+        raise NotImplementedError
 
     name = "openrsi/spec"
     version = PROTOCOL_VERSION.split("/")[1]
@@ -42,7 +47,7 @@ def render() -> dict[str, str]:
     files: dict[str, str] = {}
     for name, model in sorted(SCHEMA_MODELS.items()):
         schema = {"$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "$id": f"https://openrsi.dev/schemas/0.1/{name}.json", **model.model_json_schema()}
+                  "$id": f"https://openrsi.dev/schemas/{PROTOCOL_VERSION.split('/')[1]}/{name}.json", **model.model_json_schema()}
         files[f"schemas/{name}.json"] = json.dumps(schema, ensure_ascii=False, indent=2) + "\n"
     tools = {"protocol": PROTOCOL_VERSION, "tools": asyncio.run(_tool_defs())}
     files["tools.json"] = json.dumps(tools, ensure_ascii=False, indent=2) + "\n"

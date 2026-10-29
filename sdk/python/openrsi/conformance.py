@@ -3,7 +3,7 @@
     python -m openrsi.conformance -- python -m openrsi_judge --rubric rubric.yaml
     python -m openrsi.conformance --url http://localhost:8000/mcp
 
-注意：evolvable 检查会 apply 一个探针补丁再回滚，请对一个临时实例运行。
+注意：evolvable、algorithm、lineage 的检查会写入数据，请对临时实例运行。
 """
 from __future__ import annotations
 
@@ -16,7 +16,10 @@ from typing import Any, Awaitable, Callable
 
 from .client import RemoteComponent, ToolCallError, connect
 from .protocol import required_tools
-from .types import PROTOCOL_VERSION, AnchorExample, Evidence, Patch, Step, Task, Trajectory
+from .types import (
+    PROTOCOL_VERSION, AnchorExample, Episode, Evidence, EvolvableInfo, GateRequest, Item, LineageEntry, Patch,
+    ProposalRequest, RubricResult, Step, Task, TellRequest, Trajectory, Verdict,
+)
 
 FIXTURE_TASK = Task(id="conformance-task", input={"question": "fix the failing test", "expected": "done"},
                     split="train", tags=["conformance"])
@@ -73,7 +76,9 @@ async def _run(report: Report, kind: str, name: str, fn: Callable[[], Awaitable[
     return None
 
 
-async def check_component(rc: RemoteComponent) -> Report:
+async def check_component(rc: RemoteComponent, sample_task: Task | None = None) -> Report:
+    """sample_task：领域相关的 agent / 提案器只认识特定格式的题目，用它代替内置的通用题目。"""
+    task = sample_task or FIXTURE_TASK
     info = rc.info
     report = Report(component=f"{info.name}:{info.version}" if info else "(no rsi_component_info)", kinds=rc.kinds)
 
@@ -94,6 +99,17 @@ async def check_component(rc: RemoteComponent) -> Report:
         await _check_judge(rc, report, evidence)
     if "evolvable" in rc.kinds:
         await _check_evolvable(rc, report)
+    if "env" in rc.kinds:
+        await _check_env(rc, report)
+    if "agent" in rc.kinds:
+        await _check_agent(rc, report, task)
+    if "attribution" in rc.kinds:
+        await _check_attribution(rc, report, task)
+    if "proposer" in rc.kinds:
+        await _check_proposer(rc, report, task)
+    for kind, fn in (("algorithm", _check_algorithm), ("gate", _check_gate), ("lineage", _check_lineage)):
+        if kind in rc.kinds:
+            await fn(rc, report)
     return report
 
 
@@ -189,6 +205,14 @@ async def _check_evolvable(rc: RemoteComponent, report: Report) -> None:
 
     await _run(report, "evolvable", "diff 反映修改", diff)
 
+    if "rsi_evolvable_export" in rc.tools:
+        async def export():
+            a, b = await ev.export(s0.id), await ev.export(s1.id)
+            assert a is not None and b is not None, "export 没有返回内容"
+            assert a != b, "两个不同快照导出的内容相同"
+
+        await _run(report, "evolvable", "export 按快照导出内容", export)
+
     async def rollback():
         back = await ev.rollback(s0.id)
         assert back.id == s0.id and back.content_hash == s0.content_hash, "回滚后内容与原快照不一致"
@@ -205,14 +229,123 @@ async def _check_evolvable(rc: RemoteComponent, report: Report) -> None:
     await _run(report, "evolvable", "拒绝基于过期快照的补丁", stale)
 
 
-async def check(target: Any, *, env: dict[str, str] | None = None) -> Report:
+def _fixture_episode(task: Task = FIXTURE_TASK) -> Episode:
+    ev = Evidence.make("output", {"value": "done"}, "trajectory:conformance-traj:output", "conformance")
+    step_ev = Evidence.make("tool_result", {"name": "run_tests", "content": "1 failed"},
+                            "trajectory:conformance-traj:step:s2", "conformance")
+    verdict = Verdict(score=0.0, passed=False, judge_ref="conformance:0", evidence_ids=[ev.id, step_ev.id],
+                      rubric=[RubricResult(id="tests_pass", result="fail", required=True,
+                                           evidence_ids=[step_ev.id], note="1 test failed")])
+    traj = FIXTURE_TRAJECTORY.model_copy(update={"used_items": ["conformance-item"], "task_id": task.id})
+    return Episode(task=task.model_copy(update={"split": "train"}), trajectory=traj, verdict=verdict,
+                   evidence=[ev, step_ev])
+
+
+async def _check_env(rc: RemoteComponent, report: Report) -> None:
+    async def splits():
+        train = await rc.env.tasks("train", 1)
+        holdout = await rc.env.tasks("holdout", 0)
+        assert train and holdout, "train 和 holdout 都必须非空"
+        assert all(t.split == "train" for t in train), "train 里有其他划分的题"
+        assert all(t.split == "holdout" for t in holdout), "holdout 里有其他划分的题"
+        assert not ({t.id for t in train} & {t.id for t in holdout}), "train 和 holdout 有相同的题目 id"
+        limited = await rc.env.tasks("holdout", 0, 1)
+        assert len(limited) <= 1, "limit 没有生效"
+
+    await _run(report, "env", "划分正确、互不重叠、limit 生效", splits)
+
+
+async def _check_agent(rc: RemoteComponent, report: Report, sample: Task) -> None:
+    async def run():
+        task = sample.model_copy(update={"reference": None})
+        traj = await rc.agent.run(task, [Item(id="conformance-item", text="a hint")], "snap_conformance")
+        assert traj.task_id == task.id, f"轨迹的 task_id 是 {traj.task_id}"
+
+    await _run(report, "agent", "run 返回对应任务的轨迹", run)
+
+
+async def _check_attribution(rc: RemoteComponent, report: Report, sample: Task) -> None:
+    ep = _fixture_episode(sample)
+
+    async def explain():
+        out = await rc.attribution.explain([ep])
+        assert len(out) == 1 and out[0].episode_id == ep.trajectory.id, "每个 episode 应对应一条归因"
+        assert out[0].targets, "失败的 episode 没有任何归因目标"
+        assert any(t.weight < 0 for t in out[0].targets), "失败的 episode 应有负权重（责任）"
+
+    await _run(report, "attribution", "explain 为失败的 episode 给出责任", explain)
+
+
+async def _check_proposer(rc: RemoteComponent, report: Report, sample: Task) -> None:
+    async def propose():
+        req = ProposalRequest(target=EvolvableInfo(target="memory", type="memory", head="snap_root"),
+                              parent_snapshot="snap_root", episodes=[_fixture_episode(sample)], state=[], max_patches=2)
+        patches = await rc.proposer.propose(req)
+        assert len(patches) <= req.max_patches, f"提出了 {len(patches)} 个补丁，超过 max_patches"
+        for p in patches:
+            assert p.target == "memory", f"补丁目标是 {p.target}"
+            assert p.base_snapshot in (None, "snap_root"), f"补丁基于 {p.base_snapshot}，不是父快照"
+
+    await _run(report, "proposer", "补丁指向请求的目标和父快照，数量不超限", propose)
+
+
+async def _check_algorithm(rc: RemoteComponent, report: Report) -> None:
+    async def cycle():
+        await rc.algorithm.tell(TellRequest(generation=0, candidate_id="snap_a", accepted=True, metrics={"holdout": 0.2}))
+        ask = await rc.algorithm.ask()
+        assert ask.parent_id == "snap_a" or ask.done, f"只有一个快照时应从它出发，实际是 {ask.parent_id}"
+        if ask.done:
+            return
+        await rc.algorithm.tell(TellRequest(generation=ask.generation, parent_id="snap_a", candidate_id="snap_b",
+                                            accepted=True, metrics={"holdout": 0.9}))
+        status = await rc.algorithm.tell(TellRequest(generation=ask.generation + 1, parent_id="snap_b",
+                                                     candidate_id="snap_c", accepted=False, metrics={"holdout": 0.1}))
+        assert status.best_id == "snap_b", f"最佳快照应是 snap_b，实际是 {status.best_id}"
+        nxt = await rc.algorithm.ask()
+        assert nxt.parent_id in ("snap_a", "snap_b") or nxt.done, f"父代 {nxt.parent_id} 不是被接受的快照"
+
+    await _run(report, "algorithm", "ask/tell：只从被接受的快照出发，记住最佳", cycle)
+
+
+async def _check_gate(rc: RemoteComponent, report: Report) -> None:
+    async def decisions():
+        better = await rc.gate.check(GateRequest(candidate_id="c1", baseline={"holdout": 0.2, "n_holdout": 200},
+                                                 candidate={"holdout": 0.9, "n_holdout": 200}))
+        worse = await rc.gate.check(GateRequest(candidate_id="c2", baseline={"holdout": 0.9, "n_holdout": 200},
+                                                candidate={"holdout": 0.2, "n_holdout": 200}))
+        assert better.accepted, f"明显变好的候选被拒：{better.reason}"
+        assert not worse.accepted, "明显变差的候选被接受"
+        assert better.candidate_id == "c1" and worse.candidate_id == "c2"
+
+    await _run(report, "gate", "接受明显变好的，拒绝明显变差的", decisions)
+
+
+async def _check_lineage(rc: RemoteComponent, report: Report) -> None:
+    async def roundtrip():
+        await rc.lineage.record(LineageEntry(id="conf_root", target="conformance", status="root",
+                                             metrics={"holdout": 0.1}))
+        await rc.lineage.record(LineageEntry(id="conf_good", target="conformance", parent_ids=["conf_root"],
+                                             generation=1, status="accepted", metrics={"holdout": 0.7}))
+        await rc.lineage.record(LineageEntry(id="conf_bad", target="conformance", parent_ids=["conf_root"],
+                                             generation=1, status="rejected", metrics={"holdout": 0.9}))
+        log = await rc.lineage.log(target="conformance")
+        assert [e.id for e in log][-3:] == ["conf_root", "conf_good", "conf_bad"], "log 顺序或内容不对"
+        best = await rc.lineage.best("holdout", target="conformance")
+        assert best and best.id == "conf_good", "best 不应返回被拒绝的候选"
+        assert [e.id for e in await rc.lineage.log(target="conformance", status="rejected")] == ["conf_bad"]
+
+    await _run(report, "lineage", "record/log/best，被拒绝的不算最佳", roundtrip)
+
+
+async def check(target: Any, *, env: dict[str, str] | None = None, sample_task: Task | None = None) -> Report:
     async with connect(target, env=env) as rc:
-        return await check_component(rc)
+        return await check_component(rc, sample_task)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="openrsi-conformance")
     ap.add_argument("--url", help="Streamable HTTP 地址")
+    ap.add_argument("--sample-task", help="一道题目的 JSON 文件（Task 格式），用于领域相关的 agent / 提案器")
     ap.add_argument("command", nargs=argparse.REMAINDER, help="-- 之后是启动组件的命令")
     args = ap.parse_args(argv)
     cmd = [c for c in args.command if c != "--"]
@@ -220,7 +353,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("需要 --url 或 -- <命令>")
     try:
         # 命令行里启动组件，就像在 shell 里启动一样，继承当前环境变量
-        report = asyncio.run(check(args.url or cmd, env=None if args.url else dict(os.environ)))
+        sample = Task.model_validate_json(open(args.sample_task, encoding="utf-8").read()) if args.sample_task else None
+        report = asyncio.run(check(args.url or cmd, env=None if args.url else dict(os.environ), sample_task=sample))
     except Exception as e:  # noqa: BLE001
         print(f"无法连接组件：{type(e).__name__}。检查命令能否单独运行：{' '.join(cmd) or args.url}", file=sys.stderr)
         return 2

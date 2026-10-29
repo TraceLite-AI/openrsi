@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.2/AlgorithmStatus.json",
+  "additionalProperties": true,
+  "properties": {
+    "generation": {
+      "title": "Generation",
+      "type": "integer"
+    },
+    "best_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Best Id"
+    },
+    "best_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Best Score"
+    },
+    "archive_size": {
+      "default": 0,
+      "title": "Archive Size",
+      "type": "integer"
+    },
+    "done": {
+      "default": false,
+      "title": "Done",
+      "type": "boolean"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    }
+  },
+  "required": [
+    "generation"
+  ],
+  "title": "AlgorithmStatus",
+  "type": "object"
+}

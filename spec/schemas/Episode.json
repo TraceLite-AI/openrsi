@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.2/Episode.json",
+  "$defs": {
+    "Evidence": {
+      "additionalProperties": true,
+      "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "content": {
+          "default": null,
+          "title": "Content"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "collected_at": {
+          "title": "Collected At",
+          "type": "string"
+        },
+        "collector": {
+          "title": "Collector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "sha256",
+        "source",
+        "collected_at",
+        "collector"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "RubricResult": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "fail",
+            "skip",
+            "error"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "description": "这条结论引用的证据",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "weight": {
+          "default": 1.0,
+          "title": "Weight",
+          "type": "number"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "id",
+        "result"
+      ],
+      "title": "RubricResult",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": true,
+      "description": "轨迹里的一步。tool_call 和 tool_result 通过 call_id 配对。",
+      "properties": {
+        "type": {
+          "enum": [
+            "message",
+            "tool_call",
+            "tool_result",
+            "observation"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "content": {
+          "default": null,
+          "title": "Content"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arguments"
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call Id"
+        },
+        "is_error": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Error"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "Task": {
+      "additionalProperties": true,
+      "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。\n\nreference 放标准答案等只给判别器看的信息；运行时交给 agent 之前会去掉它。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "input": {
+          "default": null,
+          "title": "Input"
+        },
+        "reference": {
+          "default": null,
+          "description": "只给判别器看，不得交给 agent",
+          "title": "Reference"
+        },
+        "split": {
+          "default": "train",
+          "enum": [
+            "train",
+            "holdout",
+            "anchor",
+            "final"
+          ],
+          "title": "Split",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "env_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Env Ref"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "Trajectory": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "output": {
+          "default": null,
+          "title": "Output"
+        },
+        "used_items": {
+          "description": "本次用到的 memory 条目 id",
+          "items": {
+            "type": "string"
+          },
+          "title": "Used Items",
+          "type": "array"
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "跑在哪个快照上",
+          "title": "Snapshot Id"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "task_id"
+      ],
+      "title": "Trajectory",
+      "type": "object"
+    },
+    "Verdict": {
+      "additionalProperties": true,
+      "description": "判别结果。每条 rubric 结论必须引用证据：要么是调用方给的，要么在 collected 里。",
+      "properties": {
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "rubric": {
+          "items": {
+            "$ref": "#/$defs/RubricResult"
+          },
+          "title": "Rubric",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "judge_ref": {
+          "title": "Judge Ref",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "description": "判别时实际采信的全部证据",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "collected": {
+          "description": "判别器自己补充收集的证据",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Collected",
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "score",
+        "passed",
+        "judge_ref"
+      ],
+      "title": "Verdict",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "一次完整的执行记录：题目、轨迹、判决，以及判决用到的证据。",
+  "properties": {
+    "task": {
+      "$ref": "#/$defs/Task"
+    },
+    "trajectory": {
+      "$ref": "#/$defs/Trajectory"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task",
+    "trajectory",
+    "verdict"
+  ],
+  "title": "Episode",
+  "type": "object"
+}
