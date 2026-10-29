@@ -9,7 +9,7 @@ components:
     python: gsm8k_env:GSM8KEnv
     with:
       data_dir: gsm8k
-      train_per_round: 12
+      train_per_round: 16
       holdout: 20
       final: 20
   agent:
@@ -53,7 +53,7 @@ components:
         python: openrsi_verl:DistillProposer
         with:
           data_dir: .openrsi/sft
-          min_examples: 4
+          min_examples: 3
   algorithm:
     python: openrsi_algorithm:ShinkaAlgorithm
     with:
@@ -73,9 +73,11 @@ components:
       path: .openrsi/lineage.jsonl
 evolvables:
   prompt:
-    python: openrsi_evolvables:PromptEvolvable
+    python: "openrsi_evolvables:PromptEvolvable"
     with:
       path: .openrsi/prompt
+      initial:
+        - {id: instructions, text: "Solve the math problem step by step. On the last line, write the final answer as '#### <number>'."}
   weights:
     python: openrsi_verl:WeightsEvolvable
     with:
