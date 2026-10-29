@@ -9,14 +9,14 @@ components:
     python: gsm8k_env:GSM8KEnv
     with:
       data_dir: gsm8k
-      train_per_round: 16
-      holdout: 20
-      final: 20
+      train_per_round: 12
+      holdout: 15
+      final: 15
   agent:
     python: openrsi_llm:ChatAgent
     with:
       model: policy
-      max_tokens: 256
+      max_tokens: 384
       server:
         port: 8100
         startup_timeout: 900
@@ -37,7 +37,7 @@ components:
           check: output_equals
           required: true
           params:
-            extract: '#### (\-?[0-9\.\,]+)'
+            extract: (?:####|\\boxed\{)\s*\$?(-?[0-9][0-9\.\,]*)
   evidence:
     same_as: judge
   proposer:
@@ -73,11 +73,13 @@ components:
       path: .openrsi/lineage.jsonl
 evolvables:
   prompt:
-    python: "openrsi_evolvables:PromptEvolvable"
+    python: openrsi_evolvables:PromptEvolvable
     with:
       path: .openrsi/prompt
       initial:
-        - {id: instructions, text: "Solve the math problem step by step. On the last line, write the final answer as '#### <number>'."}
+      - id: instructions
+        text: Solve the math problem step by step. On the last line, write the final
+          answer as '#### <number>'.
   weights:
     python: openrsi_verl:WeightsEvolvable
     with:
