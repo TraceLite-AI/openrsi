@@ -18,7 +18,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from .core import (DEFAULT_PROTECTED, checkout_ops, gate_decide, guard_checkout, import_archive, shinka_pick,
+from .core import (DEFAULT_PROTECTED, checkout_ops, compile_check, gate_decide, guard_checkout, import_archive, shinka_pick,
                    task_scores)
 
 LIBRARY = Path(__file__).parent / "library"
@@ -93,5 +93,5 @@ def main() -> None:
         print(f"导入 {len(entries)} 条")
 
 
-__all__ = ["DEFAULT_PROTECTED", "LIBRARY", "OPERATORS", "checkout_ops", "gate_decide", "guard_checkout",
+__all__ = ["DEFAULT_PROTECTED", "LIBRARY", "OPERATORS", "checkout_ops", "compile_check", "gate_decide", "guard_checkout",
            "import_archive", "install", "main", "package_paths", "render_operator", "shinka_pick", "task_scores"]

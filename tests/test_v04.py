@@ -504,6 +504,22 @@ def test_rsihub_gate():
     assert not rsihub.gate_decide(row(5, 1.0, {}, 0), None)[0]
 
 
+def test_rsihub_gate_eligibility_and_fallback():
+    parent = row(0, 0.5, {"a": 1.0, "b": 0.0})
+    child = row(1, 1.0, {"a": 1.0, "b": 1.0}, 0)
+    assert not rsihub.gate_decide({**child, "outcome": "infrastructure_error"}, parent)[0]
+    assert not rsihub.gate_decide({**child, "selection_eligible": False}, parent)[0]
+    assert rsihub.gate_decide({**child, "outcome": "benchmark_complete", "selection_eligible": True}, parent)[0]
+    # 父代分数是按任务集哈希另找的：逐题分数不可比，退回只比总分
+    regressed = row(2, 0.6, {"a": 0.0, "b": 1.0, "c": 1.0}, 0, h="X")
+    matched = {**parent, "_matched_from_evals": True}
+    ok, why = rsihub.gate_decide(regressed, matched)
+    assert ok and "只比总分" in why
+    assert not rsihub.gate_decide(regressed, matched, require_task_scores=True)[0]
+    no_vector = {**child, "task_vector": None}
+    assert rsihub.gate_decide(no_vector, parent)[0]
+
+
 def test_rsihub_shinka_select():
     parents = [row(0, 0.1, {}), row(1, 0.9, {}, 0), row(2, 0.5, {}, 0)]
     rows = parents + [row(3, 0.0, {}, 1, valid=False)] * 5  # 1 号已经有 5 个子代
@@ -546,6 +562,10 @@ def test_rsihub_guard_validate(tmp_path):
     (repo / "evaluator" / "a.py").write_text("X = 0\n")
     (repo / "target" / "a.py").write_text("import socket\n")
     assert not rsihub.guard_checkout(repo, check_code=True)[0]
+    (repo / "target" / "a.py").write_text("def broken(:\n")
+    ok, reason, _ = rsihub.guard_checkout(repo, compile_globs=["target/**/*.py"])
+    assert not ok and "compile: target/a.py" in reason
+    assert rsihub.guard_checkout(repo)[0]  # 不要求编译时只看改动内容
 
 
 def test_rsihub_import_archive(tmp_path):
