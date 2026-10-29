@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e sdk/python -e runtime \
+            -e components/judge -e components/memory -e components/attribution -e components/proposer \
+            -e components/algorithm -e components/gate -e components/lineage \
+            -e adapters/dspy -e adapters/langgraph pytest ruff
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest -q
+      - name: Spec is up to date
+        run: |
+          python -m openrsi.export_spec spec
+          git diff --exit-code spec
+      - name: End-to-end example
+        working-directory: examples/secret_ops
+        run: |
+          openrsi run
+          openrsi best

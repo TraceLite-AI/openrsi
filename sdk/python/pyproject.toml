@@ -2,7 +2,7 @@
 name = "openrsi-sdk"
 version = "0.2.0"
 description = "OpenRSI protocol types, component base classes, MCP server/client and conformance tests"
-readme = "../../README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 dependencies = ["mcp>=2.3,<3", "pydantic>=2.7", "pyyaml>=6"]
