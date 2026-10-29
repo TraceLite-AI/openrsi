@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.2/GateRequest.json",
+  "additionalProperties": true,
+  "properties": {
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "baseline": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "父快照的分数，如 holdout、anchor、cost、n_holdout",
+      "title": "Baseline",
+      "type": "object"
+    },
+    "candidate": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Candidate",
+      "type": "object"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "baseline",
+    "candidate"
+  ],
+  "title": "GateRequest",
+  "type": "object"
+}

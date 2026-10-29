@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.1/Attribution.json",
+  "$id": "https://openrsi.dev/schemas/0.2/Attribution.json",
   "$defs": {
     "AttributionTarget": {
       "additionalProperties": true,
@@ -10,7 +10,8 @@
             "step",
             "item",
             "component",
-            "patch"
+            "patch",
+            "rubric"
           ],
           "title": "Kind",
           "type": "string"
@@ -20,8 +21,23 @@
           "type": "string"
         },
         "weight": {
+          "description": "负数是责任，正数是功劳",
+          "maximum": 1.0,
+          "minimum": -1.0,
           "title": "Weight",
           "type": "number"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
         }
       },
       "required": [
@@ -36,6 +52,7 @@
   "additionalProperties": true,
   "properties": {
     "episode_id": {
+      "description": "对应 trajectory.id",
       "title": "Episode Id",
       "type": "string"
     },
@@ -65,7 +82,6 @@
   },
   "required": [
     "episode_id",
-    "targets",
     "method"
   ],
   "title": "Attribution",

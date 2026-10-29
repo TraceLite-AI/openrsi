@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.1/Evidence.json",
+  "$id": "https://openrsi.dev/schemas/0.2/Evidence.json",
   "additionalProperties": true,
   "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
   "properties": {

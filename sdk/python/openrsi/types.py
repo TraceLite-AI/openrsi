@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PROTOCOL_VERSION = "openrsi/0.1"
+PROTOCOL_VERSION = "openrsi/0.2"
 
 
 class _Model(BaseModel):
@@ -39,10 +39,14 @@ Split = Literal["train", "holdout", "anchor", "final"]
 
 
 class Task(_Model):
-    """一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。"""
+    """一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。
+
+    reference 放标准答案等只给判别器看的信息；运行时交给 agent 之前会去掉它。
+    """
 
     id: str
     input: Any = None
+    reference: Any = Field(default=None, description="只给判别器看，不得交给 agent")
     split: Split = "train"
     tags: list[str] = Field(default_factory=list)
     env_ref: str | None = None
@@ -64,6 +68,11 @@ class Step(_Model):
     call_id: str | None = None
     is_error: bool | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def for_agent(task: "Task") -> "Task":
+    """agent 能看到的那部分题目。"""
+    return task.model_copy(update={"reference": None})
 
 
 class Trajectory(_Model):
@@ -219,26 +228,126 @@ class RetrieveResult(_Model):
     snapshot_id: str | None = None
 
 
-# ---------------------------------------------------------------- v0.2 预留
+class ExportResult(_Model):
+    snapshot_id: str
+    content: Any = None
+
+
+# ---------------------------------------------------------------- 环境与执行体
+
+class TaskBundle(_Model):
+    tasks: list[Task] = Field(default_factory=list)
+
+
+class Episode(_Model):
+    """一次完整的执行记录：题目、轨迹、判决，以及判决用到的证据。"""
+
+    task: Task
+    trajectory: Trajectory
+    verdict: Verdict
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------- 归因
 
 class AttributionTarget(_Model):
-    kind: Literal["step", "item", "component", "patch"]
+    kind: Literal["step", "item", "component", "patch", "rubric"]
     ref: str
-    weight: float
+    weight: float = Field(ge=-1.0, le=1.0, description="负数是责任，正数是功劳")
+    note: str | None = None
 
 
 class Attribution(_Model):
-    episode_id: str
-    targets: list[AttributionTarget]
+    episode_id: str = Field(description="对应 trajectory.id")
+    targets: list[AttributionTarget] = Field(default_factory=list)
     method: str
     rationale: str | None = None
+
+
+class AttributionBundle(_Model):
+    attributions: list[Attribution] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------- 提案
+
+class ProposalRequest(_Model):
+    """给提案器的输入。episodes 只能来自 train 划分。"""
+
+    target: EvolvableInfo
+    parent_snapshot: str
+    episodes: list[Episode] = Field(default_factory=list)
+    attributions: list[Attribution] = Field(default_factory=list)
+    state: Any = Field(default=None, description="父快照的完整内容（rsi_evolvable_export 的结果）")
+    max_patches: int = Field(default=1, ge=1)
+
+
+class ProposalBundle(_Model):
+    patches: list[Patch] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------- 进化算法
+
+class AskResult(_Model):
+    generation: int
+    parent_id: str | None = Field(description="下一代从哪个快照出发；None 表示停止")
+    done: bool = False
+    reason: str | None = None
+
+
+class TellRequest(_Model):
+    generation: int
+    parent_id: str | None = None
+    candidate_id: str | None = None
+    accepted: bool
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class AlgorithmStatus(_Model):
+    generation: int
+    best_id: str | None = None
+    best_score: float | None = None
+    archive_size: int = 0
+    done: bool = False
+    reason: str | None = None
+
+
+# ---------------------------------------------------------------- 准入
+
+class GateRequest(_Model):
+    candidate_id: str
+    baseline: dict[str, float] = Field(description="父快照的分数，如 holdout、anchor、cost、n_holdout")
+    candidate: dict[str, float]
+
+
+class GateCheck(_Model):
+    name: str
+    passed: bool
+    detail: str | None = None
 
 
 class GateDecision(_Model):
     candidate_id: str
     accepted: bool
-    checks: list[dict[str, Any]] = Field(default_factory=list)
+    checks: list[GateCheck] = Field(default_factory=list)
     reason: str | None = None
+
+
+# ---------------------------------------------------------------- 谱系
+
+class LineageEntry(_Model):
+    id: str = Field(description="快照 id")
+    target: str
+    parent_ids: list[str] = Field(default_factory=list)
+    generation: int = 0
+    status: Literal["root", "accepted", "rejected"]
+    metrics: dict[str, float] = Field(default_factory=dict)
+    decision: GateDecision | None = None
+    patch: Patch | None = None
+    created_at: str = Field(default_factory=now_iso)
+
+
+class LineageLog(_Model):
+    entries: list[LineageEntry] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- 组件自述
@@ -254,5 +363,7 @@ class ComponentInfo(_Model):
 SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     m.__name__: m
     for m in (Task, Step, Trajectory, Evidence, Verdict, RubricResult, AnchorExample, CalibrationReport,
-              Item, Patch, MemoryOp, Snapshot, Diff, EvolvableInfo, Attribution, GateDecision, ComponentInfo)
+              Item, Patch, MemoryOp, Snapshot, Diff, EvolvableInfo, ExportResult, Episode, Attribution,
+              ProposalRequest, AskResult, TellRequest, AlgorithmStatus, GateRequest, GateDecision,
+              LineageEntry, ComponentInfo)
 }
