@@ -34,12 +34,14 @@ def main() -> None:
     w.add_argument("--base-model", required=True)
     w.add_argument("--path", required=True)
     w.add_argument("--dry-run", action="store_true")
+    w.add_argument("--model-glob", help='训练输出里模型的子路径，如 "global_step_*/huggingface"')
     w.add_argument("--trainer", nargs=argparse.REMAINDER, help="训练命令模板，放在最后")
     args = ap.parse_args()
     if args.cmd == "reward-path":
         print(reward_path())
     else:
-        serve(WeightsEvolvable(args.base_model, args.path, trainer=args.trainer, dry_run=args.dry_run))
+        serve(WeightsEvolvable(args.base_model, args.path, trainer=args.trainer, dry_run=args.dry_run,
+                                model_glob=args.model_glob))
 
 
 __all__ = ["DataLeakError", "DistillProposer", "WeightsEvolvable", "compute_score", "episode_messages",
