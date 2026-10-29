@@ -1,0 +1,13 @@
+protocol: openrsi/0.2
+name: openrsi/archive
+version: 0.2.0
+description: 保留所有被接受的快照，按分数加权抽样父代；也提供贪心版本（--kind greedy）。
+kinds: [algorithm]
+implements:
+  - rsi_component_info
+  - rsi_algorithm_ask
+  - rsi_algorithm_tell
+capabilities: {stateful: true}
+runtime:
+  transport: stdio
+  command: [openrsi-algorithm]

@@ -1,6 +1,6 @@
 """通过 MCP 调用任何 OpenRSI 组件，不管它是什么语言写的。
 
-    async with connect(["uvx", "openrsi-judge", "--rubric", "rubric.yaml"]) as c:
+    async with connect(["openrsi-judge", "--rubric", "rubric.yaml"]) as c:
         verdict = await c.judge.evaluate(task, trajectory)
 """
 from __future__ import annotations
@@ -14,8 +14,10 @@ from pydantic import BaseModel
 
 from .protocol import kinds_from_tools
 from .types import (
-    AnchorExample, CalibrationReport, ComponentInfo, Diff, Evidence, EvidenceBundle, EvolvableInfo,
-    Item, Patch, RetrieveResult, Snapshot, Task, Trajectory, Verdict, VerifyResult,
+    AlgorithmStatus, AnchorExample, AskResult, Attribution, AttributionBundle, CalibrationReport, ComponentInfo,
+    Diff, Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, Item,
+    LineageEntry, LineageLog, Patch, ProposalBundle, ProposalRequest, RetrieveResult, Snapshot, Task, TaskBundle,
+    TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 M = TypeVar("M", bound=BaseModel)
@@ -56,6 +58,15 @@ class RemoteComponent:
             raise ToolCallError(f"{tool}: {text}")
         return model.model_validate(result.structured_content)
 
+    # 每种组件类型一个门面，方法名和本地基类一致，都是 async
+    @property
+    def env(self) -> "RemoteEnvironment":
+        return RemoteEnvironment(self)
+
+    @property
+    def agent(self) -> "RemoteAgent":
+        return RemoteAgent(self)
+
     @property
     def evidence(self) -> "RemoteEvidence":
         return RemoteEvidence(self)
@@ -65,6 +76,10 @@ class RemoteComponent:
         return RemoteJudge(self)
 
     @property
+    def attribution(self) -> "RemoteAttributor":
+        return RemoteAttributor(self)
+
+    @property
     def evolvable(self) -> "RemoteEvolvable":
         return RemoteEvolvable(self)
 
@@ -72,10 +87,38 @@ class RemoteComponent:
     def memory(self) -> "RemoteMemory":
         return RemoteMemory(self)
 
+    @property
+    def proposer(self) -> "RemoteProposer":
+        return RemoteProposer(self)
+
+    @property
+    def algorithm(self) -> "RemoteAlgorithm":
+        return RemoteAlgorithm(self)
+
+    @property
+    def gate(self) -> "RemoteGate":
+        return RemoteGate(self)
+
+    @property
+    def lineage(self) -> "RemoteLineage":
+        return RemoteLineage(self)
+
 
 class _Facade:
     def __init__(self, rc: RemoteComponent):
         self._rc = rc
+
+
+class RemoteEnvironment(_Facade):
+    async def tasks(self, split: str, round: int = 0, limit: int | None = None) -> list[Task]:
+        res = await self._rc.call("rsi_env_tasks", {"split": split, "round": round, "limit": limit}, TaskBundle)
+        return res.tasks
+
+
+class RemoteAgent(_Facade):
+    async def run(self, task: Task, context: list[Item], snapshot_id: str | None = None) -> Trajectory:
+        return await self._rc.call("rsi_agent_run", {"task": task, "context": context, "snapshot_id": snapshot_id},
+                                   Trajectory)
 
 
 class RemoteEvidence(_Facade):
@@ -97,6 +140,12 @@ class RemoteJudge(_Facade):
         return await self._rc.call("rsi_judge_calibrate", {"anchor": anchor}, CalibrationReport)
 
 
+class RemoteAttributor(_Facade):
+    async def explain(self, episodes: list[Episode]) -> list[Attribution]:
+        res = await self._rc.call("rsi_attribution_explain", {"episodes": episodes}, AttributionBundle)
+        return res.attributions
+
+
 class RemoteEvolvable(_Facade):
     async def describe(self) -> EvolvableInfo:
         return await self._rc.call("rsi_evolvable_describe", {}, EvolvableInfo)
@@ -113,6 +162,12 @@ class RemoteEvolvable(_Facade):
     async def diff(self, from_id: str, to_id: str) -> Diff:
         return await self._rc.call("rsi_evolvable_diff", {"from_id": from_id, "to_id": to_id}, Diff)
 
+    async def export(self, snapshot_id: str | None = None) -> Any:
+        if "rsi_evolvable_export" not in self._rc.tools:
+            return None
+        res = await self._rc.call("rsi_evolvable_export", {"snapshot_id": snapshot_id}, ExportResult)
+        return res.content
+
 
 class RemoteMemory(RemoteEvolvable):
     async def retrieve(self, query: str = "", tags: list[str] | None = None, k: int = 5,
@@ -121,6 +176,39 @@ class RemoteMemory(RemoteEvolvable):
                                   {"query": query, "tags": tags, "k": k, "snapshot_id": snapshot_id},
                                   RetrieveResult)
         return res.items
+
+
+class RemoteProposer(_Facade):
+    async def propose(self, request: ProposalRequest) -> list[Patch]:
+        res = await self._rc.call("rsi_proposer_propose", {"request": request}, ProposalBundle)
+        return res.patches
+
+
+class RemoteAlgorithm(_Facade):
+    async def ask(self) -> AskResult:
+        return await self._rc.call("rsi_algorithm_ask", {}, AskResult)
+
+    async def tell(self, result: TellRequest) -> AlgorithmStatus:
+        return await self._rc.call("rsi_algorithm_tell", {"result": result}, AlgorithmStatus)
+
+
+class RemoteGate(_Facade):
+    async def check(self, request: GateRequest) -> GateDecision:
+        return await self._rc.call("rsi_gate_check", {"request": request}, GateDecision)
+
+
+class RemoteLineage(_Facade):
+    async def record(self, entry: LineageEntry) -> LineageEntry:
+        return await self._rc.call("rsi_lineage_record", {"entry": entry}, LineageEntry)
+
+    async def log(self, target: str | None = None, status: str | None = None,
+                  limit: int | None = None) -> list[LineageEntry]:
+        res = await self._rc.call("rsi_lineage_log", {"target": target, "status": status, "limit": limit}, LineageLog)
+        return res.entries
+
+    async def best(self, metric: str = "holdout", target: str | None = None) -> LineageEntry | None:
+        res = await self._rc.call("rsi_lineage_best", {"metric": metric, "target": target}, LineageLog)
+        return res.entries[0] if res.entries else None
 
 
 Target = Any  # MCPServer 实例 / StdioServerParameters / URL / 命令列表

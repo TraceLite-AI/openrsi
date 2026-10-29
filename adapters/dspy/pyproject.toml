@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-dspy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Use OpenRSI judges as DSPy metrics (including GEPA feedback)"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.1,<0.2"]
+dependencies = ["openrsi-sdk>=0.2,<0.3"]
 
 [project.optional-dependencies]
 dspy = ["dspy>=3"]

@@ -20,11 +20,16 @@ class RubricJudge(Judge):
     """
 
     name = "openrsi/rubric-judge"
-    version = "0.1.0"
+    version = "0.2.0"
 
-    def __init__(self, rubric: Rubric | str | Path, *, collector: EvidenceCollector | None = None,
+    def __init__(self, rubric: Rubric | dict | str | Path, *, collector: EvidenceCollector | None = None,
                  checker: Checker | None = None):
-        self.rubric = rubric if isinstance(rubric, Rubric) else load_rubric(rubric)
+        if isinstance(rubric, Rubric):
+            self.rubric = rubric
+        elif isinstance(rubric, dict):  # 从 openrsi.yaml 里直接写的 rubric
+            self.rubric = Rubric.model_validate(rubric)
+        else:
+            self.rubric = load_rubric(rubric)
         self.collector = collector
         self._checker = checker
 
@@ -92,8 +97,8 @@ class EvidenceJudge(TrajectoryCollector, RubricJudge):
     """取证 + 判别合在一个组件里：既能单独提供证据，也能拿自己的证据判别。"""
 
     name = "openrsi/evidence-judge"
-    version = "0.1.0"
+    version = "0.2.0"
 
-    def __init__(self, rubric: Rubric | str | Path, *, checker: Checker | None = None, **collector_config):
+    def __init__(self, rubric: Rubric | dict | str | Path, *, checker: Checker | None = None, **collector_config):
         TrajectoryCollector.__init__(self, **collector_config)
         RubricJudge.__init__(self, rubric, collector=self, checker=checker)

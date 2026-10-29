@@ -92,10 +92,16 @@ def check_output_equals(item: RubricItem, task: Task, traj: Trajectory, ev: ByTy
     if "value" in item.params:
         expected = item.params["value"]
     else:
+        # 优先读 task.reference（agent 看不到）；兼容 0.1 时把答案放在 task.input 里的写法
         field = item.params.get("field", "expected")
-        if not isinstance(task.input, dict) or field not in task.input:
-            return "skip", [], f"task.input 里没有 {field}"
-        expected = task.input[field]
+        if isinstance(task.reference, dict) and field in task.reference:
+            expected = task.reference[field]
+        elif task.reference is not None and not isinstance(task.reference, dict) and "field" not in item.params:
+            expected = task.reference
+        elif isinstance(task.input, dict) and field in task.input:
+            expected = task.input[field]
+        else:
+            return "skip", [], f"task.reference 和 task.input 里都没有 {field}"
     ok = value == expected or (item.params.get("normalize", True) and str(value).strip() == str(expected).strip())
     return ("pass" if ok else "fail"), ids, None if ok else f"期望 {expected!r}，实际 {value!r}"
 

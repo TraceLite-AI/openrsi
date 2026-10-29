@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.1/ComponentInfo.json",
+  "$id": "https://openrsi.dev/schemas/0.2/ComponentInfo.json",
   "additionalProperties": true,
   "properties": {
     "name": {
@@ -12,7 +12,7 @@
       "type": "string"
     },
     "protocol": {
-      "default": "openrsi/0.1",
+      "default": "openrsi/0.2",
       "title": "Protocol",
       "type": "string"
     },
