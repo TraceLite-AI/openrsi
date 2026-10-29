@@ -105,6 +105,8 @@ class Runner:
         self.targets: dict[str, _Target] = {}
         self.genomes: dict[str, Genome] = {}
         self.metrics: dict[str, dict[str, float]] = {}
+        self.task_scores: dict[str, dict[str, float]] = {}
+        self.last_task_scores: dict[str, float] = {}
 
     # ------------------------------------------------------------ 可进化体
 
@@ -173,6 +175,14 @@ class Runner:
                 f"{prefix}_pass": fmean(1.0 if e.verdict.passed else 0.0 for e in episodes),
                 f"n_{prefix}": float(len(episodes)),
             }
+            # 每个 rubric 项的通过率，可以用作 MAP-Elites 的行为特征或多目标指标
+            by_item: dict[str, list[float]] = {}
+            for e in episodes:
+                for r in e.verdict.rubric:
+                    if r.result in ("pass", "fail"):
+                        by_item.setdefault(r.id, []).append(1.0 if r.result == "pass" else 0.0)
+            m.update({f"rubric:{k}": fmean(v) for k, v in by_item.items()})
+        self.last_task_scores = {e.task.id: e.verdict.score for e in episodes}
         if self.anchor:
             rep = await self.w.judge.calibrate(self.anchor)
             m["anchor"], m["n_anchor"] = rep.agreement, float(rep.n)
@@ -228,7 +238,7 @@ class Runner:
             m, _ = await self.score(holdout, genome, "holdout")
             m = self._with_epoch(m, 0.0)
             root = LineageEntry(id=genome_id(genome), target=self.lineage_target, generation=0, status="root",
-                                metrics=m, snapshots=genome)
+                                metrics=m, snapshots=genome, task_scores=self.last_task_scores)
             entries = [await w.lineage.record(root)]
             self.log(f"root {root.id}: holdout={m['holdout']:.3f}")
         else:
@@ -245,7 +255,7 @@ class Runner:
                 break
             gen = max(ask.generation, last_gen + 1)
             last_gen = gen
-            report = await self._generation(gen, ask.parent_id)
+            report = await self._generation(gen, ask.parent_id, ask.proposer)
             reports.append(report)
             if self.on_generation:
                 self.on_generation(report)
@@ -269,16 +279,17 @@ class Runner:
                 except Exception as err:  # noqa: BLE001
                     raise RuntimeError(f"谱系记录了版本 {e.id}，但可进化体里没有它的快照（{err}）。"
                                        "可进化体和谱系的状态要一起保存、一起删除。") from err
-                self.genomes[e.id], self.metrics[e.id] = genome, e.metrics
+                self.genomes[e.id], self.metrics[e.id], self.task_scores[e.id] = genome, e.metrics, e.task_scores
         await self.w.algorithm.tell(TellRequest(generation=root.generation, candidate_id=root.id, accepted=True,
-                                                metrics=root.metrics))
+                                                metrics=root.metrics, task_scores=root.task_scores))
         for e in entries:
             if e is not root:
                 await self.w.algorithm.tell(TellRequest(
                     generation=e.generation, parent_id=e.parent_ids[0] if e.parent_ids else None,
-                    candidate_id=e.id, accepted=e.status == "accepted", metrics=e.metrics))
+                    candidate_id=e.id, accepted=e.status == "accepted", metrics=e.metrics,
+                    task_scores=e.task_scores, proposer=e.patch.proposer_ref if e.patch else None))
 
-    async def _generation(self, gen: int, parent: str) -> GenerationReport:
+    async def _generation(self, gen: int, parent: str, proposer_hint: str | None = None) -> GenerationReport:
         w = self.w
         parent_genome = self.genomes[parent]
         await self.checkout(parent_genome)
@@ -303,11 +314,13 @@ class Runner:
         patches = await w.proposer.propose(ProposalRequest(
             target=self.targets[allowed[0]].info, targets=[self.targets[t].info for t in allowed],
             parent_snapshot=parent, episodes=episodes, attributions=attributions,
-            state=states[allowed[0]], states=states, max_patches=self.cfg.max_patches))
+            state=states[allowed[0]], states=states, max_patches=self.cfg.max_patches,
+            hints={"proposer": proposer_hint} if proposer_hint else {}))
 
         if not patches:
             report.note = "提案器没有提出修改"
-            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
+            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False,
+                                               proposer=proposer_hint))
             return report
 
         for patch in patches[: self.cfg.max_patches]:
@@ -321,7 +334,8 @@ class Runner:
         w = self.w
 
         async def reject(reason: str, t: str | None = None) -> Candidate:
-            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
+            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False,
+                                               proposer=patch.proposer_ref))
             return Candidate(id=None, reason=reason, target=t)
 
         if len(self.targets) == 1:
@@ -339,6 +353,10 @@ class Runner:
         await self.checkout(parent_genome)
         patch = patch.model_copy(update={"target": tgt.info.target, "base_snapshot": parent_genome[t]})
 
+        screened = await w.algorithm.screen(patch, parent)
+        if screened is not None and not screened.accept:
+            return await reject(f"评估前筛掉：{screened.reason}", t)
+
         guard_checks: list[GateCheck] = []
         if w.guard:
             g = await w.guard.inspect(patch, tgt.info)
@@ -352,7 +370,7 @@ class Runner:
                 await w.lineage.record(LineageEntry(id=blocked, target=self.lineage_target, parent_ids=[parent],
                                                     generation=gen, status="rejected", decision=decision, patch=patch))
                 await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=blocked,
-                                                   accepted=False))
+                                                   accepted=False, proposer=patch.proposer_ref))
                 return Candidate(id=blocked, reason=decision.reason, target=t)
 
         try:
@@ -365,15 +383,19 @@ class Runner:
         m, _ = await self.score(self.holdout, genome, "holdout")
         m["train_of_parent"] = train_score
         m = self._with_epoch(m, self.metrics[parent].get("judge_epoch", 0.0) + (1.0 if judge_change else 0.0))
+        tasks = self.last_task_scores
         decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=self.metrics[parent], candidate=m,
-                                                  primary_metric="anchor" if judge_change else None))
+                                                  primary_metric="anchor" if judge_change else None,
+                                                  baseline_tasks=self.task_scores.get(parent, {}),
+                                                  candidate_tasks=tasks))
         decision.checks += guard_checks  # 护栏的警告也留档
         status = "accepted" if decision.accepted else "rejected"
         await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
                                             status=status, metrics=m, decision=decision, patch=patch,
-                                            snapshots=genome))
+                                            snapshots=genome, task_scores=tasks))
         if decision.accepted:
-            self.genomes[cid], self.metrics[cid] = genome, m
+            self.genomes[cid], self.metrics[cid], self.task_scores[cid] = genome, m, tasks
         await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid,
-                                           accepted=decision.accepted, metrics=m))
+                                           accepted=decision.accepted, metrics=m, task_scores=tasks,
+                                           proposer=patch.proposer_ref))
         return Candidate(id=cid, metrics=m, accepted=decision.accepted, reason=decision.reason or "", target=t)

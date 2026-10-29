@@ -17,7 +17,7 @@ from .types import (
     AlgorithmStatus, AnchorExample, AskResult, Attribution, AttributionBundle, CalibrationReport, ComponentInfo,
     Diff, Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, GuardReport, Item,
     LineageEntry, LineageLog, Patch, ProposalBundle, ProposalRequest, RetrieveResult, Snapshot, Task, TaskBundle,
-    SkillResult, TellRequest, Trajectory, Verdict, VerifyResult,
+    ScreenResult, SkillResult, TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 M = TypeVar("M", bound=BaseModel)
@@ -214,6 +214,11 @@ class RemoteAlgorithm(_Facade):
 
     async def tell(self, result: TellRequest) -> AlgorithmStatus:
         return await self._rc.call("rsi_algorithm_tell", {"result": result}, AlgorithmStatus)
+
+    async def screen(self, patch: Patch, parent_id: str) -> ScreenResult | None:
+        if "rsi_algorithm_screen" not in self._rc.tools:
+            return None
+        return await self._rc.call("rsi_algorithm_screen", {"patch": patch, "parent_id": parent_id}, ScreenResult)
 
 
 class RemoteGate(_Facade):

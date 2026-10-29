@@ -38,6 +38,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec("rsi_proposer_propose", "proposer", True, "根据 train episode 和归因结果提出候选补丁。"),
     ToolSpec("rsi_algorithm_ask", "algorithm", True, "下一代从哪个快照出发。"),
     ToolSpec("rsi_algorithm_tell", "algorithm", True, "告知一代的结果，返回算法状态。"),
+    ToolSpec("rsi_algorithm_screen", "algorithm", False, "评估前筛查候选补丁，太像已评估过的就跳过。"),
     ToolSpec("rsi_gate_check", "gate", True, "比较候选和父快照的分数，决定是否接受。"),
     ToolSpec("rsi_guard_inspect", "guard", True, "补丁生效前检查：危险代码、受保护条目、泄露的密钥等。"),
     # 基础设施

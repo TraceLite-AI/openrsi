@@ -4,7 +4,7 @@
 #
 # anchor.jsonl 是人工标注集，由 `python coevo.py` 生成。
 
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: judge-coevolution
 plugins: [coevo]
 

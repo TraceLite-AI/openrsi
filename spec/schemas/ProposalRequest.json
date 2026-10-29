@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.3/ProposalRequest.json",
+  "$id": "https://openrsi.dev/schemas/0.4/ProposalRequest.json",
   "$defs": {
     "Attribution": {
       "additionalProperties": true,
@@ -617,6 +617,12 @@
       "minimum": 1,
       "title": "Max Patches",
       "type": "integer"
+    },
+    "hints": {
+      "additionalProperties": true,
+      "description": "算法给提案器的建议，如 {'proposer': 'lesson'}（0.4）",
+      "title": "Hints",
+      "type": "object"
     }
   },
   "required": [

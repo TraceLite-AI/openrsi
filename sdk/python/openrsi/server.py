@@ -16,7 +16,7 @@ from .types import (
     AlgorithmStatus, AnchorExample, AskResult, AttributionBundle, CalibrationReport, ComponentInfo, Diff,
     Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, GuardReport, Item,
     LineageEntry, LineageLog, PROTOCOL_VERSION, Patch, ProposalBundle, ProposalRequest, RetrieveResult,
-    SkillResult, Snapshot, Task, TaskBundle, TellRequest, Trajectory, Verdict, VerifyResult,
+    ScreenResult, SkillResult, Snapshot, Task, TaskBundle, TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 
@@ -140,6 +140,12 @@ def build_server(component: Component, *, name: str | None = None) -> MCPServer:
 
         add(ask, "rsi_algorithm_ask")
         add(tell, "rsi_algorithm_tell")
+
+        if _overrides(component, Algorithm, "screen"):
+            def screen(patch: Patch, parent_id: str) -> ScreenResult:
+                return c.screen(patch, parent_id)
+
+            add(screen, "rsi_algorithm_screen")
 
     if isinstance(component, Gate):
         def gate_check(request: GateRequest) -> GateDecision:

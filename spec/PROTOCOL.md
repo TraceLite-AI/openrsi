@@ -1,4 +1,4 @@
-# OpenRSI Protocol 0.3（草案）
+# OpenRSI Protocol 0.4（草案）
 
 OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层用 [MCP](https://modelcontextprotocol.io)：一个组件就是一个 MCP server，暴露本文规定名字和参数的工具。本协议只规定 MCP 之上的语义。
 
@@ -7,11 +7,11 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 - `schemas/*.json`：数据格式的 JSON Schema
 - `tools.json`：每个工具的名字、所属类型、是否必选、输入输出 schema
 
-文中"必须""不得"是规范要求，"应当"是强烈建议。1.0 之前可能有不兼容修改。0.2、0.3 都只做了增加，之前版本的组件不用改就符合当前版本。
+文中"必须""不得"是规范要求，"应当"是强烈建议。1.0 之前可能有不兼容修改。0.2、0.3、0.4 都只做了增加，之前版本的组件不用改就符合当前版本。
 
 ## 1. 组件与类型
 
-一个组件实现一个或多个**类型**。0.3 定义 13 种：
+一个组件实现一个或多个**类型**。0.4 定义 13 种：
 
 | 面 | 类型 | 作用 | 必选工具 |
 |---|---|---|---|
@@ -31,7 +31,7 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 
 所有组件必须实现 `rsi_component_info`，返回名字、版本、协议版本、类型和工具列表。调用方应当用它（或工具列表）判断组件能力，按能力降级。
 
-可选工具：`rsi_judge_calibrate`、`rsi_evolvable_export`。
+可选工具：`rsi_judge_calibrate`、`rsi_evolvable_export`、`rsi_algorithm_screen`（0.4）。
 
 ## 2. 数据隔离
 
@@ -70,12 +70,17 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 - `rsi_evolvable_export(snapshot_id)` 可选，返回快照的完整内容，提案器据此决定 add 还是 replace。
 - memory 的 ops 格式见 `schemas/MemoryOp.json`：`add`（条目不能已存在）、`replace`（必须存在）、`remove`（必须存在）。
 - `rsi_memory_retrieve`：`tags` 是过滤条件，`query` 只用于排序。
+- **文件型可进化体**（0.4，`type: harness`，比如 agent 的代码仓库）的 ops：`{"op": "write", "path", "content"}`、`{"op": "delete", "path"}`、`{"op": "diff", "unified"}`（统一 diff 格式）。路径是仓库内的相对路径，不得包含 `..`。可进化体应当声明可改范围和受保护路径，越界的补丁必须整个拒绝；`export` 返回可改范围内的文本文件，条目 id 是路径。
+- **权重型可进化体**（0.4，`type: weights`）：快照是一个 checkpoint，补丁是一次训练 `{"op": "train", "method", "data", "config"}`，每个补丁只能有一个 train。回滚是切换 checkpoint，旧 checkpoint 不删。`export` 返回一条 `kind: weights` 的条目，`text` 是模型路径。训练数据只能来自 train 划分（参考实现导出非 train 数据时报错）。
 
 ## 7. 提案、算法、准入、谱系
 
 - **提案器**：返回的补丁数不得超过 `max_patches`；`target` 必须等于请求里的目标；`base_snapshot` 为空或等于 `parent_snapshot`。
 - **进化算法**：第一次 `tell` 登记根快照（`accepted: true`，带指标）。`ask` 只能返回被接受过的快照，返回 `parent_id: null` 表示停止并给出原因。同一代可以 `tell` 多次（多个候选）。
-- **准入**：比较 `baseline`（父快照）和 `candidate` 的指标，返回每项检查的结果。明显变差的候选不得接受。
+- **逐题分数**（0.4）：编排方应当在 `TellRequest.task_scores`、`GateRequest.baseline_tasks / candidate_tasks` 和 `LineageEntry.task_scores` 里给出每道 holdout 题的分数（键是 task id）。按题前沿（GEPA 式 Pareto）和逐题不回退准入依赖它。
+- **评估前筛查**（0.4，可选）：算法实现 `rsi_algorithm_screen(patch, parent_id)` 时，编排方必须在评估候选之前调用；`accept: false` 的补丁不评估、不 apply，按拒绝 `tell`。用于新颖度过滤（ShinkaEvolve 式），省掉重复候选的评估成本。
+- **提案器提示**（0.4）：`AskResult.proposer` 是算法建议这一代用的提案器名字，编排方放进 `ProposalRequest.hints.proposer`；组合提案器应当只用这个成员，并在 `proposer_ref` 末尾加 `#成员名`。编排方在 `TellRequest.proposer` 里回报产生候选的提案器（包括没产出补丁、被筛掉、被拦下的情况），算法据此做自适应选择。
+- **准入**：比较 `baseline`（父快照）和 `candidate` 的指标，返回每项检查的结果。明显变差的候选不得接受。参考实现可选"逐题不回退"：分数下降的题数超过上限就拒绝（Self-Harness、AHE 的做法）。
 - **谱系**：`record` 同一个 id 再次记录时以最后一次为准。`best` 只在 `root` 和 `accepted` 里选，被拒绝的候选不算。
 
 ## 8. skill 与护栏（0.3）
@@ -83,6 +88,7 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 - **skill**：条目的 `data.code` 是源码，`data.entry` 是入口函数名（默认 `run`）。`apply` 必须拒绝语法错误或没有入口函数的代码。`rsi_skill_invoke(skill_id, arguments, snapshot_id)` 运行指定快照里的 skill，返回 `SkillResult`；skill 抛出的异常放在 `error` 里，不作为工具错误；找不到 skill 才是工具错误。
 - skill 应当在隔离环境里执行：独立进程、受限的 CPU 和内存、超时、空环境变量。子进程隔离不是安全边界，不可信代码还应当经过护栏，并运行在容器里。
 - **护栏**：`rsi_guard_inspect(patch, target)` 返回 `GuardReport`。`allowed` 必须等于"没有 block 级别的发现"。编排方配置了护栏时，被拦下的补丁不得 apply，应当以 `rejected` 状态写进谱系（id 以 `blocked_` 开头），留作审计。warn 级别的发现不阻止补丁，但应当随准入决定一起留档。
+- 护栏对文件型补丁（0.4）应当检查路径：改动受保护路径（比如评估脚本）必须拦下，这是防止 agent 改评估器刷分的主要手段。
 
 ## 9. 多个可进化体（0.3）
 
@@ -112,9 +118,9 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 每个组件应当附带 `rsi-component.yaml`，声明的类型和工具必须与组件实际暴露的一致：
 
 ```yaml
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: openrsi/holdout-gate
-version: 0.3.0
+version: 0.4.0
 kinds: [gate]
 implements: [rsi_component_info, rsi_gate_check]
 runtime: {transport: stdio, command: [openrsi-gate]}
@@ -130,14 +136,14 @@ openrsi-conformance --url http://host/mcp
 openrsi-conformance --sample-task task.json -- <命令>   # 领域相关的 agent / 提案器
 ```
 
-通过全部检查的组件可以标注"OpenRSI 0.3 兼容"。evolvable、algorithm、lineage 的检查会写入数据，应当对临时实例运行。
+通过全部检查的组件可以标注"OpenRSI 0.4 兼容"。evolvable、algorithm、lineage 的检查会写入数据，应当对临时实例运行。
 
 ## 13. 编排文件 openrsi.yaml
 
 编排文件不属于组件协议，是参考运行时的约定，列在这里方便其他实现兼容：
 
 ```yaml
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: my-experiment
 plugins: [my_components]
 components:

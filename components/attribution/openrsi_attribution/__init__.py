@@ -26,7 +26,7 @@ class RubricEvidenceAttributor(Attributor):
     """
 
     name = "openrsi/rubric-evidence-attribution"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def explain(self, episodes: list[Episode]) -> list[Attribution]:
         return [self._one(ep) for ep in episodes]

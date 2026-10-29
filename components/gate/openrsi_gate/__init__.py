@@ -4,6 +4,8 @@
 - improvement   候选的 holdout 比父快照高出 min_gain 以上
 - significance  可选：用双比例 z 检验确认提升不是噪声（需要 n_holdout）
 - anchor        有 anchor 分数时，候选不能比父快照低超过 anchor_tolerance
+- no_regression 可选（Self-Harness、AHE 的做法）：逐题比较，分数下降超过 task_tolerance 的题不能多于
+                max_task_regressions 道；设为 0 就是"修好失败的同时，任何一道题都不许变差"
 - cost          有 cost 且设置了 max_cost 时，不能超预算
 """
 from __future__ import annotations
@@ -24,10 +26,13 @@ def two_proportion_z(p1: float, n1: float, p2: float, n2: float) -> float:
 
 class HoldoutGate(Gate):
     name = "openrsi/holdout-gate"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(self, metric: str = "holdout", min_gain: float = 0.0, significance_z: float | None = None,
-                 anchor_tolerance: float = 0.0, max_cost: float | None = None):
+                 anchor_tolerance: float = 0.0, max_cost: float | None = None,
+                 max_task_regressions: int | None = None, task_tolerance: float = 0.0):
+        self.max_task_regressions = max_task_regressions
+        self.task_tolerance = task_tolerance
         self.metric = metric
         self.min_gain = min_gain
         self.significance_z = significance_z
@@ -60,6 +65,18 @@ class HoldoutGate(Gate):
             checks.append(GateCheck(name="anchor", passed=ok,
                                     detail=f"anchor {base['anchor']:.4f} → {cand['anchor']:.4f}"))
 
+        if self.max_task_regressions is not None:
+            if not request.baseline_tasks or not request.candidate_tasks:
+                checks.append(GateCheck(name="no_regression", passed=False, detail="缺少逐题分数"))
+            else:
+                worse = sorted(t for t, b in request.baseline_tasks.items()
+                               if request.candidate_tasks.get(t, 0.0) < b - self.task_tolerance)
+                ok = len(worse) <= self.max_task_regressions
+                shown = ", ".join(worse[:5]) + ("…" if len(worse) > 5 else "")
+                checks.append(GateCheck(name="no_regression", passed=ok,
+                                        detail=f"{len(worse)} 道题变差（上限 {self.max_task_regressions}）"
+                                               + (f"：{shown}" if worse else "")))
+
         if self.max_cost is not None and "cost" in cand:
             ok = cand["cost"] <= self.max_cost
             checks.append(GateCheck(name="cost", passed=ok, detail=f"cost {cand['cost']} / 上限 {self.max_cost}"))
@@ -75,8 +92,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="openrsi-gate")
     ap.add_argument("--min-gain", type=float, default=0.0)
     ap.add_argument("--significance-z", type=float)
+    ap.add_argument("--max-task-regressions", type=int)
     args = ap.parse_args()
-    serve(HoldoutGate(min_gain=args.min_gain, significance_z=args.significance_z))
+    serve(HoldoutGate(min_gain=args.min_gain, significance_z=args.significance_z,
+                      max_task_regressions=args.max_task_regressions))
 
 
 __all__ = ["HoldoutGate", "main", "two_proportion_z"]

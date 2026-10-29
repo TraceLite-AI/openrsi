@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PROTOCOL_VERSION = "openrsi/0.3"
+PROTOCOL_VERSION = "openrsi/0.4"
 
 
 class _Model(BaseModel):
@@ -311,6 +311,8 @@ class ProposalRequest(_Model):
     attributions: list[Attribution] = Field(default_factory=list)
     state: Any = Field(default=None, description="父快照的完整内容（rsi_evolvable_export 的结果）")
     max_patches: int = Field(default=1, ge=1)
+    hints: dict[str, Any] = Field(default_factory=dict,
+                                  description="算法给提案器的建议，如 {'proposer': 'lesson'}（0.4）")
 
 
 class ProposalBundle(_Model):
@@ -324,6 +326,7 @@ class AskResult(_Model):
     parent_id: str | None = Field(description="下一代从哪个快照出发；None 表示停止")
     done: bool = False
     reason: str | None = None
+    proposer: str | None = Field(default=None, description="建议这一代用哪个提案器（0.4，自适应提案器选择）")
 
 
 class TellRequest(_Model):
@@ -332,6 +335,16 @@ class TellRequest(_Model):
     candidate_id: str | None = None
     accepted: bool
     metrics: dict[str, float] = Field(default_factory=dict)
+    task_scores: dict[str, float] = Field(default_factory=dict, description="候选在每道 holdout 题上的分数（0.4）")
+    proposer: str | None = Field(default=None, description="产生这个候选的提案器（0.4）")
+
+
+class ScreenResult(_Model):
+    """评估前的筛查：和已经评估过的候选太像就不必再花评估成本（0.4）。"""
+
+    accept: bool
+    novelty: float = Field(ge=0.0, le=1.0, description="1 表示全新，0 表示完全重复")
+    reason: str | None = None
 
 
 class AlgorithmStatus(_Model):
@@ -349,6 +362,8 @@ class GateRequest(_Model):
     candidate_id: str
     baseline: dict[str, float] = Field(description="父快照的分数，如 holdout、anchor、cost、n_holdout")
     candidate: dict[str, float]
+    baseline_tasks: dict[str, float] = Field(default_factory=dict, description="父快照每道 holdout 题的分数（0.4）")
+    candidate_tasks: dict[str, float] = Field(default_factory=dict, description="候选每道 holdout 题的分数（0.4）")
     primary_metric: str | None = Field(
         default=None, description="本次要求提升的指标；判别器自身的修改用 anchor，因为它会改变 holdout 的打分标准（0.3）")
 
@@ -379,6 +394,7 @@ class LineageEntry(_Model):
     patch: Patch | None = None
     snapshots: dict[str, str] = Field(default_factory=dict,
                                       description="同时进化多个可进化体时，每个目标对应的快照 id（0.3）")
+    task_scores: dict[str, float] = Field(default_factory=dict, description="每道 holdout 题的分数（0.4）")
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -401,5 +417,5 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     for m in (Task, Step, Trajectory, Evidence, Verdict, RubricResult, AnchorExample, CalibrationReport,
               Item, Patch, MemoryOp, Snapshot, Diff, EvolvableInfo, ExportResult, Episode, Attribution,
               ProposalRequest, AskResult, TellRequest, AlgorithmStatus, GateRequest, GateDecision,
-              LineageEntry, SkillResult, GuardReport, ComponentInfo)
+              LineageEntry, SkillResult, GuardReport, ScreenResult, ComponentInfo)
 }

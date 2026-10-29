@@ -1,0 +1,18 @@
+protocol: openrsi/0.4
+name: openrsi/weights
+version: 0.4.0
+description: 模型权重作为可进化体。快照是 checkpoint，补丁是一次训练（调用外部训练命令，比如 verl）；回滚是切换 checkpoint。
+kinds: [evolvable]
+implements:
+  - rsi_component_info
+  - rsi_evolvable_describe
+  - rsi_evolvable_snapshot
+  - rsi_evolvable_apply
+  - rsi_evolvable_rollback
+  - rsi_evolvable_diff
+  - rsi_evolvable_export
+capabilities: {checkpoints: true, external_trainer: true}
+runtime:
+  transport: stdio
+  command: [openrsi-verl, weights, --base-model, Qwen/Qwen3-8B, --path, ./weights, --dry-run]
+evolvable_surfaces: [weights]

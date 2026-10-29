@@ -26,7 +26,10 @@ class _AllKinds(Environment, Agent, EvidenceCollector, Judge, Attributor, Memory
                 Guard, Lineage):
     """只用来生成工具定义，方法不会被调用。"""
 
-    def export(self, snapshot_id=None):  # 让可选的 export 工具也出现在定义里
+    def export(self, snapshot_id=None):  # 让可选工具也出现在定义里
+        raise NotImplementedError
+
+    def screen(self, patch, parent_id):
         raise NotImplementedError
 
     name = "openrsi/spec"
