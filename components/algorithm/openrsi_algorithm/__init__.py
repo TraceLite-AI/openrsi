@@ -22,7 +22,7 @@ class _Node:
 
 
 class _Base(Algorithm):
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, metric: str = "holdout", max_generations: int = 20, patience: int = 5,
                  target_score: float | None = None):

@@ -1,0 +1,12 @@
+protocol: openrsi/0.3
+name: openrsi/policy-guard
+version: 0.3.0
+description: 补丁生效前的检查：危险代码、受保护条目、泄露的密钥、教 agent 绕过评估的内容。
+kinds: [guard]
+implements:
+  - rsi_component_info
+  - rsi_guard_inspect
+capabilities: {code_ast_checks: true}
+runtime:
+  transport: stdio
+  command: [openrsi-guard]

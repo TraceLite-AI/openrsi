@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-KINDS = ("env", "agent", "evidence", "judge", "attribution", "evolvable", "memory",
-         "proposer", "algorithm", "gate", "lineage")
+KINDS = ("env", "agent", "evidence", "judge", "attribution", "evolvable", "memory", "skill",
+         "proposer", "algorithm", "gate", "guard", "lineage")
 
 
 @dataclass(frozen=True)
@@ -34,10 +34,12 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec("rsi_evolvable_diff", "evolvable", True, "计算两个快照之间的差异。"),
     ToolSpec("rsi_evolvable_export", "evolvable", False, "导出某个快照的完整内容，供提案器参考。"),
     ToolSpec("rsi_memory_retrieve", "memory", True, "按查询和标签检索 memory 条目。"),
+    ToolSpec("rsi_skill_invoke", "skill", True, "在隔离环境里运行某个快照中的一个 skill，返回结果或错误。"),
     ToolSpec("rsi_proposer_propose", "proposer", True, "根据 train episode 和归因结果提出候选补丁。"),
     ToolSpec("rsi_algorithm_ask", "algorithm", True, "下一代从哪个快照出发。"),
     ToolSpec("rsi_algorithm_tell", "algorithm", True, "告知一代的结果，返回算法状态。"),
     ToolSpec("rsi_gate_check", "gate", True, "比较候选和父快照的分数，决定是否接受。"),
+    ToolSpec("rsi_guard_inspect", "guard", True, "补丁生效前检查：危险代码、受保护条目、泄露的密钥等。"),
     # 基础设施
     ToolSpec("rsi_lineage_record", "lineage", True, "记录一个快照及其分数、准入决定。"),
     ToolSpec("rsi_lineage_log", "lineage", True, "按时间列出谱系记录，可按目标和状态过滤。"),
@@ -49,7 +51,7 @@ TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 def required_tools(kind: str) -> set[str]:
     names = {t.name for t in TOOLS if t.required and t.kind in (kind, "component")}
-    if kind == "memory":
+    if kind in ("memory", "skill"):
         names |= required_tools("evolvable")
     return names
 

@@ -1,6 +1,6 @@
-protocol: openrsi/0.2
+protocol: openrsi/0.3
 name: openrsi/lineage
-version: 0.2.0
+version: 0.3.0
 description: 记录每个快照的来源、分数和准入决定，被拒绝的候选也留档；JSONL 持久化。
 kinds: [lineage]
 implements:

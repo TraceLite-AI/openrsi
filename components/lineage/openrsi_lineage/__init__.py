@@ -11,7 +11,7 @@ from openrsi import Lineage, LineageEntry, serve
 
 class LineageStore(Lineage):
     name = "openrsi/lineage"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path).resolve() if path else None  # 构造时定下绝对路径，之后工作目录变了也不影响
