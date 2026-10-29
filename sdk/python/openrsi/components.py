@@ -9,7 +9,7 @@ from typing import Any
 from .types import (
     AlgorithmStatus, AnchorExample, AskResult, Attribution, CalibrationReport, Diff, Episode, Evidence,
     EvolvableInfo, GateDecision, GateRequest, GuardReport, Item, LineageEntry, Patch, ProposalRequest,
-    SkillResult, Snapshot, Task, TellRequest, Trajectory, Verdict, VerifyResult,
+    ScreenResult, SkillResult, Snapshot, Task, TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 
@@ -163,6 +163,10 @@ class Algorithm(Component):
         raise NotImplementedError
 
     def tell(self, result: TellRequest) -> AlgorithmStatus:
+        raise NotImplementedError
+
+    def screen(self, patch: Patch, parent_id: str) -> ScreenResult:
+        """可选：评估前筛查。不实现时运行时跳过这一步。"""
         raise NotImplementedError
 
 

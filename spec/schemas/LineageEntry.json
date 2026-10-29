@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.3/LineageEntry.json",
+  "$id": "https://openrsi.dev/schemas/0.4/LineageEntry.json",
   "$defs": {
     "GateCheck": {
       "additionalProperties": true,
@@ -212,6 +212,14 @@
       },
       "description": "同时进化多个可进化体时，每个目标对应的快照 id（0.3）",
       "title": "Snapshots",
+      "type": "object"
+    },
+    "task_scores": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "每道 holdout 题的分数（0.4）",
+      "title": "Task Scores",
       "type": "object"
     },
     "created_at": {

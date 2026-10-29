@@ -14,6 +14,8 @@
 | code_call | block | eval、exec、open、__import__ 等危险调用 |
 | code_dunder | block | 访问 __class__、__globals__ 这类双下划线属性（常见的沙箱逃逸手法） |
 | injection | warn | 疑似提示注入（"ignore previous instructions"） |
+| protected_path | block | harness 补丁（write / delete / diff）碰了受保护的路径，如评测代码 |
+| code_*（harness） | block | check_harness_code=True 时，对写入的 .py 文件也做上面的代码检查 |
 
 AST 检查拦不住所有恶意代码；它是第一道防线，配合子进程限制和容器使用。
 """
@@ -45,12 +47,15 @@ INJECTION_PATTERNS = (r"(?i)ignore (all )?(previous|prior|above) instructions", 
 
 class PolicyGuard(Guard):
     name = "openrsi/policy-guard"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(self, protected: list[str] | None = None, max_ops: int = 20, max_removals: int = 5,
                  max_text_chars: int = 4000, allowed_imports: list[str] | None = None,
-                 extra_secret_patterns: list[str] | None = None, check_tampering: bool = True):
+                 extra_secret_patterns: list[str] | None = None, check_tampering: bool = True,
+                 protected_paths: list[str] | None = None, check_harness_code: bool = False):
         self.protected = list(protected or [])
+        self.protected_paths = list(protected_paths or [])
+        self.check_harness_code = check_harness_code
         self.max_ops = max_ops
         self.max_removals = max_removals
         self.max_text_chars = max_text_chars
@@ -73,6 +78,10 @@ class PolicyGuard(Guard):
 
         removals = 0
         for i, raw in enumerate(patch.ops):
+            if raw.get("op") in ("write", "delete", "diff"):
+                removals += raw.get("op") == "delete"
+                self._check_file_op(raw, i, block, warn)
+                continue
             try:
                 op = MemoryOp.model_validate(raw)
             except ValueError:
@@ -113,6 +122,31 @@ class PolicyGuard(Guard):
             for rule, msg in self.check_code(code):
                 block(rule, msg, i, item.id)
 
+    def _check_file_op(self, op: dict, i: int, block, warn) -> None:
+        if op["op"] == "diff":
+            text = str(op.get("unified", ""))
+            paths = {ln[6:].strip() for ln in text.splitlines() if ln.startswith(("+++ b/", "--- a/"))}
+            added = "\n".join(ln[1:] for ln in text.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
+        else:
+            paths = {str(op.get("path", ""))}
+            added = str(op.get("content", ""))
+        for path in sorted(paths):
+            if any(fnmatch.fnmatch(path, g) or (g.endswith("/**") and path.startswith(g[:-2]))
+                   for g in self.protected_paths):
+                block("protected_path", f"不允许修改 {path}", i, path)
+        label = ", ".join(sorted(paths)) or None
+        for p in self.secret_patterns:
+            if p.search(added):
+                block("secret", "疑似包含密钥或密码", i, label)
+                break
+        for p in self.injection:
+            if p.search(added):
+                warn("injection", "疑似提示注入", i, label)
+                break
+        if self.check_harness_code and op["op"] == "write" and str(op.get("path", "")).endswith(".py"):
+            for rule, msg in self.check_code(added):
+                block(rule, msg, i, label)
+
     def check_code(self, code: str) -> list[tuple[str, str]]:
         try:
             tree = ast.parse(code)
@@ -139,8 +173,9 @@ def main() -> None:
 
     ap = argparse.ArgumentParser(prog="openrsi-guard")
     ap.add_argument("--protect", action="append", default=[], help="受保护条目 id 的 glob，可重复")
+    ap.add_argument("--protect-path", action="append", default=[], help="harness 里受保护路径的 glob，可重复")
     args = ap.parse_args()
-    serve(PolicyGuard(protected=args.protect))
+    serve(PolicyGuard(protected=args.protect, protected_paths=args.protect_path))
 
 
 __all__ = ["PolicyGuard", "main"]

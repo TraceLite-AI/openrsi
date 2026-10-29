@@ -1,6 +1,6 @@
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: openrsi/memory
-version: 0.3.0
+version: 0.4.0
 description: 可进化 memory。所有修改走补丁，每次修改生成可回滚的快照，快照组成一棵树。
 kinds: [evolvable, memory]
 implements:

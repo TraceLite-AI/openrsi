@@ -1,0 +1,18 @@
+protocol: openrsi/0.4
+name: openrsi/harness
+version: 0.4.0
+description: 把 agent 的代码仓库（harness）作为可进化体。快照是 git 提交，补丁是文件的写入、删除或 diff，可以限定哪些路径可改、哪些受保护。
+kinds: [evolvable]
+implements:
+  - rsi_component_info
+  - rsi_evolvable_describe
+  - rsi_evolvable_snapshot
+  - rsi_evolvable_apply
+  - rsi_evolvable_rollback
+  - rsi_evolvable_diff
+  - rsi_evolvable_export
+capabilities: {backend: git, snapshot_tree: true}
+runtime:
+  transport: stdio
+  command: [openrsi-harness, --repo, ./harness]
+evolvable_surfaces: [harness]

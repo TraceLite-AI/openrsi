@@ -50,7 +50,7 @@ class LessonProposer(Proposer):
     """with: prune_after（某条目至少被用多少次且从未帮上忙才删除，默认 2）"""
 
     name = "openrsi/lesson-proposer"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(self, prune_after: int = 2):
         self.prune_after = prune_after
@@ -125,7 +125,7 @@ class ClaudeProposer(Proposer):
     """with: model（默认 claude-opus-5-5）、effort、max_ops。需要 anthropic 和 API 凭证。"""
 
     name = "openrsi/claude-proposer"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(self, model: str = DEFAULT_MODEL, effort: str = "high", max_ops: int = 5, client=None):
         self.model, self.effort, self.max_ops = model, effort, max_ops
@@ -197,7 +197,7 @@ class RubricAuditor(Proposer):
     """with: min_cases（同一个问题至少出现几次才提，默认 1）"""
 
     name = "openrsi/rubric-auditor"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(self, min_cases: int = 1):
         self.min_cases = min_cases
@@ -240,22 +240,29 @@ class RubricAuditor(Proposer):
 
 
 class CompositeProposer(Proposer):
-    """with: proposers（名字列表，可选 lesson / claude / rubric-auditor）。依次调用，补丁合在一起返回。"""
+    """with: proposers（名字列表，可选 lesson / claude / rubric-auditor）。依次调用，补丁合在一起返回。
+
+    算法通过 hints["proposer"] 建议用哪一个时（比如 ShinkaAlgorithm 的自适应选择），只调用那一个。
+    补丁的 proposer_ref 末尾加上 "#成员名"，算法据此统计各提案器的效果。
+    """
 
     name = "openrsi/composite-proposer"
-    version = "0.3.0"
+    version = "0.4.0"
     REGISTRY = {"lesson": LessonProposer, "claude": ClaudeProposer, "rubric-auditor": RubricAuditor}
 
     def __init__(self, proposers: list[str]):
         unknown = [p for p in proposers if p not in self.REGISTRY]
         if unknown:
             raise ValueError(f"未知的提案器 {unknown}，可选：{sorted(self.REGISTRY)}")
-        self.members = [self.REGISTRY[p]() for p in proposers]
+        self.members = {p: self.REGISTRY[p]() for p in proposers}
 
     def propose(self, request: ProposalRequest) -> list[Patch]:
+        hint = request.hints.get("proposer")
+        chosen = [hint] if hint in self.members else list(self.members)
         out: list[Patch] = []
-        for m in self.members:
-            out += m.propose(request)
+        for name in chosen:
+            for p in self.members[name].propose(request):
+                out.append(p.model_copy(update={"proposer_ref": f"{p.proposer_ref or self.members[name].ref}#{name}"}))
         return out[: request.max_patches]
 
 

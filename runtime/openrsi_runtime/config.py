@@ -68,7 +68,7 @@ class LoopConfig(BaseModel):
 class RunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    protocol: str = "openrsi/0.3"
+    protocol: str = "openrsi/0.4"
     name: str
     plugins: list[str] = Field(default_factory=list)
     components: dict[str, ComponentSpec]
