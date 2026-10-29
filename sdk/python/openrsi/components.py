@@ -8,8 +8,8 @@ from typing import Any
 
 from .types import (
     AlgorithmStatus, AnchorExample, AskResult, Attribution, CalibrationReport, Diff, Episode, Evidence,
-    EvolvableInfo, GateDecision, GateRequest, Item, LineageEntry, Patch, ProposalRequest, Snapshot,
-    Task, TellRequest, Trajectory, Verdict, VerifyResult,
+    EvolvableInfo, GateDecision, GateRequest, GuardReport, Item, LineageEntry, Patch, ProposalRequest,
+    SkillResult, Snapshot, Task, TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 
@@ -137,6 +137,16 @@ class Memory(Evolvable):
         raise NotImplementedError
 
 
+class Skills(Evolvable):
+    """skill 库：条目是可执行的代码。"""
+
+    _kind = "skill"
+
+    def invoke(self, skill_id: str, arguments: dict[str, Any] | None = None,
+               snapshot_id: str | None = None) -> SkillResult:
+        raise NotImplementedError
+
+
 class Proposer(Component):
     _kind = "proposer"
 
@@ -160,6 +170,15 @@ class Gate(Component):
     _kind = "gate"
 
     def check(self, request: GateRequest) -> GateDecision:
+        raise NotImplementedError
+
+
+class Guard(Component):
+    """补丁生效前的检查。和 Gate 不同：Gate 看分数，Guard 看补丁内容本身。"""
+
+    _kind = "guard"
+
+    def inspect(self, patch: Patch, target: EvolvableInfo | None = None) -> GuardReport:
         raise NotImplementedError
 
 

@@ -1,6 +1,6 @@
-protocol: openrsi/0.2
+protocol: openrsi/0.3
 name: openrsi/holdout-gate
-version: 0.2.0
+version: 0.3.0
 description: 候选必须在 holdout 上真的变好；可选显著性检验、anchor 不退步、成本上限。
 kinds: [gate]
 implements:

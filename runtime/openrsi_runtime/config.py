@@ -24,8 +24,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-REQUIRED_SLOTS = ("env", "agent", "judge", "memory", "proposer", "algorithm", "gate", "lineage")
-OPTIONAL_SLOTS = ("evidence", "attribution")
+REQUIRED_SLOTS = ("env", "agent", "judge", "proposer", "algorithm", "gate", "lineage")
+OPTIONAL_SLOTS = ("memory", "evidence", "attribution", "guard")
 SLOT_KIND = {s: s for s in (*REQUIRED_SLOTS, *OPTIONAL_SLOTS)}
 
 
@@ -63,10 +63,12 @@ class LoopConfig(BaseModel):
 class RunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    protocol: str = "openrsi/0.2"
+    protocol: str = "openrsi/0.3"
     name: str
     plugins: list[str] = Field(default_factory=list)
     components: dict[str, ComponentSpec]
+    evolvables: dict[str, ComponentSpec] = Field(
+        default_factory=dict, description="memory 之外参与进化的对象（prompt、skill 等），名字随意")
     loop: LoopConfig = Field(default_factory=LoopConfig)
     base_dir: Path = Field(default=Path("."), exclude=True)
 
@@ -78,6 +80,11 @@ class RunConfig(BaseModel):
         missing = [s for s in REQUIRED_SLOTS if s not in self.components]
         if missing:
             raise ValueError(f"缺少组件: {missing}")
+        if "memory" not in self.components and not self.evolvables:
+            raise ValueError("至少要有一个可进化体：components.memory 或 evolvables")
+        for name, spec in self.evolvables.items():
+            if spec.same_as:
+                raise ValueError(f"evolvables.{name} 不支持 same_as")
         for slot, spec in self.components.items():
             if spec.same_as and spec.same_as not in self.components:
                 raise ValueError(f"{slot}.same_as 指向不存在的位置 {spec.same_as}")

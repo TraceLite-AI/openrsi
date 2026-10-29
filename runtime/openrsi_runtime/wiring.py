@@ -54,6 +54,11 @@ def _import(ref: str) -> Any:
     return getattr(importlib.import_module(module), attr)
 
 
+def slots_include_evolvables(slots: list[str], config: RunConfig) -> bool:
+    """只连谱系（openrsi log）时不必启动可进化体。"""
+    return set(slots) != {"lineage"}
+
+
 class Wiring:
     """async with Wiring(config) as w: w.env / w.agent / ... 都是统一的 async 接口；没配置的可选位置是 None。"""
 
@@ -62,6 +67,7 @@ class Wiring:
         self.slots = slots or list(config.components)
         self._stack = AsyncExitStack()
         self.components: dict[str, Any] = {}
+        self.evolvables: dict[str, Any] = {}  # 名字 → 门面；包括 memory
         self.refs: dict[str, str] = {}
 
     async def __aenter__(self) -> "Wiring":
@@ -86,6 +92,12 @@ class Wiring:
                 spec = self.config.components[slot]
                 source = built[spec.same_as] if spec.same_as else built[slot]
                 self.components[slot] = self._facade(slot, source)
+            if slots_include_evolvables(self.slots, self.config):
+                if "memory" in self.components:
+                    self.evolvables["memory"] = self.components["memory"]
+                for name, spec in self.config.evolvables.items():
+                    source = await self._build(f"evolvables.{name}", spec)
+                    self.evolvables[name] = self._evolvable_facade(name, source)
         except BaseException:
             await self._stack.aclose()
             raise
@@ -118,6 +130,17 @@ class Wiring:
         if isinstance(source, LocalProxy):
             return source
         return getattr(source, kind)  # RemoteComponent 上同名的门面
+
+    def _evolvable_facade(self, name: str, source: Any) -> Any:
+        if "evolvable" not in source.kinds:
+            raise ValueError(f"evolvables.{name} 需要可进化体，{self.refs.get('evolvables.' + name, '')} "
+                             f"只实现了 {source.kinds}")
+        if isinstance(source, LocalProxy):
+            return source
+        for kind in ("skill", "memory", "evolvable"):  # 选能力最全的门面
+            if kind in source.kinds:
+                return getattr(source, kind)
+        raise AssertionError("unreachable")
 
     def __getattr__(self, slot: str) -> Any:
         if slot in SLOT_KIND:

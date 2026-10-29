@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.3/GuardReport.json",
+  "$defs": {
+    "GuardFinding": {
+      "additionalProperties": true,
+      "properties": {
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "block",
+            "warn"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "op_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Op Index"
+        },
+        "item_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Item Id"
+        }
+      },
+      "required": [
+        "rule",
+        "severity",
+        "message"
+      ],
+      "title": "GuardFinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "allowed": {
+      "description": "有任何 block 级别的发现就是 False",
+      "title": "Allowed",
+      "type": "boolean"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/GuardFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "guard_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Guard Ref"
+    }
+  },
+  "required": [
+    "allowed"
+  ],
+  "title": "GuardReport",
+  "type": "object"
+}

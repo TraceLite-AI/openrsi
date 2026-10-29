@@ -20,7 +20,7 @@ class RubricJudge(Judge):
     """
 
     name = "openrsi/rubric-judge"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, rubric: Rubric | dict | str | Path, *, collector: EvidenceCollector | None = None,
                  checker: Checker | None = None):
@@ -97,7 +97,7 @@ class EvidenceJudge(TrajectoryCollector, RubricJudge):
     """取证 + 判别合在一个组件里：既能单独提供证据，也能拿自己的证据判别。"""
 
     name = "openrsi/evidence-judge"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, rubric: Rubric | dict | str | Path, *, checker: Checker | None = None, **collector_config):
         TrajectoryCollector.__init__(self, **collector_config)

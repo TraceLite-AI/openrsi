@@ -15,9 +15,9 @@ from pydantic import BaseModel
 from .protocol import kinds_from_tools
 from .types import (
     AlgorithmStatus, AnchorExample, AskResult, Attribution, AttributionBundle, CalibrationReport, ComponentInfo,
-    Diff, Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, Item,
+    Diff, Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, GuardReport, Item,
     LineageEntry, LineageLog, Patch, ProposalBundle, ProposalRequest, RetrieveResult, Snapshot, Task, TaskBundle,
-    TellRequest, Trajectory, Verdict, VerifyResult,
+    SkillResult, TellRequest, Trajectory, Verdict, VerifyResult,
 )
 
 M = TypeVar("M", bound=BaseModel)
@@ -88,6 +88,14 @@ class RemoteComponent:
         return RemoteMemory(self)
 
     @property
+    def skill(self) -> "RemoteSkills":
+        return RemoteSkills(self)
+
+    @property
+    def guard(self) -> "RemoteGuard":
+        return RemoteGuard(self)
+
+    @property
     def proposer(self) -> "RemoteProposer":
         return RemoteProposer(self)
 
@@ -107,6 +115,10 @@ class RemoteComponent:
 class _Facade:
     def __init__(self, rc: RemoteComponent):
         self._rc = rc
+
+    @property
+    def kinds(self) -> list[str]:
+        return self._rc.kinds
 
 
 class RemoteEnvironment(_Facade):
@@ -176,6 +188,18 @@ class RemoteMemory(RemoteEvolvable):
                                   {"query": query, "tags": tags, "k": k, "snapshot_id": snapshot_id},
                                   RetrieveResult)
         return res.items
+
+
+class RemoteSkills(RemoteEvolvable):
+    async def invoke(self, skill_id: str, arguments: dict | None = None, snapshot_id: str | None = None) -> SkillResult:
+        return await self._rc.call("rsi_skill_invoke",
+                                   {"skill_id": skill_id, "arguments": arguments or {}, "snapshot_id": snapshot_id},
+                                   SkillResult)
+
+
+class RemoteGuard(_Facade):
+    async def inspect(self, patch: Patch, target: EvolvableInfo | None = None) -> GuardReport:
+        return await self._rc.call("rsi_guard_inspect", {"patch": patch, "target": target}, GuardReport)
 
 
 class RemoteProposer(_Facade):
