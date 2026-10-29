@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/Evidence.json",
+  "additionalProperties": true,
+  "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "type": {
+      "title": "Type",
+      "type": "string"
+    },
+    "content": {
+      "default": null,
+      "title": "Content"
+    },
+    "uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Uri"
+    },
+    "sha256": {
+      "title": "Sha256",
+      "type": "string"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "collected_at": {
+      "title": "Collected At",
+      "type": "string"
+    },
+    "collector": {
+      "title": "Collector",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "sha256",
+    "source",
+    "collected_at",
+    "collector"
+  ],
+  "title": "Evidence",
+  "type": "object"
+}

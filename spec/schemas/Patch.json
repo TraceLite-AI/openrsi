@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/Patch.json",
+  "additionalProperties": true,
+  "description": "对一个可进化体的修改。ops 的格式由可进化体的类型决定（memory 见 MemoryOp）。",
+  "properties": {
+    "target": {
+      "title": "Target",
+      "type": "string"
+    },
+    "ops": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Ops",
+      "type": "array"
+    },
+    "id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Id"
+    },
+    "base_snapshot": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "期望的当前快照；不一致则拒绝，防止覆盖别人的修改",
+      "title": "Base Snapshot"
+    },
+    "rationale": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rationale"
+    },
+    "proposer_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Proposer Ref"
+    }
+  },
+  "required": [
+    "target",
+    "ops"
+  ],
+  "title": "Patch",
+  "type": "object"
+}

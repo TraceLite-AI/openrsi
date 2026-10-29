@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/Verdict.json",
+  "$defs": {
+    "Evidence": {
+      "additionalProperties": true,
+      "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "content": {
+          "default": null,
+          "title": "Content"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "collected_at": {
+          "title": "Collected At",
+          "type": "string"
+        },
+        "collector": {
+          "title": "Collector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "sha256",
+        "source",
+        "collected_at",
+        "collector"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "RubricResult": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "fail",
+            "skip",
+            "error"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "description": "这条结论引用的证据",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "weight": {
+          "default": 1.0,
+          "title": "Weight",
+          "type": "number"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "id",
+        "result"
+      ],
+      "title": "RubricResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "判别结果。每条 rubric 结论必须引用证据：要么是调用方给的，要么在 collected 里。",
+  "properties": {
+    "score": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Score",
+      "type": "number"
+    },
+    "passed": {
+      "title": "Passed",
+      "type": "boolean"
+    },
+    "rubric": {
+      "items": {
+        "$ref": "#/$defs/RubricResult"
+      },
+      "title": "Rubric",
+      "type": "array"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
+    },
+    "judge_ref": {
+      "title": "Judge Ref",
+      "type": "string"
+    },
+    "evidence_ids": {
+      "description": "判别时实际采信的全部证据",
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "collected": {
+      "description": "判别器自己补充收集的证据",
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Collected",
+      "type": "array"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "score",
+    "passed",
+    "judge_ref"
+  ],
+  "title": "Verdict",
+  "type": "object"
+}

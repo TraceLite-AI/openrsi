@@ -1,0 +1,18 @@
+protocol: openrsi/0.1
+name: openrsi/evidence-judge
+version: 0.1.0
+description: 从轨迹和工作目录收集可核验证据，再按 rubric 判别；每条结论引用证据。
+kinds: [evidence, judge]
+implements:
+  - rsi_component_info
+  - rsi_evidence_collect
+  - rsi_evidence_verify
+  - rsi_judge_evaluate
+  - rsi_judge_calibrate
+capabilities:
+  self_collect: true        # 调用方不给证据时自行收集，放在 verdict.collected
+  llm_checks: optional      # rubric 里的 llm 项需要 anthropic
+runtime:
+  transport: stdio
+  command: [openrsi-judge, --rubric, rubric.yaml]
+evolvable_surfaces: [rubric]

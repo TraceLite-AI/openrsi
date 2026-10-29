@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/CalibrationReport.json",
+  "additionalProperties": true,
+  "properties": {
+    "n": {
+      "title": "N",
+      "type": "integer"
+    },
+    "agreement": {
+      "title": "Agreement",
+      "type": "number"
+    },
+    "false_pass": {
+      "description": "人工判不通过、判别器判通过的数量",
+      "title": "False Pass",
+      "type": "integer"
+    },
+    "false_fail": {
+      "title": "False Fail",
+      "type": "integer"
+    },
+    "disagreements": {
+      "description": "判断不一致的 task id",
+      "items": {
+        "type": "string"
+      },
+      "title": "Disagreements",
+      "type": "array"
+    }
+  },
+  "required": [
+    "n",
+    "agreement",
+    "false_pass",
+    "false_fail"
+  ],
+  "title": "CalibrationReport",
+  "type": "object"
+}

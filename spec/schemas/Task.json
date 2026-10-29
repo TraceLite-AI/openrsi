@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/Task.json",
+  "additionalProperties": true,
+  "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "input": {
+      "default": null,
+      "title": "Input"
+    },
+    "split": {
+      "default": "train",
+      "enum": [
+        "train",
+        "holdout",
+        "anchor",
+        "final"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "env_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Env Ref"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "title": "Task",
+  "type": "object"
+}

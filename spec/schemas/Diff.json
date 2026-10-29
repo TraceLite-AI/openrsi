@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/Diff.json",
+  "additionalProperties": true,
+  "properties": {
+    "from_id": {
+      "title": "From Id",
+      "type": "string"
+    },
+    "to_id": {
+      "title": "To Id",
+      "type": "string"
+    },
+    "ops": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Ops",
+      "type": "array"
+    }
+  },
+  "required": [
+    "from_id",
+    "to_id"
+  ],
+  "title": "Diff",
+  "type": "object"
+}
