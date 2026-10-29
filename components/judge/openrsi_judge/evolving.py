@@ -38,7 +38,7 @@ class EvolvingJudge(ItemStore, TrajectoryCollector, RubricJudge):
     """with: rubric（初始 rubric）、target（默认 rubric）、path、protect、workspace、test_tools 等取证参数"""
 
     name = "openrsi/evolving-judge"
-    version = "0.3.0"
+    version = "0.4.0"
     evolvable_type = "rubric"
     surfaces = ["rubric"]
 

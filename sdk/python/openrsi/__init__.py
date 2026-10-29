@@ -12,10 +12,10 @@ from .types import (
     PROTOCOL_VERSION, AlgorithmStatus, AnchorExample, AskResult, Attribution, AttributionTarget,
     CalibrationReport, ComponentInfo, Diff, Episode, Evidence, EvolvableInfo, GateCheck, GateDecision,
     GateRequest, GuardFinding, GuardReport, Item, LineageEntry, MemoryOp, Patch, ProposalRequest, RubricResult,
-    SkillResult, Snapshot, Step, Task, TellRequest, Trajectory, Verdict, VerifyResult, content_hash,
+    ScreenResult, SkillResult, Snapshot, Step, Task, TellRequest, Trajectory, Verdict, VerifyResult, content_hash,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "Agent", "Algorithm", "AlgorithmStatus", "AnchorExample", "AskResult", "Attribution", "AttributionTarget",
@@ -23,7 +23,7 @@ __all__ = [
     "Episode", "Evidence", "EvidenceCollector", "Evolvable", "EvolvableInfo", "Gate", "GateCheck",
     "GateDecision", "GateRequest", "Guard", "GuardFinding", "GuardReport", "Item", "ItemStore", "Judge",
     "Lineage", "LineageEntry", "Manifest", "Memory", "MemoryOp", "PROTOCOL_VERSION", "Patch",
-    "ProposalRequest", "Proposer", "RemoteComponent", "RubricResult", "SkillResult", "Skills", "Snapshot",
+    "ProposalRequest", "Proposer", "RemoteComponent", "RubricResult", "ScreenResult", "SkillResult", "Skills", "Snapshot",
     "StaleSnapshotError", "Step", "Task", "TellRequest", "ToolCallError", "Trajectory", "Verdict",
     "VerifyResult", "build_server", "connect", "content_hash", "from_messages", "load_manifest", "serve",
 ]

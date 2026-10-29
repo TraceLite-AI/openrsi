@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-langgraph"
-version = "0.3.0"
+version = "0.4.0"
 description = "Turn LangGraph message state into OpenRSI trajectories and judge them"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.3,<0.4"]
+dependencies = ["openrsi-sdk>=0.4,<0.5"]
 
 [build-system]
 requires = ["hatchling"]

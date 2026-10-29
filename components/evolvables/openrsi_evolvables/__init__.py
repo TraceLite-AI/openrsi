@@ -20,7 +20,7 @@ class PromptEvolvable(ItemStore):
     """with: max_chars（单个段落上限，默认 4000）"""
 
     name = "openrsi/prompt"
-    version = "0.3.0"
+    version = "0.4.0"
     evolvable_type = "prompt"
     surfaces = ["sections"]
 
@@ -58,7 +58,7 @@ class SkillLibrary(ItemStore, Skills):
     """with: timeout（秒）、cpu_seconds、memory_mb"""
 
     name = "openrsi/skills"
-    version = "0.3.0"
+    version = "0.4.0"
     evolvable_type = "skill"
     surfaces = ["skills"]
 

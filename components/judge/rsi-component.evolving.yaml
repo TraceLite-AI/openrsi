@@ -1,6 +1,6 @@
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: openrsi/evolving-judge
-version: 0.3.0
+version: 0.4.0
 description: 可进化的判别器。rubric 存成带版本的条目，按当前快照打分；修改走补丁、可回滚，由 anchor 集把关。
 kinds: [evidence, judge, evolvable]
 implements:

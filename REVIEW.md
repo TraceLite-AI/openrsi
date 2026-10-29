@@ -29,3 +29,11 @@
 | 组件 | 协议定义 13 类：env、agent、evidence、judge、attribution、evolvable、memory、skill、proposer、algorithm、gate、guard、lineage。官方实现 11 个：evidence-judge、evolving-judge、memory、prompt、skills、rubric-evidence-attribution、lesson / claude / rubric-auditor / composite 提案器、greedy / archive 算法、holdout-gate、policy-guard、lineage。env 和 agent 没有官方实现，由用户提供（示例里有） |
 | 可自进化 | memory（MemoryEvolvable）、prompt（PromptEvolvable）、skill 代码（SkillLibrary）、判别器的 rubric（EvolvingJudge）。都基于 SDK 的 ItemStore：补丁、快照树、回滚。可以同时进化多个。模型权重还不能进化 |
 | 兼容其他 RSI | 所有组件都是 MCP server，任何支持 MCP 的框架都能调用。适配器：DSPy（判别器当 metric，含 GEPA 反馈）、LangGraph（消息转轨迹）。两者都只用假对象测过，没装真实的 dspy / langgraph 跑过。OpenEvolve、Letta、Mem0、TextGrad、Darwin Gödel Machine、verl 等只在项目文档里规划了，还没有代码 |
+
+## v0.4 基线（2026-10）
+
+| 问题 | 当时的答案 |
+|---|---|
+| 组件 | 协议仍是 13 类，新增可选工具 `rsi_algorithm_screen`。官方实现 13 个：在 v0.3 基础上加 harness（HarnessEvolvable + HarnessAgent，第一个官方 agent）和 weights（WeightsEvolvable，在 verl 适配器里）。算法从 2 种增加到 6 种：greedy、archive、pareto、shinka、islands、map-elites。gate 增加逐题不回退。env 仍没有官方实现 |
+| 可自进化 | memory、prompt、skill 代码、判别器 rubric（都基于 ItemStore），加上 agent 代码仓库 harness（git 提交为快照，write / delete / diff 补丁，可改范围和受保护路径）和模型权重（checkpoint 为快照，一次训练为补丁，调用外部训练命令）。护栏能检查文件型补丁的受保护路径 |
+| 兼容其他 RSI | MCP 通用。verl：判别器当 compute_score 奖励函数、RL / SFT 数据导出（拒绝非 train 数据）、权重可进化体；没用真实 verl 训练跑过。RSIHub：三个算子脚本（validate / gate / select）、归档导入；按 RSIHub 源码写，用接口替身测过，没在真实 RSIHub 里跑过。DSPy、LangGraph 同 v0.3，只用假对象测过 |
