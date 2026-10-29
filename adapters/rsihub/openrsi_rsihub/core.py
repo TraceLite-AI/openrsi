@@ -47,24 +47,41 @@ def task_scores(row: dict[str, Any]) -> dict[str, float]:
 
 def gate_decide(child: dict[str, Any], parent: dict[str, Any] | None, *, max_task_regressions: int | None = 0,
                 task_tolerance: float = 0.0, min_gain: float = 0.0, allow_equal: bool = False,
-                ) -> tuple[bool, str]:
-    """用 OpenRSI 的 HoldoutGate 判定：总分提升，且逐题回退不超过上限（Self-Harness / AHE 的不回退准入）。"""
+                require_task_scores: bool = False) -> tuple[bool, str]:
+    """用 OpenRSI 的 HoldoutGate 判定：总分提升，且逐题回退不超过上限（Self-Harness / AHE 的不回退准入）。
+
+    和 RSIHub 的 parent_eligible 一样，先要求这次评估是完整、可作父代的（有这两个字段时）。
+    拿不到可比的逐题分数时（父代分数是按任务集哈希另找的、或没有 task_vector），默认退回只比总分，
+    require_task_scores=True 时直接拒绝。
+    """
     from openrsi_gate import HoldoutGate
 
+    outcome = child.get("outcome")
+    if outcome is not None and outcome != "benchmark_complete":
+        return False, f"评估不完整：{outcome}"
+    if child.get("selection_eligible") is False:
+        return False, "评估不可作父代（selection_eligible=false）"
     if parent is None or not _num(parent.get("score")):
-        return False, "父代没有分数"
+        return False, "父代没有同一任务集上的分数"
     if not _num(child.get("score")):
         return False, "候选没有分数"
     ch, ph = child.get("task_set_hash"), parent.get("task_set_hash")
-    if ch and ph and ch != ph:
-        return False, f"任务集不同（{ch} vs {ph}），不能逐题比较"
+    if ch and ph and ch != ph and not parent.get("_matched_from_evals"):
+        return False, f"任务集不同（{ch} vs {ph}），不能比较"
+    child_tasks, parent_tasks = task_scores(child), task_scores(parent)
+    comparable = bool(child_tasks and parent_tasks) and not parent.get("_matched_from_evals")
+    if not comparable and require_task_scores:
+        return False, "缺少可比的逐题分数"
     gate = HoldoutGate(min_gain=-1e-12 if allow_equal and min_gain == 0 else min_gain,
-                       max_task_regressions=max_task_regressions, task_tolerance=task_tolerance)
+                       max_task_regressions=max_task_regressions if comparable else None,
+                       task_tolerance=task_tolerance)
     d = gate.check(GateRequest(candidate_id=str(child.get("genid")),
                                baseline={"holdout": float(parent["score"])},
                                candidate={"holdout": float(child["score"])},
-                               baseline_tasks=task_scores(parent), candidate_tasks=task_scores(child)))
-    return d.accepted, "; ".join(f"{c.name}: {c.detail}" for c in d.checks) or d.reason
+                               baseline_tasks=parent_tasks if comparable else {},
+                               candidate_tasks=child_tasks if comparable else {}))
+    reason = "; ".join(f"{c.name}: {c.detail}" for c in d.checks) or d.reason
+    return d.accepted, reason + ("" if comparable else "（没有可比的逐题分数，只比总分）")
 
 
 # ---------------------------------------------------------------- select
@@ -133,9 +150,27 @@ def checkout_ops(checkout: Path, max_bytes: int = 200_000) -> list[dict[str, Any
     return ops
 
 
+def compile_check(checkout: Path, globs: list[str]) -> list[str]:
+    """对匹配的 Python 文件做语法编译（和 RSIHub hyperagents 的 validate 一样），返回出错的文件和原因。"""
+    problems = []
+    for pattern in globs:
+        for f in sorted(Path(checkout).glob(pattern)):
+            if not f.is_file():
+                continue
+            try:
+                compile(f.read_bytes(), str(f), "exec")
+            except (SyntaxError, ValueError) as e:
+                problems.append(f"{f.relative_to(checkout)}: {e}")
+    return problems
+
+
 def guard_checkout(checkout: Path, *, protected_paths: list[str] | None = None, check_code: bool = False,
-                   max_removals: int = 50) -> tuple[bool, str, list[dict[str, Any]]]:
-    """用 OpenRSI 的 PolicyGuard 检查候选改动：受保护路径、密钥、提示注入、可选的代码检查。"""
+                   max_removals: int = 50, compile_globs: list[str] | None = None,
+                   ) -> tuple[bool, str, list[dict[str, Any]]]:
+    """用 OpenRSI 的 PolicyGuard 检查候选改动：受保护路径、密钥、提示注入、可选的代码检查。
+
+    compile_globs 给出时，还要求匹配的 Python 文件都能编译（如 ["target/**/*.py", "operators/**/*.py"]）。
+    """
     from openrsi_guard import PolicyGuard
 
     ops = checkout_ops(checkout)
@@ -145,11 +180,13 @@ def guard_checkout(checkout: Path, *, protected_paths: list[str] | None = None, 
                         check_harness_code=check_code, max_ops=max(1000, len(ops)), max_removals=max_removals)
     report = guard.inspect(Patch(target="harness", ops=ops))
     findings = [f.model_dump(mode="json") for f in report.findings]
-    blocks = [f for f in report.findings if f.severity == "block"]
-    if blocks:
-        return False, "; ".join(f"{f.rule}: {f.message}"
-                                + (f"（{f.item_id}）" if f.item_id and f.item_id not in f.message else "")
-                                for f in blocks)[:800], findings
+    reasons = [f"{f.rule}: {f.message}" + (f"（{f.item_id}）" if f.item_id and f.item_id not in f.message else "")
+               for f in report.findings if f.severity == "block"]
+    for problem in compile_check(checkout, compile_globs or []):
+        findings.append({"rule": "compile", "severity": "block", "message": problem})
+        reasons.append(f"compile: {problem}")
+    if reasons:
+        return False, "; ".join(reasons)[:800], findings
     warns = [f.rule for f in report.findings if f.severity == "warn"]
     return True, f"{len(ops)} 个文件改动通过检查" + (f"（警告：{', '.join(warns)}）" if warns else ""), findings
 

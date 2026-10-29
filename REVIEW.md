@@ -37,3 +37,9 @@
 | 组件 | 协议仍是 13 类，新增可选工具 `rsi_algorithm_screen`。官方实现 13 个：在 v0.3 基础上加 harness（HarnessEvolvable + HarnessAgent，第一个官方 agent）和 weights（WeightsEvolvable，在 verl 适配器里）。算法从 2 种增加到 6 种：greedy、archive、pareto、shinka、islands、map-elites。gate 增加逐题不回退。env 仍没有官方实现 |
 | 可自进化 | memory、prompt、skill 代码、判别器 rubric（都基于 ItemStore），加上 agent 代码仓库 harness（git 提交为快照，write / delete / diff 补丁，可改范围和受保护路径）和模型权重（checkpoint 为快照，一次训练为补丁，调用外部训练命令）。护栏能检查文件型补丁的受保护路径 |
 | 兼容其他 RSI | MCP 通用。verl：判别器当 compute_score 奖励函数、RL / SFT 数据导出（拒绝非 train 数据）、权重可进化体；没用真实 verl 训练跑过。RSIHub：三个算子脚本（validate / gate / select）、归档导入；按 RSIHub 源码写，用接口替身测过，没在真实 RSIHub 里跑过。DSPy、LangGraph 同 v0.3，只用假对象测过 |
+
+### v0.4 之后的变化
+
+- verl 适配器：`tasks_to_rl_rows(for_validation=True)` 导出验证集并拒绝 train 题；只有 `expected` 的参考答案直接导出值（verl 自带奖励能读）；`WeightsEvolvable(model_glob=...)` 在 `global_step_N` 子目录里找模型
+- RSIHub 适配器：准入先检查评估完整、可作父代（同 `parent_eligible`），拿不到可比的逐题分数时退回只比总分；护栏校验可要求 Python 文件能编译（`compile_globs`，和 hyperagents validate 一样）
+- `field_tests/`：在真实 verl、RSIHub 上跑的现场测试；`benchmarks/rsihub_parity/`：用 RSIHub 评测器做的对照实验（Terminal-Bench 2 × MiniSWE × Hyperagents，baseline 对比换上 OpenRSI 的 validate 和 gate）。两者都还没有在真实环境跑过
