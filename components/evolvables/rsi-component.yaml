@@ -1,6 +1,6 @@
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: openrsi/skills
-version: 0.3.0
+version: 0.4.0
 description: skill 库。条目是 Python 函数（data.code），在独立子进程里执行，有 CPU、内存和超时限制。
 kinds: [evolvable, skill]
 implements:

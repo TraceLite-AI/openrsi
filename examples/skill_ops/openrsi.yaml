@@ -3,7 +3,7 @@
 #
 #   openrsi run examples/skill_ops/openrsi.yaml
 
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: skill-ops
 plugins: [skill_ops]
 

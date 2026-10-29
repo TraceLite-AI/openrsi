@@ -4,7 +4,7 @@
 #   openrsi run examples/secret_ops/openrsi.yaml
 #   openrsi log examples/secret_ops/openrsi.yaml
 
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: secret-ops
 plugins: [secret_ops]
 

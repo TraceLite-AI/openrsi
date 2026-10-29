@@ -1,6 +1,6 @@
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: openrsi/prompt
-version: 0.3.0
+version: 0.4.0
 description: prompt 库。条目是 agent 指令的段落，render() 按顺序拼成完整 prompt。
 kinds: [evolvable]
 implements:

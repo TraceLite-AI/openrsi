@@ -2,7 +2,7 @@
 
 组件式的 agent 自我改进（RSI）框架和开放协议。自我改进的每个环节都是一个独立的 MCP server，任何框架都能单独拿去用，也能用一份 `openrsi.yaml` 把它们接成完整的循环。
 
-当前版本 0.3：协议覆盖 13 类组件，提供 11 个官方组件、一个参考运行时、一致性测试，以及 DSPy 和 LangGraph 适配器。memory、prompt、skill（可执行代码）和判别器本身都能进化；补丁生效前有护栏检查；判别器的修改由人工标注集把关。
+当前版本 0.4：协议覆盖 13 类组件，提供 13 个官方组件、6 种进化算法（含 GEPA 式 Pareto、ShinkaEvolve、AlphaEvolve 式岛屿、MAP-Elites）、一个参考运行时、一致性测试，以及 verl、RSIHub、DSPy、LangGraph 适配器。memory、prompt、skill（可执行代码）、agent 自己的代码（harness）、模型权重和判别器本身都能进化；补丁生效前有护栏检查；准入可以要求逐题不回退；判别器的修改由人工标注集把关。
 
 ## 自我改进循环
 
@@ -12,7 +12,7 @@
   agent 在 train 题上做题 ──► 取证 ──► 判别 ──► 归因    │
                                                 │      │
                                                 ▼      │
-                       提案器提出补丁（memory / prompt / skill）│
+          提案器提出补丁（memory / prompt / skill / harness / 权重）│
                                                 │      │
                                           护栏检查补丁内容  │
                                                 │      │
@@ -35,13 +35,16 @@ components/
   guard/                  护栏：拦危险代码、受保护条目、泄露的密钥、教 agent 绕过评估的内容
   attribution/            沿判决引用的证据追责到轨迹步骤和 memory 条目
   proposer/               教训提案器（无需 LLM）、Claude 提案器、判别器漏判审计、组合提案器
-  algorithm/              贪心 / 档案式开放进化
-  gate/                   holdout 准入，可选显著性检验、anchor、成本上限
+  harness/                agent 代码仓库作为可进化体（git 快照、可改范围、受保护路径），子进程运行 agent
+  algorithm/              6 种进化算法：greedy、archive、pareto、shinka、islands、map-elites
+  gate/                   holdout 准入，可选显著性检验、anchor、成本上限、逐题不回退
   lineage/                谱系，被拒绝的候选也留档
+adapters/verl/            判别器当 verl 奖励函数、导出 RL / SFT 数据、模型权重作为可进化体
+adapters/rsihub/          OpenRSI 组件装成 RSIHub 算子（护栏 validate、不回退 gate、Shinka select）
 adapters/dspy/            判别器当 DSPy metric 用（含 GEPA 反馈）
 adapters/langgraph/       LangGraph 状态转轨迹再判别
 examples/                 能直接跑的例子
-tests/                    97 个测试
+tests/                    135 个测试
 ```
 
 ## 快速开始：跑一个完整循环
@@ -49,7 +52,7 @@ tests/                    97 个测试
 ```bash
 pip install -e sdk/python -e runtime -e components/judge -e components/memory -e components/attribution \
             -e components/proposer -e components/algorithm -e components/gate -e components/lineage \
-            -e components/evolvables -e components/guard
+            -e components/evolvables -e components/guard -e components/harness
 cd examples/secret_ops
 openrsi run                    # 跑到停为止；中断后再运行会从谱系接着跑
 openrsi log                    # 查看谱系
@@ -101,6 +104,62 @@ openrsi log                    # 查看谱系
 
 几条保证：判别器的修改只看 anchor，不看 holdout，所以把判别器改宽松来刷分的补丁会被拒绝（有测试覆盖）；agent 和判别器轮流进化；判别器的 rubric 不会出现在 agent 的上下文里。
 
+## 进化 agent 自己的代码（harness）
+
+```bash
+cd examples/harness_ops && openrsi run
+```
+
+`HarnessEvolvable` 把 agent 的代码仓库当可进化体：每个快照是一个 git 提交，补丁是文件的写入、删除或统一 diff，回滚是切换提交。`mutable` 限定可改范围，`protected` 列出任何时候都不能改的路径。`HarnessAgent` 在子进程里运行仓库里的 agent（stdin 收题目 JSON，stdout 回轨迹 JSON），也可以放进 Docker。
+
+例子里提案器直接改 `agent/strategy.py`；第 1 代有一个候选顺手改了 `eval/score.py`，护栏按 `protected_path` 拦下，从未生效。之后 holdout 到 1.0。
+
+## 进化算法
+
+| `--kind` / 类 | 来源 | 做法 |
+|---|---|---|
+| `greedy` / `GreedyAlgorithm` | 爬山 | 总从最好的版本出发 |
+| `archive` / `ArchiveAlgorithm` | Darwin Gödel Machine | 保留全部被接受的版本，按分数和子代数加权抽样 |
+| `pareto` / `ParetoAlgorithm` | GEPA、Meta-Harness | 按题前沿：在任何一道题上最好的版本都留着，被支配的去掉 |
+| `shinka` / `ShinkaAlgorithm` | ShinkaEvolve | sigmoid 父代选择、评估前的新颖度筛查（`rsi_algorithm_screen`）、UCB 选提案器 |
+| `islands` / `IslandAlgorithm` | AlphaEvolve、FunSearch | 多个岛各自进化，定期把最好的版本迁移到下一个岛 |
+| `map-elites` / `MapElitesAlgorithm` | MAP-Elites | 按行为特征分格，每格留最好的，各格机会均等 |
+
+逐题不回退准入：`HoldoutGate(max_task_regressions=0)`，总分提升还不够，任何一道 holdout 题都不许变差（Self-Harness、AHE 的做法）。
+
+## 接入 verl：判别器当奖励、权重参与进化
+
+```yaml
+# verl 配置
+custom_reward_function:
+  path: <openrsi-verl reward-path 的输出>
+  name: compute_score
+```
+
+设置环境变量 `OPENRSI_JUDGE=judge.yaml`（`python: "openrsi_judge:EvidenceJudge"` 加 `with`）即可，判别器在进程内运行。也可以在自己的奖励文件里 `make_compute_score(judge)`。
+
+- `tasks_to_rl_rows(tasks, data_source)`：生成 verl 的 RL 数据行，标准答案只放在 `reward_model.ground_truth`；
+- `episodes_to_sft_rows(episodes)`：判别器判为通过的 train 轨迹转成 SFT 数据（拒绝采样式自我蒸馏）；
+- 两者遇到非 train 划分的数据都会报错，评估集不会漏进训练；
+- `WeightsEvolvable`：快照是 checkpoint，补丁是一次训练，按模板调用外部训练命令（比如 verl 的 SFT / GRPO 入口）；`DistillProposer` 自动提出"用通过的轨迹做一次 SFT"。
+
+没有用真实的 verl 训练跑过（这个环境没有 GPU），训练命令的参数名请以你装的 verl 版本为准。
+
+## 接入 RSIHub
+
+```bash
+pip install openrsi-rsihub          # 最好装进 RSIHub 自己的 venv
+openrsi-rsihub install /path/to/RSIHub
+```
+
+会在 RSIHub 的 `library/` 下生成三个算子，在配方里像内置算子一样引用：
+
+- `validate/openrsi_guard`：PolicyGuard 检查候选改动，默认保护 `evaluator/**` 和 `operators/**`，可选 Python 代码检查；
+- `gate/openrsi_no_regression`：总分提升且逐题不回退，逐题分数按 RSIHub 自己的 task_vector 规则计算；
+- `select/openrsi_shinka`：ShinkaEvolve 式父代选择。
+
+`openrsi-rsihub import-archive archive.jsonl --lineage lineage.jsonl` 把 RSIHub 的归档转成 OpenRSI 谱系。算子是按 RSIHub 源码（`evolve.frozen` 接口）写的，测试用接口替身验证了调用约定，但还没在真实的 RSIHub 运行里跑过。
+
 ## 反事实归因
 
 `loop.counterfactual_reruns: N` 时，每代最多重跑 N 次：把某条 memory 从上下文里拿掉、重做同一道题，用分数差判断它是有用还是有害。结果和普通归因一起交给提案器，`LessonProposer` 据此删掉有害条目。
@@ -110,7 +169,7 @@ openrsi log                    # 查看谱系
 每个位置三种来源任选，可以混用：
 
 ```yaml
-protocol: openrsi/0.3
+protocol: openrsi/0.4
 name: my-experiment
 plugins: [my_components]              # 相对本文件目录的 Python 模块
 components:
@@ -201,4 +260,4 @@ python -m openrsi.export_spec spec           # 改了数据格式后重新生成
 
 ## 下一步
 
-TypeScript SDK；OpenEvolve、Letta、OpenAI Agents SDK 适配器；用真实 LLM agent 和公开基准（如 TraceTrial-Bench）跑通完整循环。
+在真实的 verl 和 RSIHub 上跑通并修正适配器；TypeScript SDK；OpenEvolve、Letta、OpenAI Agents SDK 适配器；用真实 LLM agent 和公开基准跑通完整循环。

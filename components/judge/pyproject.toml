@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-judge"
-version = "0.3.0"
+version = "0.4.0"
 description = "Evidence-based rubric judge for agent self-improvement, served over MCP"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.3,<0.4"]
+dependencies = ["openrsi-sdk>=0.4,<0.5"]
 
 [project.optional-dependencies]
 llm = ["anthropic>=2.3"]

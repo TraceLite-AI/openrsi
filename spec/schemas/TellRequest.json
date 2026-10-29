@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.3/TellRequest.json",
+  "$id": "https://openrsi.dev/schemas/0.4/TellRequest.json",
   "additionalProperties": true,
   "properties": {
     "generation": {
@@ -41,6 +41,27 @@
       },
       "title": "Metrics",
       "type": "object"
+    },
+    "task_scores": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "候选在每道 holdout 题上的分数（0.4）",
+      "title": "Task Scores",
+      "type": "object"
+    },
+    "proposer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "产生这个候选的提案器（0.4）",
+      "title": "Proposer"
     }
   },
   "required": [

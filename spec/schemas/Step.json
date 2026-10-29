@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.3/Step.json",
+  "$id": "https://openrsi.dev/schemas/0.4/Step.json",
   "additionalProperties": true,
   "description": "轨迹里的一步。tool_call 和 tool_result 通过 call_id 配对。",
   "properties": {

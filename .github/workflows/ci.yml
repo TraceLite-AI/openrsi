@@ -26,8 +26,8 @@ jobs:
           pip install -e sdk/python -e runtime \
             -e components/judge -e components/memory -e components/attribution -e components/proposer \
             -e components/algorithm -e components/gate -e components/lineage \
-            -e components/evolvables -e components/guard \
-            -e adapters/dspy -e adapters/langgraph pytest ruff
+            -e components/evolvables -e components/guard -e components/harness \
+            -e adapters/dspy -e adapters/langgraph -e adapters/verl -e adapters/rsihub pytest ruff
       - name: Lint
         run: ruff check .
       - name: Test
@@ -51,3 +51,13 @@ jobs:
         run: |
           openrsi run
           openrsi best | grep -q '"progress": 3.0'
+      - name: End-to-end example (harness evolution + protected paths)
+        working-directory: examples/harness_ops
+        run: |
+          openrsi run
+          openrsi log | grep -q "protected_path"
+          openrsi best | grep -q '"holdout": 1.0'
+      - name: Adapter CLIs
+        run: |
+          openrsi-verl reward-path
+          openrsi-rsihub --help

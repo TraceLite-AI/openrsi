@@ -24,7 +24,7 @@ def _tokens(text: str) -> list[str]:
 
 class MemoryEvolvable(ItemStore, Memory):
     name = "openrsi/memory"
-    version = "0.3.0"
+    version = "0.4.0"
     evolvable_type = "memory"
 
     def __init__(self, target: str = "memory", path: str | Path | None = None):
