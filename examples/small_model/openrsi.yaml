@@ -4,9 +4,11 @@
 #   openrsi run examples/small_model/openrsi.yaml
 #
 # 每一代由 Shinka 的 UCB 在两个提案器里选一个：
-#   prompt   被进化的小模型自己读错题、改写系统提示（PromptRewriter）
+#   prompt   读错题、改写系统提示（PromptRewriter）。0.5B 自己改写效果很差（会把题目抄进提示），
+#            建议把它的 base_url / model 指向更强的模型；被进化的仍然是小模型
 #   weights  把判别器判为通过的 train 轨迹拿去 SFT（DistillProposer + train_sft.py），拒绝采样式自我蒸馏
 # 权重变了，ChatAgent 会用新 checkpoint 重启 vLLM。
+# 起点的系统提示已经要求按 "#### 数字" 作答（initial），否则一开始没有答对的轨迹，权重进化无从开始。
 protocol: openrsi/0.4
 name: small-model-gsm8k
 plugins: [gsm8k_env]
@@ -42,7 +44,12 @@ components:
   lineage:  {python: "openrsi_lineage:LineageStore", with: {path: .openrsi/lineage.jsonl}}
 
 evolvables:
-  prompt:   {python: "openrsi_evolvables:PromptEvolvable", with: {path: .openrsi/prompt}}
+  prompt:
+    python: "openrsi_evolvables:PromptEvolvable"
+    with:
+      path: .openrsi/prompt
+      initial:
+        - {id: instructions, text: "Solve the math problem step by step. On the last line, write the final answer as '#### <number>'."}
   weights:
     python: "openrsi_verl:WeightsEvolvable"
     with:

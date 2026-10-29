@@ -196,3 +196,16 @@ def test_jsonl_with_unicode_line_separators(tmp_path):
                               metrics={"holdout": 1.0}, patch=Patch(target="prompt", ops=[{"op": "add", "item": {
                                   "id": "instructions", "kind": "prompt", "text": q}}])))
     assert [e.id for e in LineageStore(tmp_path / "lineage.jsonl").log()] == ["root", "c1"]
+
+
+def test_prompt_initial_and_copy_filter(tmp_path):
+    from openrsi_evolvables import PromptEvolvable
+    from openrsi_llm import _copies
+
+    p = PromptEvolvable(path=tmp_path / "p", initial=[{"id": "instructions", "text": "Answer after ####."}])
+    assert p.render() == "Answer after ####." and p.snapshot().id != "snap_root"
+    again = PromptEvolvable(path=tmp_path / "p", initial=[{"id": "instructions", "text": "other"}])
+    assert again.render() == "Answer after ####."  # 已有存储时不覆盖
+    q = "There are several birds in the crape myrtle tree. Three times more cardinals than bluebirds."
+    assert _copies("System prompt:\n\nThere are several birds in the crape myrtle tree.  Three times more", q)
+    assert not _copies("Solve step by step and end with #### <number>.", q)

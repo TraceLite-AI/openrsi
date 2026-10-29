@@ -178,6 +178,15 @@ REWRITE_SYSTEM = (
     "Reply with the new system prompt only.")
 
 
+def _copies(text: str, problem: str, span: int = 60) -> bool:
+    """text 里是否原样出现了 problem 中一段不短于 span 个字符的内容。"""
+    problem = " ".join(problem.split())
+    flat = " ".join(text.split())
+    if len(problem) <= span:
+        return len(problem) >= 20 and problem in flat
+    return any(problem[i:i + span] in flat for i in range(0, len(problem) - span + 1, span // 2))
+
+
 class PromptRewriter(Proposer):
     """with: base_url、model（可以就是被进化的那个小模型，也可以换成更强的）、item_id（默认 instructions）、
     max_examples（给 LLM 看几道错题）、max_chars、temperature、api_key_env"""
@@ -219,6 +228,8 @@ class PromptRewriter(Proposer):
         text = out["text"].strip().strip("`").strip()
         if not text or len(text) > self.max_chars or text == current:
             return []
+        if any(_copies(text, task_text(ep.task)) for ep in failed):
+            return []  # 把错题原文抄进了系统提示：小模型常见的失败，丢掉
         op = "replace" if self.item_id in items else "add"
         item = Item(id=self.item_id, kind="prompt", text=text, data={"order": 0})
         return [Patch(target=target.target, base_snapshot=request.parent_snapshot,
