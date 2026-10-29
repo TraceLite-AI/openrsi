@@ -1,0 +1,5 @@
+line-length = 130
+
+[lint]
+select = ["E", "F", "W", "B"]
+ignore = ["B905"]  # zip 两边长度本来就可能不同（如二元组切分）

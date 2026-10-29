@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/AnchorExample.json",
+  "$defs": {
+    "Evidence": {
+      "additionalProperties": true,
+      "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "content": {
+          "default": null,
+          "title": "Content"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "collected_at": {
+          "title": "Collected At",
+          "type": "string"
+        },
+        "collector": {
+          "title": "Collector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "sha256",
+        "source",
+        "collected_at",
+        "collector"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": true,
+      "description": "轨迹里的一步。tool_call 和 tool_result 通过 call_id 配对。",
+      "properties": {
+        "type": {
+          "enum": [
+            "message",
+            "tool_call",
+            "tool_result",
+            "observation"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "content": {
+          "default": null,
+          "title": "Content"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arguments"
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call Id"
+        },
+        "is_error": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Error"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "Task": {
+      "additionalProperties": true,
+      "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "input": {
+          "default": null,
+          "title": "Input"
+        },
+        "split": {
+          "default": "train",
+          "enum": [
+            "train",
+            "holdout",
+            "anchor",
+            "final"
+          ],
+          "title": "Split",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "env_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Env Ref"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "Trajectory": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "output": {
+          "default": null,
+          "title": "Output"
+        },
+        "used_items": {
+          "description": "本次用到的 memory 条目 id",
+          "items": {
+            "type": "string"
+          },
+          "title": "Used Items",
+          "type": "array"
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "跑在哪个快照上",
+          "title": "Snapshot Id"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "task_id"
+      ],
+      "title": "Trajectory",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "人工标注的样本，用来校准判别器。",
+  "properties": {
+    "task": {
+      "$ref": "#/$defs/Task"
+    },
+    "trajectory": {
+      "$ref": "#/$defs/Trajectory"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "label_passed": {
+      "title": "Label Passed",
+      "type": "boolean"
+    },
+    "label_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label Score"
+    }
+  },
+  "required": [
+    "task",
+    "trajectory",
+    "label_passed"
+  ],
+  "title": "AnchorExample",
+  "type": "object"
+}

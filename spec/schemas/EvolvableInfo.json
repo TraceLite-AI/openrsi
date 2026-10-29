@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/EvolvableInfo.json",
+  "additionalProperties": true,
+  "properties": {
+    "target": {
+      "title": "Target",
+      "type": "string"
+    },
+    "type": {
+      "title": "Type",
+      "type": "string"
+    },
+    "head": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Head"
+    },
+    "surfaces": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Surfaces",
+      "type": "array"
+    },
+    "size": {
+      "default": 0,
+      "title": "Size",
+      "type": "integer"
+    },
+    "example_ops": {
+      "description": "一组无害的示例 ops，一致性测试用它验证 apply/rollback",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Example Ops",
+      "type": "array"
+    }
+  },
+  "required": [
+    "target",
+    "type",
+    "head"
+  ],
+  "title": "EvolvableInfo",
+  "type": "object"
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.1/Attribution.json",
+  "$defs": {
+    "AttributionTarget": {
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "enum": [
+            "step",
+            "item",
+            "component",
+            "patch"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "ref",
+        "weight"
+      ],
+      "title": "AttributionTarget",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "episode_id": {
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/AttributionTarget"
+      },
+      "title": "Targets",
+      "type": "array"
+    },
+    "method": {
+      "title": "Method",
+      "type": "string"
+    },
+    "rationale": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rationale"
+    }
+  },
+  "required": [
+    "episode_id",
+    "targets",
+    "method"
+  ],
+  "title": "Attribution",
+  "type": "object"
+}

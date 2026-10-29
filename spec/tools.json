@@ -1,0 +1,1897 @@
+{
+  "protocol": "openrsi/0.1",
+  "tools": [
+    {
+      "name": "rsi_component_info",
+      "kind": "component",
+      "required": true,
+      "description": "报告组件名、版本、协议版本和实现的组件类型。",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "title": "infoArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "protocol": {
+            "default": "openrsi/0.1",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "kinds",
+          "tools"
+        ],
+        "title": "ComponentInfo",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evidence_collect",
+      "kind": "evidence",
+      "required": true,
+      "description": "从任务和轨迹中收集可核验的证据。",
+      "input_schema": {
+        "type": "object",
+        "$defs": {
+          "Step": {
+            "additionalProperties": true,
+            "description": "轨迹里的一步。tool_call 和 tool_result 通过 call_id 配对。",
+            "properties": {
+              "type": {
+                "enum": [
+                  "message",
+                  "tool_call",
+                  "tool_result",
+                  "observation"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Role"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Name"
+              },
+              "arguments": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Arguments"
+              },
+              "call_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Call Id"
+              },
+              "is_error": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Is Error"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "Step",
+            "type": "object"
+          },
+          "Task": {
+            "additionalProperties": true,
+            "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "input": {
+                "default": null,
+                "title": "Input"
+              },
+              "split": {
+                "default": "train",
+                "enum": [
+                  "train",
+                  "holdout",
+                  "anchor",
+                  "final"
+                ],
+                "title": "Split",
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Tags",
+                "type": "array"
+              },
+              "env_ref": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Env Ref"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "title": "Task",
+            "type": "object"
+          },
+          "Trajectory": {
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "task_id": {
+                "title": "Task Id",
+                "type": "string"
+              },
+              "steps": {
+                "items": {
+                  "$ref": "#/$defs/Step"
+                },
+                "title": "Steps",
+                "type": "array"
+              },
+              "output": {
+                "default": null,
+                "title": "Output"
+              },
+              "used_items": {
+                "description": "本次用到的 memory 条目 id",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Used Items",
+                "type": "array"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "跑在哪个快照上",
+                "title": "Snapshot Id"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "task_id"
+            ],
+            "title": "Trajectory",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "task": {
+            "$ref": "#/$defs/Task"
+          },
+          "trajectory": {
+            "$ref": "#/$defs/Trajectory"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec"
+          }
+        },
+        "required": [
+          "task",
+          "trajectory"
+        ],
+        "title": "collectArguments"
+      },
+      "output_schema": {
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": true,
+            "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "uri": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Uri"
+              },
+              "sha256": {
+                "title": "Sha256",
+                "type": "string"
+              },
+              "source": {
+                "title": "Source",
+                "type": "string"
+              },
+              "collected_at": {
+                "title": "Collected At",
+                "type": "string"
+              },
+              "collector": {
+                "title": "Collector",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "sha256",
+              "source",
+              "collected_at",
+              "collector"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/$defs/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "title": "EvidenceBundle",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evidence_verify",
+      "kind": "evidence",
+      "required": true,
+      "description": "复核一条证据的内容和哈希是否一致。",
+      "input_schema": {
+        "type": "object",
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": true,
+            "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "uri": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Uri"
+              },
+              "sha256": {
+                "title": "Sha256",
+                "type": "string"
+              },
+              "source": {
+                "title": "Source",
+                "type": "string"
+              },
+              "collected_at": {
+                "title": "Collected At",
+                "type": "string"
+              },
+              "collector": {
+                "title": "Collector",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "sha256",
+              "source",
+              "collected_at",
+              "collector"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "evidence": {
+            "$ref": "#/$defs/Evidence"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "verifyArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "VerifyResult",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evolvable_apply",
+      "kind": "evolvable",
+      "required": true,
+      "description": "应用一个补丁，生成新快照并设为当前。",
+      "input_schema": {
+        "type": "object",
+        "$defs": {
+          "Patch": {
+            "additionalProperties": true,
+            "description": "对一个可进化体的修改。ops 的格式由可进化体的类型决定（memory 见 MemoryOp）。",
+            "properties": {
+              "target": {
+                "title": "Target",
+                "type": "string"
+              },
+              "ops": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Ops",
+                "type": "array"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "base_snapshot": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "期望的当前快照；不一致则拒绝，防止覆盖别人的修改",
+                "title": "Base Snapshot"
+              },
+              "rationale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Rationale"
+              },
+              "proposer_ref": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Proposer Ref"
+              }
+            },
+            "required": [
+              "target",
+              "ops"
+            ],
+            "title": "Patch",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "patch": {
+            "$ref": "#/$defs/Patch"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "title": "applyArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "parent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          },
+          "patch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Id"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Metrics",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "content_hash",
+          "created_at"
+        ],
+        "title": "Snapshot",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evolvable_describe",
+      "kind": "evolvable",
+      "required": true,
+      "description": "描述可进化体：类型、当前快照、可进化的部分。",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "title": "describeArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "surfaces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Surfaces",
+            "type": "array"
+          },
+          "size": {
+            "default": 0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "example_ops": {
+            "description": "一组无害的示例 ops，一致性测试用它验证 apply/rollback",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Example Ops",
+            "type": "array"
+          }
+        },
+        "required": [
+          "target",
+          "type",
+          "head"
+        ],
+        "title": "EvolvableInfo",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evolvable_diff",
+      "kind": "evolvable",
+      "required": true,
+      "description": "计算两个快照之间的差异。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "from_id": {
+            "title": "From Id",
+            "type": "string"
+          },
+          "to_id": {
+            "title": "To Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_id",
+          "to_id"
+        ],
+        "title": "diffArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "from_id": {
+            "title": "From Id",
+            "type": "string"
+          },
+          "to_id": {
+            "title": "To Id",
+            "type": "string"
+          },
+          "ops": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Ops",
+            "type": "array"
+          }
+        },
+        "required": [
+          "from_id",
+          "to_id"
+        ],
+        "title": "Diff",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evolvable_rollback",
+      "kind": "evolvable",
+      "required": true,
+      "description": "把当前快照切回指定快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id"
+        ],
+        "title": "rollbackArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "parent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          },
+          "patch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Id"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Metrics",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "content_hash",
+          "created_at"
+        ],
+        "title": "Snapshot",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_evolvable_snapshot",
+      "kind": "evolvable",
+      "required": true,
+      "description": "返回当前快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "title": "snapshotArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "parent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          },
+          "patch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Id"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Metrics",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "content_hash",
+          "created_at"
+        ],
+        "title": "Snapshot",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_judge_calibrate",
+      "kind": "judge",
+      "required": false,
+      "description": "在人工标注的 anchor 集上计算与人工判断的一致率。",
+      "input_schema": {
+        "type": "object",
+        "$defs": {
+          "AnchorExample": {
+            "additionalProperties": true,
+            "description": "人工标注的样本，用来校准判别器。",
+            "properties": {
+              "task": {
+                "$ref": "#/$defs/Task"
+              },
+              "trajectory": {
+                "$ref": "#/$defs/Trajectory"
+              },
+              "evidence": {
+                "items": {
+                  "$ref": "#/$defs/Evidence"
+                },
+                "title": "Evidence",
+                "type": "array"
+              },
+              "label_passed": {
+                "title": "Label Passed",
+                "type": "boolean"
+              },
+              "label_score": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Label Score"
+              }
+            },
+            "required": [
+              "task",
+              "trajectory",
+              "label_passed"
+            ],
+            "title": "AnchorExample",
+            "type": "object"
+          },
+          "Evidence": {
+            "additionalProperties": true,
+            "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "uri": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Uri"
+              },
+              "sha256": {
+                "title": "Sha256",
+                "type": "string"
+              },
+              "source": {
+                "title": "Source",
+                "type": "string"
+              },
+              "collected_at": {
+                "title": "Collected At",
+                "type": "string"
+              },
+              "collector": {
+                "title": "Collector",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "sha256",
+              "source",
+              "collected_at",
+              "collector"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          },
+          "Step": {
+            "additionalProperties": true,
+            "description": "轨迹里的一步。tool_call 和 tool_result 通过 call_id 配对。",
+            "properties": {
+              "type": {
+                "enum": [
+                  "message",
+                  "tool_call",
+                  "tool_result",
+                  "observation"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Role"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Name"
+              },
+              "arguments": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Arguments"
+              },
+              "call_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Call Id"
+              },
+              "is_error": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Is Error"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "Step",
+            "type": "object"
+          },
+          "Task": {
+            "additionalProperties": true,
+            "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "input": {
+                "default": null,
+                "title": "Input"
+              },
+              "split": {
+                "default": "train",
+                "enum": [
+                  "train",
+                  "holdout",
+                  "anchor",
+                  "final"
+                ],
+                "title": "Split",
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Tags",
+                "type": "array"
+              },
+              "env_ref": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Env Ref"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "title": "Task",
+            "type": "object"
+          },
+          "Trajectory": {
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "task_id": {
+                "title": "Task Id",
+                "type": "string"
+              },
+              "steps": {
+                "items": {
+                  "$ref": "#/$defs/Step"
+                },
+                "title": "Steps",
+                "type": "array"
+              },
+              "output": {
+                "default": null,
+                "title": "Output"
+              },
+              "used_items": {
+                "description": "本次用到的 memory 条目 id",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Used Items",
+                "type": "array"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "跑在哪个快照上",
+                "title": "Snapshot Id"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "task_id"
+            ],
+            "title": "Trajectory",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "anchor": {
+            "items": {
+              "$ref": "#/$defs/AnchorExample"
+            },
+            "title": "Anchor",
+            "type": "array"
+          }
+        },
+        "required": [
+          "anchor"
+        ],
+        "title": "calibrateArguments"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "agreement": {
+            "title": "Agreement",
+            "type": "number"
+          },
+          "false_pass": {
+            "description": "人工判不通过、判别器判通过的数量",
+            "title": "False Pass",
+            "type": "integer"
+          },
+          "false_fail": {
+            "title": "False Fail",
+            "type": "integer"
+          },
+          "disagreements": {
+            "description": "判断不一致的 task id",
+            "items": {
+              "type": "string"
+            },
+            "title": "Disagreements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n",
+          "agreement",
+          "false_pass",
+          "false_fail"
+        ],
+        "title": "CalibrationReport",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_judge_evaluate",
+      "kind": "judge",
+      "required": true,
+      "description": "基于证据给出判决，每条结论引用证据。",
+      "input_schema": {
+        "type": "object",
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": true,
+            "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "uri": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Uri"
+              },
+              "sha256": {
+                "title": "Sha256",
+                "type": "string"
+              },
+              "source": {
+                "title": "Source",
+                "type": "string"
+              },
+              "collected_at": {
+                "title": "Collected At",
+                "type": "string"
+              },
+              "collector": {
+                "title": "Collector",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "sha256",
+              "source",
+              "collected_at",
+              "collector"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          },
+          "Step": {
+            "additionalProperties": true,
+            "description": "轨迹里的一步。tool_call 和 tool_result 通过 call_id 配对。",
+            "properties": {
+              "type": {
+                "enum": [
+                  "message",
+                  "tool_call",
+                  "tool_result",
+                  "observation"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Role"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Name"
+              },
+              "arguments": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Arguments"
+              },
+              "call_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Call Id"
+              },
+              "is_error": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Is Error"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "Step",
+            "type": "object"
+          },
+          "Task": {
+            "additionalProperties": true,
+            "description": "一道题。split 决定它能流向哪里：只有 train 的轨迹可以进入归因和提案。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "input": {
+                "default": null,
+                "title": "Input"
+              },
+              "split": {
+                "default": "train",
+                "enum": [
+                  "train",
+                  "holdout",
+                  "anchor",
+                  "final"
+                ],
+                "title": "Split",
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Tags",
+                "type": "array"
+              },
+              "env_ref": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Env Ref"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "title": "Task",
+            "type": "object"
+          },
+          "Trajectory": {
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "task_id": {
+                "title": "Task Id",
+                "type": "string"
+              },
+              "steps": {
+                "items": {
+                  "$ref": "#/$defs/Step"
+                },
+                "title": "Steps",
+                "type": "array"
+              },
+              "output": {
+                "default": null,
+                "title": "Output"
+              },
+              "used_items": {
+                "description": "本次用到的 memory 条目 id",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Used Items",
+                "type": "array"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "跑在哪个快照上",
+                "title": "Snapshot Id"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "task_id"
+            ],
+            "title": "Trajectory",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "task": {
+            "$ref": "#/$defs/Task"
+          },
+          "trajectory": {
+            "$ref": "#/$defs/Trajectory"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/Evidence"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence"
+          }
+        },
+        "required": [
+          "task",
+          "trajectory"
+        ],
+        "title": "evaluateArguments"
+      },
+      "output_schema": {
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": true,
+            "description": "一条可独立复核的证据。sha256 是 content 的哈希，id 由类型、来源和哈希决定。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              },
+              "content": {
+                "default": null,
+                "title": "Content"
+              },
+              "uri": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Uri"
+              },
+              "sha256": {
+                "title": "Sha256",
+                "type": "string"
+              },
+              "source": {
+                "title": "Source",
+                "type": "string"
+              },
+              "collected_at": {
+                "title": "Collected At",
+                "type": "string"
+              },
+              "collector": {
+                "title": "Collector",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "sha256",
+              "source",
+              "collected_at",
+              "collector"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          },
+          "RubricResult": {
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "result": {
+                "enum": [
+                  "pass",
+                  "fail",
+                  "skip",
+                  "error"
+                ],
+                "title": "Result",
+                "type": "string"
+              },
+              "evidence_ids": {
+                "description": "这条结论引用的证据",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Evidence Ids",
+                "type": "array"
+              },
+              "weight": {
+                "default": 1.0,
+                "title": "Weight",
+                "type": "number"
+              },
+              "required": {
+                "default": false,
+                "title": "Required",
+                "type": "boolean"
+              },
+              "note": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Note"
+              }
+            },
+            "required": [
+              "id",
+              "result"
+            ],
+            "title": "RubricResult",
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "description": "判别结果。每条 rubric 结论必须引用证据：要么是调用方给的，要么在 collected 里。",
+        "properties": {
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/$defs/RubricResult"
+            },
+            "title": "Rubric",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Confidence"
+          },
+          "judge_ref": {
+            "title": "Judge Ref",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "description": "判别时实际采信的全部证据",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "collected": {
+            "description": "判别器自己补充收集的证据",
+            "items": {
+              "$ref": "#/$defs/Evidence"
+            },
+            "title": "Collected",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "score",
+          "passed",
+          "judge_ref"
+        ],
+        "title": "Verdict",
+        "type": "object"
+      }
+    },
+    {
+      "name": "rsi_memory_retrieve",
+      "kind": "memory",
+      "required": true,
+      "description": "按查询和标签检索 memory 条目。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tags"
+          },
+          "k": {
+            "default": 5,
+            "title": "K",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Snapshot Id"
+          }
+        },
+        "title": "retrieveArguments"
+      },
+      "output_schema": {
+        "$defs": {
+          "Item": {
+            "additionalProperties": true,
+            "description": "memory 里的一条记录。",
+            "properties": {
+              "id": {
+                "title": "Id",
+                "type": "string"
+              },
+              "text": {
+                "default": "",
+                "title": "Text",
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Tags",
+                "type": "array"
+              },
+              "kind": {
+                "default": "note",
+                "title": "Kind",
+                "type": "string"
+              },
+              "data": {
+                "additionalProperties": true,
+                "title": "Data",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "title": "Item",
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Item"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Snapshot Id"
+          }
+        },
+        "title": "RetrieveResult",
+        "type": "object"
+      }
+    }
+  ]
+}
