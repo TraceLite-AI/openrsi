@@ -379,10 +379,20 @@ def test_verl_module_level_reward_reads_env(tmp_path, monkeypatch):
 def test_verl_rl_rows_hide_reference_and_refuse_holdout():
     rows = tasks_to_rl_rows([Task(id="t1", input="1 # 2", split="train", reference={"expected": 2})], "ops")
     assert rows[0]["prompt"] == [{"role": "user", "content": "1 # 2"}]
-    assert json.loads(rows[0]["reward_model"]["ground_truth"]) == {"expected": 2}
+    assert rows[0]["reward_model"]["ground_truth"] == 2  # 只有 expected 时直接放值（verl 自带奖励要这个格式）
+    multi = tasks_to_rl_rows([Task(id="t2", input="x", split="train", reference={"expected": 1, "unit": "m"})], "ops")
+    assert json.loads(multi[0]["reward_model"]["ground_truth"]) == {"expected": 1, "unit": "m"}
+    fn = make_compute_score(EvidenceJudge(EQ))
+    assert fn("ops", "2", rows[0]["reward_model"]["ground_truth"]) == 1.0
     assert "expected" not in json.dumps(rows[0]["prompt"]) and "reference" not in rows[0]["extra_info"]
     with pytest.raises(DataLeakError):
         tasks_to_rl_rows([Task(id="h1", input="x", split="holdout", reference={"expected": 1})], "ops")
+    val = tasks_to_rl_rows([Task(id="h1", input="x", split="holdout", reference={"expected": 1})], "ops",
+                           for_validation=True)
+    assert val[0]["extra_info"]["split"] == "holdout"
+    with pytest.raises(DataLeakError):
+        tasks_to_rl_rows([Task(id="t1", input="x", split="train", reference={"expected": 1})], "ops",
+                         for_validation=True)
 
 
 def test_verl_sft_rows_only_passed_train(tmp_path):
@@ -420,6 +430,20 @@ def test_weights_evolvable_with_fake_trainer(tmp_path):
     with pytest.raises(Exception, match="oom"):
         failing.apply(Patch(target="weights", ops=[{"op": "train", "data": "x"}]))
     assert failing.snapshot().id == "ckpt_root"
+
+
+def test_weights_model_glob_picks_latest_step(tmp_path):
+    trainer = tmp_path / "train.py"
+    trainer.write_text("import pathlib, sys\nout = pathlib.Path(sys.argv[1])\n"
+                       "for n in (2, 10, 9):\n    (out / f'global_step_{n}' / 'huggingface').mkdir(parents=True)\n")
+    w = WeightsEvolvable("base", tmp_path / "w", trainer=[sys.executable, str(trainer), "{output_dir}"],
+                         model_glob="global_step_*/huggingface")
+    w.apply(Patch(target="weights", ops=[{"op": "train", "data": "a"}]))
+    assert w.export()[0]["text"].endswith("global_step_10/huggingface")
+    bad = WeightsEvolvable("base", tmp_path / "b", trainer=[sys.executable, str(trainer), "{output_dir}"],
+                           model_glob="actor/*")
+    with pytest.raises(Exception, match="没有匹配"):
+        bad.apply(Patch(target="weights", ops=[{"op": "train", "data": "a"}]))
 
 
 def test_weights_conformance_and_manifest(tmp_path):
