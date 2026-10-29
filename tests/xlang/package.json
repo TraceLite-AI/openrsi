@@ -1,0 +1,9 @@
+{
+  "name": "openrsi-xlang-tests",
+  "private": true,
+  "type": "module",
+  "description": "Cross-language checks: a gate written in JavaScript from spec/tools.json only, and a JS client calling Python components.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}

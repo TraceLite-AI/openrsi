@@ -37,3 +37,5 @@
 | 组件 | 协议仍是 13 类，新增可选工具 `rsi_algorithm_screen`。官方实现 13 个：在 v0.3 基础上加 harness（HarnessEvolvable + HarnessAgent，第一个官方 agent）和 weights（WeightsEvolvable，在 verl 适配器里）。算法从 2 种增加到 6 种：greedy、archive、pareto、shinka、islands、map-elites。gate 增加逐题不回退。env 仍没有官方实现 |
 | 可自进化 | memory、prompt、skill 代码、判别器 rubric（都基于 ItemStore），加上 agent 代码仓库 harness（git 提交为快照，write / delete / diff 补丁，可改范围和受保护路径）和模型权重（checkpoint 为快照，一次训练为补丁，调用外部训练命令）。护栏能检查文件型补丁的受保护路径 |
 | 兼容其他 RSI | MCP 通用。verl：判别器当 compute_score 奖励函数、RL / SFT 数据导出（拒绝非 train 数据）、权重可进化体；没用真实 verl 训练跑过。RSIHub：三个算子脚本（validate / gate / select）、归档导入；按 RSIHub 源码写，用接口替身测过，没在真实 RSIHub 里跑过。DSPy、LangGraph 同 v0.3，只用假对象测过 |
+- 组件化测试（`tests/test_composition.py`）：任意组合、三种传输方式结果一致、JavaScript 组件和客户端、故障与续跑、向前兼容；`openrsi-serve` 把任意 Python 组件类作为 MCP 服务运行；组件进程断开时报 `ComponentUnavailableError` 并指明组件和调用
+
