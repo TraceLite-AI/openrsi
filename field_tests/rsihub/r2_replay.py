@@ -55,7 +55,7 @@ def main() -> None:
     args = ap.parse_args()
     ws = Path(args.workspace).resolve()
     OUT.mkdir(parents=True, exist_ok=True)
-    rows = [json.loads(x) for x in (ws / "archive.jsonl").read_text().splitlines() if x.strip()]
+    rows = [json.loads(x) for x in (ws / "archive.jsonl").read_text().split("\n") if x.strip()]
     by_id = {str(r["genid"]): r for r in rows}
     report: dict = {"workspace": str(ws), "rows": len(rows), "top_level_dirs": sorted(
         p.name for p in ws.iterdir() if p.is_dir() and not p.name.startswith("."))}

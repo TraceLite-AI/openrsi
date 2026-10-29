@@ -37,3 +37,8 @@
 | 组件 | 协议仍是 13 类，新增可选工具 `rsi_algorithm_screen`。官方实现 13 个：在 v0.3 基础上加 harness（HarnessEvolvable + HarnessAgent，第一个官方 agent）和 weights（WeightsEvolvable，在 verl 适配器里）。算法从 2 种增加到 6 种：greedy、archive、pareto、shinka、islands、map-elites。gate 增加逐题不回退。env 仍没有官方实现 |
 | 可自进化 | memory、prompt、skill 代码、判别器 rubric（都基于 ItemStore），加上 agent 代码仓库 harness（git 提交为快照，write / delete / diff 补丁，可改范围和受保护路径）和模型权重（checkpoint 为快照，一次训练为补丁，调用外部训练命令）。护栏能检查文件型补丁的受保护路径 |
 | 兼容其他 RSI | MCP 通用。verl：判别器当 compute_score 奖励函数、RL / SFT 数据导出（拒绝非 train 数据）、权重可进化体；没用真实 verl 训练跑过。RSIHub：三个算子脚本（validate / gate / select）、归档导入；按 RSIHub 源码写，用接口替身测过，没在真实 RSIHub 里跑过。DSPy、LangGraph 同 v0.3，只用假对象测过 |
+- 新组件 `components/llm`：`ChatAgent`（OpenAI 兼容接口；上下文里有权重条目时按模型路径启动或重启推理服务）、`PromptRewriter`（LLM 改写系统提示的提案器），清单 `rsi-component.yaml`、`rsi-component.rewriter.yaml`
+- `CompositeProposer` 的成员可以是任意提案器类；`output_equals` 可以先用正则抽取答案；`episode_messages` 保留 agent 自己的对话（含系统提示）
+- `examples/small_model`：小模型同时进化系统提示和权重的全流程，有 vLLM、CPU（transformers）和假模型三种配置；假模型版本在 CI 里跑
+- 修复：JSONL 读取改用按 `\n` 切分（`str.splitlines()` 会在 U+2028 等字符处断行，GSM8K 和 LLM 输出里都有），涉及谱系、anchor 集、RSIHub 归档、示例数据
+

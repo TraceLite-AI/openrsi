@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from openrsi import Episode, Item, ProposalRequest, Step, Task, Trajectory, Verdict
+from openrsi import Episode, Item, Patch, ProposalRequest, Step, Task, Trajectory, Verdict
 from openrsi_judge import EvidenceJudge
 from openrsi_llm import ChatAgent, PromptRewriter
 from openrsi_proposer import CompositeProposer
@@ -176,3 +176,23 @@ def test_llm_manifests_match(manifest, component):
     m = load_manifest(ROOT / "components" / "llm" / manifest)
     assert (m.name, m.version) == (info.name, info.version)
     assert set(m.implements) == set(info.tools) and set(m.kinds) == set(info.kinds)
+
+
+def test_jsonl_with_unicode_line_separators(tmp_path):
+    """GSM8K 和 LLM 输出里会有 U+2028 这类字符；str.splitlines() 会在它们那里断行，读 JSONL 不能用它。"""
+    from gsm8k_env import GSM8KEnv
+    from openrsi import LineageEntry
+    from openrsi_lineage import LineageStore
+
+    q = "line one\u2028line two\u2029end"
+    for name in ("train", "test"):
+        (tmp_path / f"{name}.jsonl").write_text(json.dumps({"question": q, "answer": "#### 3"}, ensure_ascii=False)
+                                                + "\n", encoding="utf-8")
+    env = GSM8KEnv(str(tmp_path), train_per_round=1, holdout=1, final=0)
+    assert env.tasks("holdout")[0].input["question"] == q
+    store = LineageStore(tmp_path / "lineage.jsonl")
+    store.record(LineageEntry(id="root", target="prompt", status="root", metrics={"holdout": 0.0}))
+    store.record(LineageEntry(id="c1", target="prompt", parent_ids=["root"], status="accepted",
+                              metrics={"holdout": 1.0}, patch=Patch(target="prompt", ops=[{"op": "add", "item": {
+                                  "id": "instructions", "kind": "prompt", "text": q}}])))
+    assert [e.id for e in LineageStore(tmp_path / "lineage.jsonl").log()] == ["root", "c1"]

@@ -38,7 +38,9 @@ def main() -> None:
     model.gradient_checkpointing_enable()
 
     examples = []
-    for line in Path(args.data).read_text(encoding="utf-8").splitlines():
+    for line in Path(args.data).read_text(encoding="utf-8").split("\n"):  # 不用 splitlines：文本里可能有 U+2028
+        if not line.strip():
+            continue
         msgs = json.loads(line)["messages"]
         if not msgs or msgs[-1]["role"] != "assistant":
             continue

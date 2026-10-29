@@ -107,7 +107,7 @@ def load_anchor(config: RunConfig) -> list:
     if not config.loop.anchor:
         return []
     path = (config.base_dir / config.loop.anchor).resolve()
-    return [AnchorExample.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines()
+    return [AnchorExample.model_validate_json(line) for line in path.read_text(encoding="utf-8").split("\n")
             if line.strip()]
 
 

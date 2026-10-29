@@ -162,7 +162,7 @@ def import_archive(path: str | Path, target: str = "harness") -> list[LineageEnt
     import json
 
     entries = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    for line in Path(path).read_text(encoding="utf-8").split("\n"):
         if not line.strip():
             continue
         row = json.loads(line)

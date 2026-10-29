@@ -17,7 +17,7 @@ class LineageStore(Lineage):
         self.path = Path(path).resolve() if path else None  # 构造时定下绝对路径，之后工作目录变了也不影响
         self._entries: dict[str, LineageEntry] = {}
         if self.path and self.path.exists():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
+            for line in self.path.read_text(encoding="utf-8").split("\n"):
                 if line.strip():
                     e = LineageEntry.model_validate_json(line)
                     self._entries.pop(e.id, None)  # 同一 id 以最后一次记录为准，位置也按最后一次
