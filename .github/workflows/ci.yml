@@ -26,7 +26,7 @@ jobs:
           pip install -e sdk/python -e runtime \
             -e components/judge -e components/memory -e components/attribution -e components/proposer \
             -e components/algorithm -e components/gate -e components/lineage \
-            -e components/evolvables -e components/guard -e components/harness \
+            -e components/evolvables -e components/guard -e components/harness -e components/llm \
             -e adapters/dspy -e adapters/langgraph -e adapters/verl -e adapters/rsihub pytest ruff
       - name: Lint
         run: ruff check .
@@ -57,6 +57,12 @@ jobs:
           openrsi run
           openrsi log | grep -q "protected_path"
           openrsi best | grep -q '"holdout": 1.0'
+      - name: End-to-end example (small model, mock LLM and trainer)
+        working-directory: examples/small_model
+        run: |
+          python make_toy_data.py toy_data
+          openrsi run openrsi.mock.yaml
+          openrsi best openrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
       - name: Adapter CLIs
         run: |
           openrsi-verl reward-path
