@@ -214,6 +214,14 @@ evolvables:
   prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
 ```
 
+环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时只核对声明，不保证 agent 真的在那个环境里执行。
+
+```yaml
+cells:
+  train:   [linux-utf8]
+  holdout: [linux-utf8, linux-cp1252]
+```
+
 ## 框架集成
 
 | 框架 | OpenRSI 提供什么 | 是否用真实框架测过 |

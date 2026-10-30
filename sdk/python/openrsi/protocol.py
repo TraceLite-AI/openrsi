@@ -18,7 +18,8 @@ class ToolSpec:
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec("rsi_component_info", "component", True, "报告组件名、版本、协议版本和实现的组件类型。"),
     # 执行面
-    ToolSpec("rsi_env_tasks", "env", True, "按划分（train/holdout/anchor/final）和轮次给出任务。"),
+    ToolSpec("rsi_env_tasks", "env", True, "按划分（train/holdout/anchor/final）和轮次给出任务；给了 cell 只出该环境格的题。"),
+    ToolSpec("rsi_env_cells", "env", False, "列出 env 能提供的环境格：坐标、钉住清单和指纹依据（0.5 草案）。"),
     ToolSpec("rsi_agent_run", "agent", True, "在给定的 memory 上下文中执行一个任务，返回轨迹。"),
     # 评估面
     ToolSpec("rsi_evidence_collect", "evidence", True, "从任务和轨迹中收集可核验的证据。"),

@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from .types import (
-    AlgorithmStatus, AnchorExample, AskResult, Attribution, CalibrationReport, Diff, Episode, Evidence,
+    AlgorithmStatus, AnchorExample, AskResult, Attribution, CalibrationReport, Diff, EnvCell, Episode, Evidence,
     EvolvableInfo, GateDecision, GateRequest, GuardReport, Item, LineageEntry, Patch, ProposalRequest,
     ScreenResult, SkillResult, Snapshot, Task, TellRequest, Trajectory, Verdict, VerifyResult,
 )
@@ -43,9 +43,15 @@ class StaleSnapshotError(ComponentError):
 # ---------------------------------------------------------------- 执行面
 
 class Environment(Component):
+    """支持环境格（0.5 草案）的 env 再实现 cells()，并让 tasks() 接受 cell 参数，返回题目的 env_ref 设为格 id。"""
+
     _kind = "env"
 
-    def tasks(self, split: str, round: int = 0, limit: int | None = None) -> list[Task]:
+    def tasks(self, split: str, round: int = 0, limit: int | None = None, cell: str | None = None) -> list[Task]:
+        raise NotImplementedError
+
+    def cells(self) -> list[EnvCell]:
+        """可选：能提供的环境格。不实现就不暴露 rsi_env_cells。"""
         raise NotImplementedError
 
 

@@ -269,6 +269,46 @@ async def _check_env(rc: RemoteComponent, report: Report) -> None:
         assert len(limited) <= 1, "limit 没有生效"
 
     await _run(report, "env", "划分正确、互不重叠、limit 生效", splits)
+    if "rsi_env_cells" in rc.tools:
+        await _check_env_cells(rc, report)
+
+
+async def _check_env_cells(rc: RemoteComponent, report: Report) -> None:
+    """环境格（0.5 草案）：格 id 唯一、不含 @；按格取题时 env_ref 等于格 id；未知格报错。"""
+
+    async def declared():
+        cells = await rc.env.cells()
+        assert cells, "rsi_env_cells 没有返回任何格"
+        ids = [c.id for c in cells]
+        assert len(ids) == len(set(ids)), f"格 id 重复：{ids}"
+        assert not [i for i in ids if "@" in i], "格 id 不能含 @"
+        for c in cells:
+            assert all(":" in k for k in c.coords), f"格 {c.id} 的坐标键应当写成 维度编号:子维度名"
+        return cells
+
+    cells = await _run(report, "env", "环境格声明合法", declared)
+    if not cells:
+        return
+
+    async def filtered():
+        for c in cells:
+            for split in ("train", "holdout"):
+                tasks = await rc.env.tasks(split, 0, None, cell=c.id)
+                wrong = [t.id for t in tasks if t.env_ref != c.id]
+                assert not wrong, f"cell={c.id} 返回的题 env_ref 不是 {c.id}：{wrong[:5]}"
+                assert not [t.id for t in tasks if "@" in t.id], "环境格模式下题目 id 不能含 @"
+        assert any([await rc.env.tasks("holdout", 0, None, cell=c.id) for c in cells]), "所有格都没有 holdout 题"
+
+    await _run(report, "env", "按格取题：env_ref 等于格 id", filtered)
+
+    async def unknown():
+        try:
+            await rc.env.tasks("holdout", 0, None, cell="openrsi-conformance-no-such-cell")
+        except ToolCallError:
+            return
+        raise AssertionError("未知的格应当返回工具错误")
+
+    await _run(report, "env", "未知的格报错", unknown)
 
 
 async def _check_agent(rc: RemoteComponent, report: Report, sample: Task) -> None:

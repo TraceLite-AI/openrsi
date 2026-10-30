@@ -1263,10 +1263,106 @@
       }
     },
     {
+      "name": "rsi_env_cells",
+      "kind": "env",
+      "required": false,
+      "description": "列出 env 能提供的环境格：坐标、钉住清单和指纹依据（0.5 草案）。",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "title": "env_cellsArguments"
+      },
+      "output_schema": {
+        "$defs": {
+          "EnvCell": {
+            "additionalProperties": true,
+            "description": "环境格：一组环境坐标加一份钉住清单，代表一个可以复现的环境（0.5 草案，见 spec/drafts/environment-cells.md）。\n\ncoords 的键是\"维度编号:子维度名\"（如 E2.1:os），值取自 axes 指定的坐标体系；没写的键表示未声明，不表示基准值。",
+            "properties": {
+              "id": {
+                "description": "格的 id，在一个 env 内唯一，不得含 @",
+                "title": "Id",
+                "type": "string"
+              },
+              "axes": {
+                "default": "aae-environment-axes/1",
+                "description": "坐标体系及版本",
+                "title": "Axes",
+                "type": "string"
+              },
+              "coords": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "title": "Coords",
+                "type": "object"
+              },
+              "stage": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "description": "按阶段（setup / agent / verifier）取值不同的坐标",
+                "title": "Stage",
+                "type": "object"
+              },
+              "pins": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "钉住清单；pin_policy 取 digest / tag / none",
+                "title": "Pins",
+                "type": "object"
+              },
+              "card": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "完整环境卡片的地址",
+                "title": "Card"
+              },
+              "probes": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "坐标的观测方法，只作说明，编排方不直接执行",
+                "title": "Probes",
+                "type": "object"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "title": "EnvCell",
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/$defs/EnvCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          }
+        },
+        "title": "EnvCellBundle",
+        "type": "object"
+      }
+    },
+    {
       "name": "rsi_env_tasks",
       "kind": "env",
       "required": true,
-      "description": "按划分（train/holdout/anchor/final）和轮次给出任务。",
+      "description": "按划分（train/holdout/anchor/final）和轮次给出任务；给了 cell 只出该环境格的题。",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1290,6 +1386,18 @@
             ],
             "default": null,
             "title": "Limit"
+          },
+          "cell": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cell"
           }
         },
         "required": [
@@ -3725,8 +3833,16 @@
                 "additionalProperties": {
                   "type": "number"
                 },
-                "description": "每道 holdout 题的分数（0.4）",
+                "description": "每道 holdout 题的分数（0.4）；环境格模式下键是 <task_id>@<cell_id>",
                 "title": "Task Scores",
+                "type": "object"
+              },
+              "env_cells": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）",
+                "title": "Env Cells",
                 "type": "object"
               },
               "created_at": {
@@ -4022,8 +4138,16 @@
                 "additionalProperties": {
                   "type": "number"
                 },
-                "description": "每道 holdout 题的分数（0.4）",
+                "description": "每道 holdout 题的分数（0.4）；环境格模式下键是 <task_id>@<cell_id>",
                 "title": "Task Scores",
+                "type": "object"
+              },
+              "env_cells": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）",
+                "title": "Env Cells",
                 "type": "object"
               },
               "created_at": {
@@ -4278,8 +4402,16 @@
                 "additionalProperties": {
                   "type": "number"
                 },
-                "description": "每道 holdout 题的分数（0.4）",
+                "description": "每道 holdout 题的分数（0.4）；环境格模式下键是 <task_id>@<cell_id>",
                 "title": "Task Scores",
+                "type": "object"
+              },
+              "env_cells": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）",
+                "title": "Env Cells",
                 "type": "object"
               },
               "created_at": {
@@ -4597,8 +4729,16 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "每道 holdout 题的分数（0.4）",
+            "description": "每道 holdout 题的分数（0.4）；环境格模式下键是 <task_id>@<cell_id>",
             "title": "Task Scores",
+            "type": "object"
+          },
+          "env_cells": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）",
+            "title": "Env Cells",
             "type": "object"
           },
           "created_at": {
