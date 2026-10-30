@@ -44,8 +44,9 @@ adapters/rsihub/          OpenRSI 组件装成 RSIHub 算子（护栏 validate�
 adapters/dspy/            判别器当 DSPy metric 用（含 GEPA 反馈）
 adapters/langgraph/       LangGraph 状态转轨迹再判别
 examples/                 能直接跑的例子
-tests/                    136 个测试
+tests/                    137 个测试
 field_tests/              在真实 verl、RSIHub 上跑的现场测试（见 field_tests/README.md）
+benchmarks/rsihub_parity/ 和 RSIHub 拉齐的对照实验：同样的评测器、基准和划分，只换算子
 ```
 
 ## 快速开始：跑一个完整循环

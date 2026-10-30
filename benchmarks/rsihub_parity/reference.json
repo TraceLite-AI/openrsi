@@ -1,0 +1,34 @@
+{
+  "source": "https://github.com/simple-agent-lab/RSIHub README, Benchmark Results (commit d6554299)",
+  "note": "seed -> evolved, percent. Target model GPT-5.4 (high), Codex mutate with GPT-5.4 (xhigh). Train = recipe train split; full = all tasks.",
+  "terminal-bench-2": {
+    "split": {"train": 50, "gate": 19, "sealed": 20},
+    "MiniSWE": {
+      "AHE":         {"train": [70.0, 74.0], "full": [56.2, 65.2]},
+      "Hyperagents": {"train": [58.0, 68.0], "full": [56.2, 69.7]},
+      "A-Evolve":    {"train": [66.0, 68.0], "full": [56.2, 69.7]},
+      "GEPA":        {"train": [58.0, 68.0], "full": [56.2, 64.0]}
+    },
+    "Codex": {
+      "AHE":         {"train": [60.0, 74.0], "full": [69.7, 71.9]},
+      "Hyperagents": {"train": [58.0, 72.0], "full": [69.7, 70.8]},
+      "A-Evolve":    {"train": [62.0, 62.0], "full": [69.7, 70.8]},
+      "GEPA":        {"train": [68.0, 68.0], "full": [69.7, 69.7]}
+    }
+  },
+  "tau3-banking": {
+    "split": {"train": 50, "gate": 20, "sealed": 27},
+    "MiniSWE": {
+      "AHE":         {"train": [20.0, 34.0], "full": [27.8, 28.9]},
+      "Hyperagents": {"train": [28.0, 40.0], "full": [27.8, 33.0]},
+      "A-Evolve":    {"train": [26.0, 26.0], "full": [27.8, 27.8]},
+      "GEPA":        {"train": [22.0, 28.0], "full": [27.8, 29.9]}
+    },
+    "Codex": {
+      "AHE":         {"train": [32.0, 36.0], "full": [24.7, 34.0]},
+      "Hyperagents": {"train": [34.0, 36.0], "full": [24.7, 28.9]},
+      "A-Evolve":    {"train": [36.0, 38.0], "full": [24.7, 28.9]},
+      "GEPA":        {"train": [28.0, 30.0], "full": [24.7, 33.0]}
+    }
+  }
+}

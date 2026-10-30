@@ -23,6 +23,7 @@ CONFIG = Config({
     "protected_paths": array(string(), description="不许候选修改的路径（glob）；默认 evaluator/** 和 operators/**"),
     "check_code": boolean(default=False, description="对写入的 .py 文件做 AST 检查"),
     "max_removals": integer(default=50, minimum=0, description="一次最多删除多少个文件"),
+    "compile_globs": array(string(), description="要求能编译的 Python 文件（glob），如 target/**/*.py"),
 })
 
 
@@ -35,7 +36,8 @@ class OpenRSIGuardValidate(ValidateOperator):
         accept, reason, findings = guard_checkout(
             checkout, protected_paths=ctx.config.get("protected_paths"),
             check_code=bool(ctx.config.get("check_code", False)),
-            max_removals=int(ctx.config.get("max_removals", 50)))
+            max_removals=int(ctx.config.get("max_removals", 50)),
+            compile_globs=ctx.config.get("compile_globs"))
         out = ctx.run_dir / "validate" / "openrsi_guard.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps({"accept": accept, "reason": reason, "findings": findings},
