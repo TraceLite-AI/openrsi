@@ -19,7 +19,7 @@
 ## L0 本机基线
 
 ```bash
-git clone https://github.com/zsicheng0214/openrsi && cd openrsi
+git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
 bash field_tests/run_local.sh            # 可以指定解释器：bash field_tests/run_local.sh python3.12
 ```
 
