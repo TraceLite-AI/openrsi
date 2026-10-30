@@ -46,3 +46,4 @@
 - `CompositeProposer` 的成员可以是任意提案器类；`output_equals` 可以先用正则抽取答案；`episode_messages` 保留 agent 自己的对话（含系统提示）
 - `examples/small_model`：小模型同时进化系统提示和权重的全流程，有 vLLM、CPU（transformers）和假模型三种配置；假模型版本在 CI 里跑
 - 修复：JSONL 读取改用按 `\n` 切分（`str.splitlines()` 会在 U+2028 等字符处断行，GSM8K 和 LLM 输出里都有），涉及谱系、anchor 集、RSIHub 归档、示例数据
+- 组件化测试（`tests/test_composition.py`）：任意组合、三种传输方式结果一致、JavaScript 组件和客户端、故障与续跑、向前兼容；`openrsi-serve` 把任意 Python 组件类作为 MCP 服务运行；组件进程断开时报 `ComponentUnavailableError` 并指明组件和调用
