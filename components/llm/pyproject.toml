@@ -1,0 +1,14 @@
+[project]
+name = "openrsi-llm"
+version = "0.4.0"
+description = "LLM-backed OpenRSI components: a chat agent for any OpenAI-compatible endpoint (with managed vLLM restarts on weight changes) and a prompt-rewriting proposer"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = ["openrsi-sdk>=0.4,<0.5"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["openrsi_llm"]

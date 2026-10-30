@@ -1,0 +1,106 @@
+# 没有 GPU 时用：transformers 推理服务（hf_server.py）+ 少量题目，CPU 上也能把真实小模型的全流程走一遍（4 核 CPU 约 1 小时）。
+#   python prepare_gsm8k.py gsm8k && openrsi run openrsi.cpu.yaml
+protocol: openrsi/0.4
+name: small-model-cpu
+plugins:
+- gsm8k_env
+components:
+  env:
+    python: gsm8k_env:GSM8KEnv
+    with:
+      data_dir: gsm8k
+      train_per_round: 12
+      holdout: 15
+      final: 15
+  agent:
+    python: openrsi_llm:ChatAgent
+    with:
+      model: policy
+      max_tokens: 384
+      server:
+        port: 8100
+        startup_timeout: 900
+        log_dir: .openrsi/server-logs
+        command:
+        - python
+        - hf_server.py
+        - --model
+        - '{model}'
+        - --port
+        - '{port}'
+  judge:
+    python: openrsi_judge:EvidenceJudge
+    with:
+      rubric:
+        items:
+        - id: correct
+          check: output_equals
+          required: true
+          params:
+            extract: (?:####|\\boxed\{)\s*\$?(-?[0-9][0-9\.\,]*)
+  evidence:
+    same_as: judge
+  proposer:
+    python: openrsi_proposer:CompositeProposer
+    with:
+      proposers:
+      - name: prompt
+        python: openrsi_llm:PromptRewriter
+        with:
+          base_url: http://127.0.0.1:8100/v1
+          model: policy
+      - name: weights
+        python: openrsi_verl:DistillProposer
+        with:
+          data_dir: .openrsi/sft
+          min_examples: 3
+  algorithm:
+    python: openrsi_algorithm:ShinkaAlgorithm
+    with:
+      proposers:
+      - prompt
+      - weights
+      max_generations: 3
+      patience: 3
+  gate:
+    python: openrsi_gate:HoldoutGate
+    with: {}
+  guard:
+    python: openrsi_guard:PolicyGuard
+  lineage:
+    python: openrsi_lineage:LineageStore
+    with:
+      path: .openrsi/lineage.jsonl
+evolvables:
+  prompt:
+    python: openrsi_evolvables:PromptEvolvable
+    with:
+      path: .openrsi/prompt
+      initial:
+      - id: instructions
+        text: Solve the math problem step by step. On the last line, write the final
+          answer as '#### <number>'.
+  weights:
+    python: openrsi_verl:WeightsEvolvable
+    with:
+      base_model: Qwen/Qwen2.5-0.5B-Instruct
+      path: .openrsi/weights
+      trainer:
+      - python
+      - train_sft.py
+      - --model
+      - '{base_model}'
+      - --data
+      - '{data}'
+      - --output
+      - '{output_dir}'
+      - --epochs
+      - '1'
+      - --lr
+      - 1e-5
+      - --batch
+      - '2'
+      - --max-len
+      - '512'
+loop:
+  max_patches: 1

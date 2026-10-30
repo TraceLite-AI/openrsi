@@ -10,23 +10,28 @@ import ast
 from pathlib import Path
 from typing import Any
 
-from openrsi import ComponentError, Item, SkillResult, Skills, serve
+from openrsi import ComponentError, Item, Patch, SkillResult, Skills, serve
 from openrsi.itemstore import ItemStore
 
 from .sandbox import run_skill
 
 
 class PromptEvolvable(ItemStore):
-    """with: max_chars（单个段落上限，默认 4000）"""
+    """with: max_chars（单个段落上限，默认 4000）；initial（可选，新建时作为第一个版本的段落列表，
+    每项 {id, text, data: {order}}；已有存储时忽略）"""
 
     name = "openrsi/prompt"
     version = "0.4.0"
     evolvable_type = "prompt"
     surfaces = ["sections"]
 
-    def __init__(self, target: str = "prompt", path: str | Path | None = None, max_chars: int = 4000):
+    def __init__(self, target: str = "prompt", path: str | Path | None = None, max_chars: int = 4000,
+                 initial: list[dict[str, Any]] | None = None):
         self.max_chars = max_chars
         super().__init__(target, path)
+        if initial and not self.items():
+            ops = [{"op": "add", "item": {"kind": "prompt", **i}} for i in initial]
+            self.apply(Patch(target=target, ops=ops, rationale="initial prompt"))
 
     def validate_item(self, item: Item) -> None:
         if not item.text.strip():

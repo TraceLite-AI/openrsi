@@ -1,0 +1,12 @@
+protocol: openrsi/0.4
+name: openrsi/chat-agent
+version: 0.4.0
+description: 调用 OpenAI 兼容接口的执行体。prompt 段落拼成系统提示，memory 条目附在后面；上下文里有权重条目时按模型路径启动或重启推理服务（比如 vLLM）。
+kinds: [agent]
+implements:
+  - rsi_component_info
+  - rsi_agent_run
+capabilities: {openai_compatible: true, managed_server: true}
+runtime:
+  transport: stdio
+  command: [openrsi-serve, "openrsi_llm:ChatAgent", --with, '{"base_url": "http://127.0.0.1:8000/v1"}']

@@ -193,6 +193,9 @@ def _report_errors(fn):
     return wrapper
 
 
-def serve(component: Component, transport: str = "stdio") -> None:
-    """以 MCP server 方式运行组件（默认 stdio，供其他进程或框架启动）。"""
-    build_server(component).run(transport)  # type: ignore[arg-type]
+def serve(component: Component, transport: str = "stdio", **kwargs: Any) -> None:
+    """以 MCP server 方式运行组件（默认 stdio，供其他进程或框架启动）。
+
+    transport="streamable-http" 时可以传 host、port、streamable_http_path。
+    """
+    build_server(component).run(transport, **kwargs)  # type: ignore[arg-type]

@@ -86,9 +86,18 @@ def _output(ev: ByType) -> tuple[Any, list[str]]:
 
 
 def check_output_equals(item: RubricItem, task: Task, traj: Trajectory, ev: ByType) -> Outcome:
+    """params: value（直接给答案）或 field（从 reference 里取，默认 expected）；
+    extract（正则，取最后一个匹配的第一组，比如 GSM8K 的 "#### (\\-?[0-9\\.\\,]+)"）；
+    strip（抽取后去掉的字符，默认 ",$"）；normalize（比较前去掉首尾空白，默认开）。"""
     value, ids = _output(ev)
     if not ids:
         return "fail", [], "没有输出证据"
+    if "extract" in item.params:
+        found = re.findall(item.params["extract"], str(value or ""))
+        if not found:
+            return "fail", ids, f"输出里没有匹配 /{item.params['extract']}/ 的答案"
+        last = next((g for g in found[-1] if g), "") if isinstance(found[-1], tuple) else found[-1]
+        value = last.translate({ord(c): None for c in item.params.get("strip", ",$")})
     if "value" in item.params:
         expected = item.params["value"]
     else:

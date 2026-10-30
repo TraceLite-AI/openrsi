@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -240,7 +240,9 @@ class RubricAuditor(Proposer):
 
 
 class CompositeProposer(Proposer):
-    """with: proposers（名字列表，可选 lesson / claude / rubric-auditor）。依次调用，补丁合在一起返回。
+    """with: proposers（列表）。依次调用，补丁合在一起返回。每一项可以是：
+    - 内置名字：lesson / claude / rubric-auditor
+    - {name: 名字, python: "模块:类名", with: {...}}：任意提案器类，比如 openrsi_verl:DistillProposer
 
     算法通过 hints["proposer"] 建议用哪一个时（比如 ShinkaAlgorithm 的自适应选择），只调用那一个。
     补丁的 proposer_ref 末尾加上 "#成员名"，算法据此统计各提案器的效果。
@@ -250,11 +252,23 @@ class CompositeProposer(Proposer):
     version = "0.4.0"
     REGISTRY = {"lesson": LessonProposer, "claude": ClaudeProposer, "rubric-auditor": RubricAuditor}
 
-    def __init__(self, proposers: list[str]):
-        unknown = [p for p in proposers if p not in self.REGISTRY]
-        if unknown:
-            raise ValueError(f"未知的提案器 {unknown}，可选：{sorted(self.REGISTRY)}")
-        self.members = {p: self.REGISTRY[p]() for p in proposers}
+    def __init__(self, proposers: list[str | dict[str, Any]]):
+        import importlib
+
+        self.members: dict[str, Proposer] = {}
+        for p in proposers:
+            if isinstance(p, str):
+                if p not in self.REGISTRY:
+                    raise ValueError(f"未知的提案器 {p}，可选：{sorted(self.REGISTRY)}，或写成 {{name, python, with}}")
+                self.members[p] = self.REGISTRY[p]()
+                continue
+            name, target = p.get("name"), p.get("python")
+            if not name or not target or ":" not in target:
+                raise ValueError(f"提案器写法是 {{name: 名字, python: 模块:类名, with: {{...}}}}，收到 {p}")
+            if name in self.members:
+                raise ValueError(f"提案器名字重复：{name}")
+            module, _, cls = target.partition(":")
+            self.members[name] = getattr(importlib.import_module(module), cls)(**(p.get("with") or {}))
 
     def propose(self, request: ProposalRequest) -> list[Patch]:
         hint = request.hints.get("proposer")
