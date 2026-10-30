@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/zsicheng0214/openrsi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/zsicheng0214/openrsi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TraceLite-AI/openrsi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TraceLite-AI/openrsi/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-blue"></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB">
   <a href="spec/PROTOCOL.md"><img alt="Protocol openrsi/0.4" src="https://img.shields.io/badge/protocol-openrsi%2F0.4-0F766E"></a>
@@ -114,7 +114,7 @@ flowchart LR
 需要 Python 3.10+。
 
 ```bash
-git clone https://github.com/zsicheng0214/openrsi && cd openrsi
+git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
 pip install -e sdk/python -e runtime -e components/judge -e components/memory -e components/attribution \
             -e components/proposer -e components/algorithm -e components/gate -e components/lineage \
             -e components/evolvables -e components/guard -e components/harness -e components/llm -e adapters/verl
@@ -338,7 +338,7 @@ python -m openrsi.export_spec spec   # 改了 sdk/python/openrsi/types.py 或 pr
   title  = {OpenRSI: A Component-Based Framework and Open Protocol for Agent Recursive Self-Improvement},
   author = {{OpenRSI contributors}},
   year   = {2026},
-  url    = {https://github.com/zsicheng0214/openrsi}
+  url    = {https://github.com/TraceLite-AI/openrsi}
 }
 ```
 
