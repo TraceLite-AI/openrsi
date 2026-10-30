@@ -1,0 +1,12 @@
+protocol: openrsi/0.4
+name: openrsi/prompt-rewriter
+version: 0.4.0
+description: 用 LLM 读答错的 train 题、改写系统提示的提案器，生成 prompt 可进化体的补丁。
+kinds: [proposer]
+implements:
+  - rsi_component_info
+  - rsi_proposer_propose
+capabilities: {openai_compatible: true}
+runtime:
+  transport: stdio
+  command: [openrsi-serve, "openrsi_llm:PromptRewriter", --with, '{"base_url": "http://127.0.0.1:8000/v1"}']

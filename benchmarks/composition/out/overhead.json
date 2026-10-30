@@ -1,0 +1,48 @@
+{
+  "python": "3.13.17",
+  "calls": 300,
+  "per_call": {
+    "in_process": {
+      "gate.check": {
+        "median_ms": 0.003,
+        "p95_ms": 0.004
+      },
+      "judge.collect+evaluate": {
+        "median_ms": 0.025,
+        "p95_ms": 0.055
+      }
+    },
+    "stdio": {
+      "gate.check": {
+        "median_ms": 2.361,
+        "p95_ms": 3.049
+      },
+      "judge.collect+evaluate": {
+        "median_ms": 5.382,
+        "p95_ms": 6.706
+      }
+    },
+    "http": {
+      "gate.check": {
+        "median_ms": 3.383,
+        "p95_ms": 3.831
+      },
+      "judge.collect+evaluate": {
+        "median_ms": 7.036,
+        "p95_ms": 9.422
+      }
+    }
+  },
+  "secret_ops_loop": {
+    "in_process": {
+      "seconds": 0.07,
+      "generations": 8,
+      "best_holdout": 1.0
+    },
+    "all_stdio": {
+      "seconds": 14.35,
+      "generations": 8,
+      "best_holdout": 1.0
+    }
+  }
+}

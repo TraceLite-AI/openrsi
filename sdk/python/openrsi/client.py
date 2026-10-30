@@ -27,6 +27,10 @@ class ToolCallError(RuntimeError):
     """组件返回了错误（参数不合法、补丁冲突等）。"""
 
 
+class ComponentUnavailableError(RuntimeError):
+    """组件进程退出、连接断开或不响应，调用没有完成。"""
+
+
 def _dump(x: Any) -> Any:
     if isinstance(x, BaseModel):
         return x.model_dump(mode="json", exclude_none=True)
@@ -52,7 +56,12 @@ class RemoteComponent:
         return kinds_from_tools(self.tools)
 
     async def call(self, tool: str, args: dict[str, Any], model: type[M]) -> M:
-        result = await self._client.call_tool(tool, {k: _dump(v) for k, v in args.items() if v is not None})
+        try:
+            result = await self._client.call_tool(tool, {k: _dump(v) for k, v in args.items() if v is not None})
+        except Exception as e:  # noqa: BLE001  传输层故障：说清楚是哪个组件、哪个调用
+            who = f"{self.info.name}:{self.info.version}" if self.info else "组件"
+            raise ComponentUnavailableError(f"{who} 在 {tool} 时不可用（进程退出、连接断开或超时）："
+                                            f"{type(e).__name__}: {e}") from e
         if result.is_error:
             text = " ".join(getattr(c, "text", "") for c in result.content)
             raise ToolCallError(f"{tool}: {text}")

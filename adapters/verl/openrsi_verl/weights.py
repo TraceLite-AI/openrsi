@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,7 @@ class WeightsEvolvable(Evolvable):
     def __init__(self, base_model: str, path: str | Path, target: str = "weights", trainer: list[str] | None = None,
                  dry_run: bool = False, timeout: float = 24 * 3600, model_glob: str | None = None):
         self.model_glob = model_glob
+        self.cwd = Path.cwd()  # 训练命令里的相对路径以构造时的目录为准
         self.base_model = base_model
         self.path = Path(path).resolve()
         self.target = target
@@ -118,8 +120,10 @@ class WeightsEvolvable(Evolvable):
         fields = {"base_model": base_model, "data": op["data"], "output_dir": str(out), "method": op["method"],
                   "config_json": json.dumps(op.get("config") or {}, ensure_ascii=False)}
         argv = [part.format(**fields) for part in self.trainer]
+        if argv and argv[0] in ("python", "python3"):  # 和当前运行时用同一个解释器
+            argv[0] = sys.executable
         try:
-            proc = subprocess.run(argv, capture_output=True, text=True, timeout=self.timeout)
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=self.timeout, cwd=self.cwd)
         except subprocess.TimeoutExpired as e:
             raise ComponentError(f"训练超时（{self.timeout}s）") from e
         (out.parent / f"{out.name}.log").write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr, encoding="utf-8")
