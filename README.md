@@ -45,8 +45,7 @@ adapters/rsihub/          OpenRSI 组件装成 RSIHub 算子（护栏 validate�
 adapters/dspy/            判别器当 DSPy metric 用（含 GEPA 反馈）
 adapters/langgraph/       LangGraph 状态转轨迹再判别
 examples/                 能直接跑的例子
-tests/                    147 个测试
-tests/                    137 个测试
+tests/                    测试
 field_tests/              在真实 verl、RSIHub 上跑的现场测试（见 field_tests/README.md）
 benchmarks/rsihub_parity/ 和 RSIHub 拉齐的对照实验：同样的评测器、基准和划分，只换算子
 ```
@@ -251,7 +250,36 @@ openrsi-conformance -- python my_gate.py
 openrsi-conformance --sample-task task.json -- python my_agent.py   # 领域相关的 agent / 提案器
 ```
 
-其他语言不需要 SDK：实现 `spec/tools.json` 里的工具就行。
+其他语言不需要 SDK：实现 `spec/tools.json` 里的工具就行。`tests/xlang/gate.mjs` 是一个只照着 `spec/tools.json` 用 JavaScript 写的准入组件，能通过一致性测试，也能直接接进循环。
+
+任何 Python 组件类都能不写 `main()` 直接作为 MCP 服务运行：
+
+```bash
+openrsi-serve openrsi_gate:HoldoutGate --with '{"min_gain": 0.01}'
+openrsi-serve my_pkg:MyJudge --path ./plugins --transport streamable-http --port 8765
+```
+
+## 组件化本身的测试
+
+`tests/test_composition.py` 检查组件化设计是否成立：
+
+| 测什么 | 怎么测 | 结果 |
+|---|---|---|
+| 任意组合 | 6 种算法 × 2 种准入，加上护栏，跑 secret_ops 示例 | 12 种组合都跑通，谱系一致、被接受的版本都不比父代差 |
+| 换运行方式结果不变 | 同一个配置，全部进程内 / 全部子进程（stdio）/ 部分 HTTP | 三次运行的谱系完全相同（版本 id、分数、逐题分数） |
+| 跨语言 | JavaScript 写的准入组件接进 Python 循环；JavaScript 客户端调用 Python 判别器 | 一致性测试通过；和 Python 版准入的决定完全相同 |
+| 故障与续跑 | 提案器子进程中途退出，修好后重跑 | 报错指明哪个组件、哪个调用；续跑沿用原谱系，不重复登记根版本 |
+| 向前兼容 | 所有数据格式允许额外字段；没有新版可选工具的组件照常工作 | 通过 |
+
+`benchmarks/composition/overhead.py` 测组件化的代价（Python 3.13，本机）：
+
+| 调用方式 | 准入一次 | 判别一道题（取证 + 判决） |
+|---|---|---|
+| 进程内 | 0.003 ms | 0.025 ms |
+| 子进程（stdio） | 2.4 ms | 5.4 ms |
+| HTTP | 3.4 ms | 7.0 ms |
+
+secret_ops 整轮（8 代）全部进程内 0.07 秒，全部子进程 14 秒。真实 agent 每道题要几秒到几分钟，这点开销可以忽略；每一步都要调用的组件（比如 agent 内部的工具）应当放在进程内。
 
 ## 其他例子
 
