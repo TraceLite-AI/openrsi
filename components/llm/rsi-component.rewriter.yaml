@@ -1,7 +1,7 @@
 protocol: openrsi/0.4
 name: openrsi/prompt-rewriter
-version: 0.4.0
-description: 用 LLM 读答错的 train 题、改写系统提示的提案器，生成 prompt 可进化体的补丁。
+version: 0.4.1
+description: 用 LLM 读答错的 train 题（附上对应的归因）、改写系统提示的提案器，生成 prompt 可进化体的补丁。
 kinds: [proposer]
 implements:
   - rsi_component_info

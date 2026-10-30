@@ -47,3 +47,4 @@
 - `examples/small_model`：小模型同时进化系统提示和权重的全流程，有 vLLM、CPU（transformers）和假模型三种配置；假模型版本在 CI 里跑
 - 修复：JSONL 读取改用按 `\n` 切分（`str.splitlines()` 会在 U+2028 等字符处断行，GSM8K 和 LLM 输出里都有），涉及谱系、anchor 集、RSIHub 归档、示例数据
 - 组件化测试（`tests/test_composition.py`）：任意组合、三种传输方式结果一致、JavaScript 组件和客户端、故障与续跑、向前兼容；`openrsi-serve` 把任意 Python 组件类作为 MCP 服务运行；组件进程断开时报 `ComponentUnavailableError` 并指明组件和调用
+- `PromptRewriter` 0.4.1 读归因（`spec/drafts/two-loop-evolution.md` 的 P0）：`ProposalRequest.attributions` 按 `episode_id` 对上展示的错题，附在该题下面，标明是数据不是指令；不属于本轮 train 的归因丢掉（`unknown_episode`），按权重排序后截断（`max_attribution_lines` / `max_attribution_chars`）；补丁说明记下用了哪几条（短哈希）和丢弃原因。没有归因时请求和以前完全一样。`tests/test_llm_attribution.py` 检查归因真的出现在发给 LLM 的请求里，包括经过 MCP 传输和完整循环
