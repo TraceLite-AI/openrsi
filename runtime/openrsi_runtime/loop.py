@@ -16,6 +16,9 @@
   - env 返回的题目划分不对时直接报错
   - 配置了护栏时，被拦下的补丁不会生效
 
+环境格模式（编排文件写了 cells，见 cells.py）：取题经 CellRegistry，逐题分数的键是 <task_id>@<cell_id>，
+谱系的 env_cells 记下格的指纹，续跑时必须一致。
+
 判别器参与进化时（loop.judge_every）：
   - agent 侧和判别器轮流进化，同一代只改一边，分数变化才能归因
   - 判别器的修改会改变 holdout 的打分标准，所以它的准入看 anchor（与人工标注的一致率），不看 holdout
@@ -34,7 +37,8 @@ from openrsi import (AnchorExample, Attribution, AttributionTarget, ComponentErr
                      ToolCallError, content_hash)
 from openrsi.types import canonical_json, for_agent
 
-from .config import LoopConfig
+from .cells import CellError, CellRegistry, task_key
+from .config import CellsConfig, LoopConfig
 
 Genome = dict[str, str]  # 可进化体 target → 快照 id
 
@@ -92,7 +96,8 @@ def _check_split(tasks: list[Task], split: str) -> None:
 
 class Runner:
     def __init__(self, w: Any, loop: LoopConfig, on_generation: Callable[[GenerationReport], None] | None = None,
-                 log: Callable[[str], None] = lambda s: None, anchor: list[AnchorExample] | None = None):
+                 log: Callable[[str], None] = lambda s: None, anchor: list[AnchorExample] | None = None,
+                 cells: CellsConfig | None = None):
         self.w = w
         self.cfg = loop
         self.on_generation = on_generation
@@ -101,6 +106,10 @@ class Runner:
             from .config import load_anchor
             anchor = load_anchor(w.config)
         self.anchor = anchor or []
+        if cells is None and getattr(w, "config", None) is not None:
+            cells = getattr(w.config, "cells", None)
+        self.cells_cfg = cells
+        self.registry: CellRegistry | None = None
         self.judge_target: str | None = None
         self.targets: dict[str, _Target] = {}
         self.genomes: dict[str, Genome] = {}
@@ -152,12 +161,29 @@ class Runner:
                     out += [Item.model_validate(d) for d in exported if isinstance(d, dict) and "id" in d]
         return [i for i in out if not exclude or i.id not in exclude]
 
+    async def tasks(self, split: str, round: int, limit: int | None) -> list[Task]:
+        if self.registry:
+            return await self.registry.tasks(self.w.env, split, round, limit)
+        return await self.w.env.tasks(split, round, limit)
+
+    def _key(self, task: Task) -> str:
+        return task_key(task) if self.registry else task.id
+
+    @property
+    def env_cells(self) -> dict[str, str]:
+        return dict(self.registry.fingerprints) if self.registry else {}
+
     async def episode(self, task: Task, genome: Genome, exclude: set[str] | None = None) -> Episode:
         visible = for_agent(task)
+        coords = self.registry.coords_for_agent(task) if self.registry else None
+        if coords is not None:
+            visible = visible.model_copy(update={"metadata": {**visible.metadata, "env_coords": coords}})
         context = await self.context(visible, genome, exclude)
         gid = genome_id(genome)
         traj = await self.w.agent.run(visible, context, gid)
         traj.snapshot_id = traj.snapshot_id or gid
+        if self.registry and task.env_ref and not traj.id.endswith(f"@{task.env_ref}"):
+            traj.id = f"{traj.id}@{task.env_ref}"  # 同一道题在不同格里的轨迹要能区分（归因按轨迹 id 对号）
         if not traj.used_items:  # agent 没报告就当作给它的都用上了
             traj.used_items = [i.id for i in context]
         evidence = await self.w.evidence.collect(task, traj) if self.w.evidence else []
@@ -182,7 +208,9 @@ class Runner:
                     if r.result in ("pass", "fail"):
                         by_item.setdefault(r.id, []).append(1.0 if r.result == "pass" else 0.0)
             m.update({f"rubric:{k}": fmean(v) for k, v in by_item.items()})
-        self.last_task_scores = {e.task.id: e.verdict.score for e in episodes}
+        self.last_task_scores = {self._key(e.task): e.verdict.score for e in episodes}
+        if self.registry and len(self.last_task_scores) != len(episodes):
+            raise CellError("逐题分数的键重复：同一道题在同一个格里被评了两次")
         if self.anchor:
             rep = await self.w.judge.calibrate(self.anchor)
             m["anchor"], m["n_anchor"] = rep.agreement, float(rep.n)
@@ -225,8 +253,10 @@ class Runner:
         w = self.w
         limit = generations if generations is not None else self.cfg.generations
         await self._load_targets()
+        if self.cells_cfg is not None:
+            self.registry = await CellRegistry.open(w.env, self.cells_cfg, self.log)
 
-        holdout = await w.env.tasks("holdout", 0, self.cfg.holdout_limit)
+        holdout = await self.tasks("holdout", 0, self.cfg.holdout_limit)
         _check_split(holdout, "holdout")
         if not holdout:
             raise IsolationError("env 没有给出 holdout 题，无法做准入")
@@ -238,11 +268,17 @@ class Runner:
             m, _ = await self.score(holdout, genome, "holdout")
             m = self._with_epoch(m, 0.0)
             root = LineageEntry(id=genome_id(genome), target=self.lineage_target, generation=0, status="root",
-                                metrics=m, snapshots=genome, task_scores=self.last_task_scores)
+                                metrics=m, snapshots=genome, task_scores=self.last_task_scores,
+                                env_cells=self.env_cells)
             entries = [await w.lineage.record(root)]
             self.log(f"root {root.id}: holdout={m['holdout']:.3f}")
         else:
             self.log(f"从谱系续跑：{len(entries)} 条记录")
+            root = next((e for e in entries if e.status == "root"), None)
+            if root is not None and self.registry:
+                self.registry.check_lineage(root.env_cells)
+            elif root is not None and root.env_cells:
+                raise CellError("谱系是在环境格模式下跑的，现在的配置没有写 cells，分数不能接着比")
 
         await self._seed_algorithm(entries)
         last_gen = max(e.generation for e in entries)
@@ -293,7 +329,7 @@ class Runner:
         w = self.w
         parent_genome = self.genomes[parent]
         await self.checkout(parent_genome)
-        train = await w.env.tasks("train", gen, self.cfg.train_limit)
+        train = await self.tasks("train", gen, self.cfg.train_limit)
         _check_split(train, "train")
         episodes = [await self.episode(t, parent_genome) for t in train]
         report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
@@ -368,7 +404,8 @@ class Runner:
                 decision = GateDecision(candidate_id=blocked, accepted=False, checks=guard_checks,
                                         reason=f"护栏拦截：{', '.join(rules)}")
                 await w.lineage.record(LineageEntry(id=blocked, target=self.lineage_target, parent_ids=[parent],
-                                                    generation=gen, status="rejected", decision=decision, patch=patch))
+                                                    generation=gen, status="rejected", decision=decision, patch=patch,
+                                                    env_cells=self.env_cells))
                 await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=blocked,
                                                    accepted=False, proposer=patch.proposer_ref))
                 return Candidate(id=blocked, reason=decision.reason, target=t)
@@ -392,7 +429,7 @@ class Runner:
         status = "accepted" if decision.accepted else "rejected"
         await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
                                             status=status, metrics=m, decision=decision, patch=patch,
-                                            snapshots=genome, task_scores=tasks))
+                                            snapshots=genome, task_scores=tasks, env_cells=self.env_cells))
         if decision.accepted:
             self.genomes[cid], self.metrics[cid], self.task_scores[cid] = genome, m, tasks
         await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid,

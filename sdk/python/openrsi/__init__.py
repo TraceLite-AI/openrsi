@@ -10,16 +10,16 @@ from .manifest import Manifest, load_manifest
 from .server import build_server, serve
 from .types import (
     PROTOCOL_VERSION, AlgorithmStatus, AnchorExample, AskResult, Attribution, AttributionTarget,
-    CalibrationReport, ComponentInfo, Diff, Episode, Evidence, EvolvableInfo, GateCheck, GateDecision,
+    CalibrationReport, ComponentInfo, Diff, EnvCell, Episode, Evidence, EvolvableInfo, GateCheck, GateDecision,
     GateRequest, GuardFinding, GuardReport, Item, LineageEntry, MemoryOp, Patch, ProposalRequest, RubricResult,
     ScreenResult, SkillResult, Snapshot, Step, Task, TellRequest, Trajectory, Verdict, VerifyResult, content_hash,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 __all__ = [
     "Agent", "Algorithm", "AlgorithmStatus", "AnchorExample", "AskResult", "Attribution", "AttributionTarget",
-    "Attributor", "CalibrationReport", "Component", "ComponentError", "ComponentInfo", "Diff", "Environment",
+    "Attributor", "CalibrationReport", "Component", "ComponentError", "ComponentInfo", "Diff", "EnvCell", "Environment",
     "Episode", "Evidence", "EvidenceCollector", "Evolvable", "EvolvableInfo", "Gate", "GateCheck",
     "GateDecision", "GateRequest", "Guard", "GuardFinding", "GuardReport", "Item", "ItemStore", "Judge",
     "Lineage", "LineageEntry", "Manifest", "Memory", "MemoryOp", "PROTOCOL_VERSION", "Patch",

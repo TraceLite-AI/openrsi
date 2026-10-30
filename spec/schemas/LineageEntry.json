@@ -218,8 +218,16 @@
       "additionalProperties": {
         "type": "number"
       },
-      "description": "每道 holdout 题的分数（0.4）",
+      "description": "每道 holdout 题的分数（0.4）；环境格模式下键是 <task_id>@<cell_id>",
       "title": "Task Scores",
+      "type": "object"
+    },
+    "env_cells": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）",
+      "title": "Env Cells",
       "type": "object"
     },
     "created_at": {

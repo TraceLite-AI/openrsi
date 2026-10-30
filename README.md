@@ -214,6 +214,14 @@ evolvables:
   prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
 ```
 
+Environment cells (draft for 0.5, opt-in): an env that implements `rsi_env_cells` declares cells (environment coordinates plus pinned versions; see [the draft](spec/drafts/environment-cells.md)). Add a `cells:` section to run each task once per cell. The runtime keys per-task scores as `<task_id>@<cell_id>`, stops if a cell's fingerprint changes or a task's `env_ref` is wrong, and records the cells in the lineage. Without `cells:` a run behaves exactly as in 0.4. The runtime checks declarations only; it does not make the agent actually run in that environment.
+
+```yaml
+cells:
+  train:   [linux-utf8]
+  holdout: [linux-utf8, linux-cp1252]
+```
+
 ## Integrations
 
 | Framework | What OpenRSI provides | Tested against the real framework |

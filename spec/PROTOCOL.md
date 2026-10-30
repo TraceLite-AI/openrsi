@@ -31,7 +31,7 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 
 所有组件必须实现 `rsi_component_info`，返回名字、版本、协议版本、类型和工具列表。调用方应当用它（或工具列表）判断组件能力，按能力降级。
 
-可选工具：`rsi_judge_calibrate`、`rsi_evolvable_export`、`rsi_algorithm_screen`（0.4）。
+可选工具：`rsi_judge_calibrate`、`rsi_evolvable_export`、`rsi_algorithm_screen`（0.4）、`rsi_env_cells`（0.5 草案，见第 14 节）。
 
 ## 2. 数据隔离
 
@@ -159,3 +159,12 @@ loop: {generations: 20, retrieve_k: 5, max_patches: 1}
 ```
 
 必选位置：env、agent、judge、proposer、algorithm、gate、lineage。可选：memory、evidence、attribution、guard。memory 和 evolvables 至少要有一个。
+
+## 14. 环境格（0.5 草案，可选）
+
+完整定义见 [drafts/environment-cells.md](drafts/environment-cells.md)，这里只列已经进入 `schemas/` 和 `tools.json` 的部分。草案在 1.0 之前可能变。
+
+- `EnvCell`：`id`（不得含 `@`）、`axes`、`coords`、`stage`、`pins`、`card`、`probes`。指纹是 `axes`、`coords`、`stage`、`pins` 的规范 JSON 的 SHA-256。
+- `rsi_env_cells()` 可选，返回 `EnvCell` 列表。`rsi_env_tasks` 多一个可选参数 `cell`：给了只出这个格的题，题目的 `env_ref` 必须等于格 id；未知的格、或没声明格的 env 收到 `cell`，必须返回工具错误。不传 `cell` 时行为和 0.4 相同。
+- 编排文件写了 `cells` 才进入环境格模式（第 13 节的格式之外加一节 `cells: {train, holdout, expose_coords_to_agent}`）。这时编排方必须：每次取题前核对指纹，变了就停止；检查 `env_ref`；逐题分数的键写成 `<task_id>@<cell_id>`，重复就停止；在 `LineageEntry.env_cells` 记下格 id 到指纹；续跑时格必须和谱系一致。默认不把坐标交给 agent。
+- 环境格只是声明，不是隔离手段。

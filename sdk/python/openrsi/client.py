@@ -15,9 +15,10 @@ from pydantic import BaseModel
 from .protocol import kinds_from_tools
 from .types import (
     AlgorithmStatus, AnchorExample, AskResult, Attribution, AttributionBundle, CalibrationReport, ComponentInfo,
-    Diff, Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, GuardReport, Item,
-    LineageEntry, LineageLog, Patch, ProposalBundle, ProposalRequest, RetrieveResult, Snapshot, Task, TaskBundle,
-    ScreenResult, SkillResult, TellRequest, Trajectory, Verdict, VerifyResult,
+    Diff, EnvCell, EnvCellBundle, Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision,
+    GateRequest, GuardReport, Item, LineageEntry, LineageLog, Patch, ProposalBundle, ProposalRequest,
+    RetrieveResult, ScreenResult, SkillResult, Snapshot, Task, TaskBundle, TellRequest, Trajectory, Verdict,
+    VerifyResult,
 )
 
 M = TypeVar("M", bound=BaseModel)
@@ -131,9 +132,16 @@ class _Facade:
 
 
 class RemoteEnvironment(_Facade):
-    async def tasks(self, split: str, round: int = 0, limit: int | None = None) -> list[Task]:
-        res = await self._rc.call("rsi_env_tasks", {"split": split, "round": round, "limit": limit}, TaskBundle)
+    async def tasks(self, split: str, round: int = 0, limit: int | None = None, cell: str | None = None) -> list[Task]:
+        res = await self._rc.call("rsi_env_tasks", {"split": split, "round": round, "limit": limit, "cell": cell},
+                                  TaskBundle)
         return res.tasks
+
+    async def cells(self) -> list[EnvCell] | None:
+        """env 没有实现 rsi_env_cells 时返回 None。"""
+        if "rsi_env_cells" not in self._rc.tools:
+            return None
+        return (await self._rc.call("rsi_env_cells", {}, EnvCellBundle)).cells
 
 
 class RemoteAgent(_Facade):

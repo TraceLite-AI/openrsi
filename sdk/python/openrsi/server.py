@@ -13,7 +13,7 @@ from .components import (
 )
 from .protocol import TOOLS_BY_NAME
 from .types import (
-    AlgorithmStatus, AnchorExample, AskResult, AttributionBundle, CalibrationReport, ComponentInfo, Diff,
+    AlgorithmStatus, AnchorExample, AskResult, AttributionBundle, CalibrationReport, ComponentInfo, Diff, EnvCellBundle,
     Episode, Evidence, EvidenceBundle, EvolvableInfo, ExportResult, GateDecision, GateRequest, GuardReport, Item,
     LineageEntry, LineageLog, PROTOCOL_VERSION, Patch, ProposalBundle, ProposalRequest, RetrieveResult,
     ScreenResult, SkillResult, Snapshot, Task, TaskBundle, TellRequest, Trajectory, Verdict, VerifyResult,
@@ -39,10 +39,25 @@ def build_server(component: Component, *, name: str | None = None) -> MCPServer:
     c: Any = component
 
     if isinstance(component, Environment):
-        def env_tasks(split: str, round: int = 0, limit: int | None = None) -> TaskBundle:
-            return TaskBundle(tasks=c.tasks(split, round, limit))
+        has_cells = _overrides(component, Environment, "cells")
+
+        def env_tasks(split: str, round: int = 0, limit: int | None = None, cell: str | None = None) -> TaskBundle:
+            if cell is None:  # 不传 cell 时照 0.4 调用，旧的 env 不用接受 cell 参数
+                return TaskBundle(tasks=c.tasks(split, round, limit))
+            if not has_cells:
+                raise ComponentError(f"这个 env 没有声明环境格，不能按 cell={cell!r} 取题")
+            known = [x.id for x in c.cells()]
+            if cell not in known:
+                raise ComponentError(f"未知的环境格 {cell!r}，可选：{known}")
+            return TaskBundle(tasks=c.tasks(split, round, limit, cell=cell))
 
         add(env_tasks, "rsi_env_tasks")
+
+        if has_cells:
+            def env_cells() -> EnvCellBundle:
+                return EnvCellBundle(cells=c.cells())
+
+            add(env_cells, "rsi_env_cells")
 
     if isinstance(component, Agent):
         def agent_run(task: Task, context: list[Item] | None = None, snapshot_id: str | None = None) -> Trajectory:

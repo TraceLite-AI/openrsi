@@ -32,6 +32,9 @@ class _AllKinds(Environment, Agent, EvidenceCollector, Judge, Attributor, Memory
     def screen(self, patch, parent_id):
         raise NotImplementedError
 
+    def cells(self):
+        raise NotImplementedError
+
     name = "openrsi/spec"
     version = PROTOCOL_VERSION.split("/")[1]
 

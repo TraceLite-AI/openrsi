@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrsi.dev/schemas/0.4/EnvCell.json",
+  "additionalProperties": true,
+  "description": "环境格：一组环境坐标加一份钉住清单，代表一个可以复现的环境（0.5 草案，见 spec/drafts/environment-cells.md）。\n\ncoords 的键是\"维度编号:子维度名\"（如 E2.1:os），值取自 axes 指定的坐标体系；没写的键表示未声明，不表示基准值。",
+  "properties": {
+    "id": {
+      "description": "格的 id，在一个 env 内唯一，不得含 @",
+      "title": "Id",
+      "type": "string"
+    },
+    "axes": {
+      "default": "aae-environment-axes/1",
+      "description": "坐标体系及版本",
+      "title": "Axes",
+      "type": "string"
+    },
+    "coords": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Coords",
+      "type": "object"
+    },
+    "stage": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "description": "按阶段（setup / agent / verifier）取值不同的坐标",
+      "title": "Stage",
+      "type": "object"
+    },
+    "pins": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "钉住清单；pin_policy 取 digest / tag / none",
+      "title": "Pins",
+      "type": "object"
+    },
+    "card": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "完整环境卡片的地址",
+      "title": "Card"
+    },
+    "probes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "坐标的观测方法，只作说明，编排方不直接执行",
+      "title": "Probes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "title": "EnvCell",
+  "type": "object"
+}

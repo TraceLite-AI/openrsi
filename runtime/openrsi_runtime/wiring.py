@@ -40,7 +40,7 @@ class LocalProxy:
             try:
                 return method(*args, **kwargs)
             except NotImplementedError:
-                if name in ("export", "screen"):  # 可选方法没实现
+                if name in ("export", "screen", "cells"):  # 可选方法没实现
                     return None
                 raise
 

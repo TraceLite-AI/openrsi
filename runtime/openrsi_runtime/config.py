@@ -65,6 +65,29 @@ class LoopConfig(BaseModel):
                                        description="每代最多做几次反事实重跑（拿掉一条 memory 重跑同一道题），0 表示不做")
 
 
+class CellsConfig(BaseModel):
+    """环境格模式（0.5 草案）。写了这一节才启用；不写时按 0.4 运行，即使 env 实现了 rsi_env_cells。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    train: list[str] | None = Field(default=None, description="train 用哪些格；不填用 env 声明的全部格")
+    holdout: list[str] | None = Field(default=None, description="holdout 用哪些格；不填用 env 声明的全部格")
+    expose_coords_to_agent: bool = Field(
+        default=False, description="把格的坐标放进交给 agent 的 task.metadata.env_coords；默认不给，agent 自己探测")
+
+    @model_validator(mode="after")
+    def _ids(self) -> "CellsConfig":
+        for name in ("train", "holdout"):
+            ids = getattr(self, name)
+            if ids is not None and not ids:
+                raise ValueError(f"cells.{name} 不能是空列表；不填表示用全部格")
+            if ids and any("@" in i for i in ids):
+                raise ValueError(f"cells.{name} 里的格 id 不能含 @")
+            if ids and len(ids) != len(set(ids)):
+                raise ValueError(f"cells.{name} 里有重复的格")
+        return self
+
+
 class RunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -75,6 +98,7 @@ class RunConfig(BaseModel):
     evolvables: dict[str, ComponentSpec] = Field(
         default_factory=dict, description="memory 之外参与进化的对象（prompt、skill 等），名字随意")
     loop: LoopConfig = Field(default_factory=LoopConfig)
+    cells: CellsConfig | None = Field(default=None, description="环境格模式（0.5 草案），写了才启用")
     base_dir: Path = Field(default=Path("."), exclude=True)
 
     @model_validator(mode="after")

@@ -265,6 +265,30 @@ class TaskBundle(_Model):
     tasks: list[Task] = Field(default_factory=list)
 
 
+class EnvCell(_Model):
+    """环境格：一组环境坐标加一份钉住清单，代表一个可以复现的环境（0.5 草案，见 spec/drafts/environment-cells.md）。
+
+    coords 的键是"维度编号:子维度名"（如 E2.1:os），值取自 axes 指定的坐标体系；没写的键表示未声明，不表示基准值。
+    """
+
+    id: str = Field(description="格的 id，在一个 env 内唯一，不得含 @")
+    axes: str = Field(default="aae-environment-axes/1", description="坐标体系及版本")
+    coords: dict[str, str] = Field(default_factory=dict)
+    stage: dict[str, dict[str, str]] = Field(
+        default_factory=dict, description="按阶段（setup / agent / verifier）取值不同的坐标")
+    pins: dict[str, str] = Field(default_factory=dict, description="钉住清单；pin_policy 取 digest / tag / none")
+    card: str | None = Field(default=None, description="完整环境卡片的地址")
+    probes: dict[str, str] = Field(default_factory=dict, description="坐标的观测方法，只作说明，编排方不直接执行")
+
+    def fingerprint(self) -> str:
+        """axes、coords、stage、pins 的规范 JSON 的 SHA-256。card 和 probes 只是说明，不算在内。"""
+        return content_hash({"axes": self.axes, "coords": self.coords, "stage": self.stage, "pins": self.pins})
+
+
+class EnvCellBundle(_Model):
+    cells: list[EnvCell] = Field(default_factory=list)
+
+
 class Episode(_Model):
     """一次完整的执行记录：题目、轨迹、判决，以及判决用到的证据。"""
 
@@ -394,7 +418,10 @@ class LineageEntry(_Model):
     patch: Patch | None = None
     snapshots: dict[str, str] = Field(default_factory=dict,
                                       description="同时进化多个可进化体时，每个目标对应的快照 id（0.3）")
-    task_scores: dict[str, float] = Field(default_factory=dict, description="每道 holdout 题的分数（0.4）")
+    task_scores: dict[str, float] = Field(default_factory=dict, description="每道 holdout 题的分数（0.4）；"
+                                          "环境格模式下键是 <task_id>@<cell_id>")
+    env_cells: dict[str, str] = Field(default_factory=dict,
+                                      description="环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）")
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -415,7 +442,7 @@ class ComponentInfo(_Model):
 SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     m.__name__: m
     for m in (Task, Step, Trajectory, Evidence, Verdict, RubricResult, AnchorExample, CalibrationReport,
-              Item, Patch, MemoryOp, Snapshot, Diff, EvolvableInfo, ExportResult, Episode, Attribution,
+              Item, Patch, MemoryOp, Snapshot, Diff, EvolvableInfo, ExportResult, Episode, Attribution, EnvCell,
               ProposalRequest, AskResult, TellRequest, AlgorithmStatus, GateRequest, GateDecision,
               LineageEntry, SkillResult, GuardReport, ScreenResult, ComponentInfo)
 }
