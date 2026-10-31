@@ -1,6 +1,6 @@
 [project]
 name = "openrsi-gate"
-version = "0.4.1"
+version = "0.4.2"
 description = "Holdout gate with optional significance, anchor and cost checks"
 requires-python = ">=3.10"
 license = "Apache-2.0"

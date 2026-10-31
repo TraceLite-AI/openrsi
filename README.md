@@ -91,7 +91,7 @@ The runtime enforces these rules itself rather than trusting components to follo
 | attribution | `RubricEvidenceAttributor`, `CellContrastAttributor` (blames environment coordinates when a task fails in some cells only); counterfactual reruns in the runtime | `openrsi-attribution` |
 | proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `PromptRewriter`, `DistillProposer` | `openrsi-proposer`, `openrsi-llm`, `openrsi-verl` |
 | algorithm | 6 algorithms, see below | `openrsi-algorithm` |
-| gate | `HoldoutGate` (gain, significance, anchor, cost, per-task and per-cell no-regression) | `openrsi-gate` |
+| gate | `HoldoutGate` (gain, significance, paired per-task significance, anchor, cost, per-task and per-cell no-regression) | `openrsi-gate` |
 | guard | `PolicyGuard` (dangerous code, secrets, protected items and paths, eval tampering) | `openrsi-guard` |
 | lineage | `LineageStore` (JSONL, resumable) | `openrsi-lineage` |
 | agent | `ChatAgent` (any OpenAI-compatible endpoint, restarts vLLM when weights change), `HarnessAgent` | `openrsi-llm`, `openrsi-harness` |

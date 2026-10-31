@@ -91,7 +91,7 @@ flowchart LR
 | 归因 | `RubricEvidenceAttributor`、`CellContrastAttributor`（同一道题只在部分格失败时，归到环境坐标）；运行时支持反事实重跑 | `openrsi-attribution` |
 | 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`PromptRewriter`、`DistillProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
 | 算法 | 6 种，见下表 | `openrsi-algorithm` |
-| 准入 | `HoldoutGate`（提升幅度、显著性、anchor、成本、逐题不回退、逐格不回退） | `openrsi-gate` |
+| 准入 | `HoldoutGate`（提升幅度、显著性、逐题配对检验、anchor、成本、逐题不回退、逐格不回退） | `openrsi-gate` |
 | 护栏 | `PolicyGuard`（危险代码、密钥、受保护条目和路径、篡改评估） | `openrsi-guard` |
 | 谱系 | `LineageStore`（JSONL，可续跑） | `openrsi-lineage` |
 | 执行体 | `ChatAgent`（任何 OpenAI 兼容接口，换权重时重启 vLLM）、`HarnessAgent` | `openrsi-llm`、`openrsi-harness` |
