@@ -16,6 +16,9 @@
   - env 返回的题目划分不对时直接报错
   - 配置了护栏时，被拦下的补丁不会生效
 
+执行绑定与不可变记录（P2，见 bindings.py、records.py）：cells 里配置了 binding 时，每道题执行前准备并核对
+环境，agent 必须回报所用方案；配置了 records 时，原始记录按内容寻址存档，续跑时运行清单必须一致。
+
 环境格模式（编排文件写了 cells，见 cells.py）：取题经 CellRegistry，逐题分数的键是 <task_id>@<cell_id>，
 谱系的 env_cells 记下格的指纹，续跑时必须一致。
 
@@ -32,13 +35,14 @@ from dataclasses import dataclass, field
 from statistics import fmean
 from typing import Any, Callable
 
-from openrsi import (AnchorExample, Attribution, AttributionTarget, ComponentError, Episode, EvolvableInfo,
+from openrsi import (AnchorExample, Attribution, AttributionTarget, ComponentError, Episode, Evidence, EvolvableInfo,
                      GateCheck, GateDecision, GateRequest, Item, LineageEntry, Patch, ProposalRequest, Task,
-                     TellRequest, ToolCallError, content_hash)
+                     TellRequest, ToolCallError, __version__ as OPENRSI_VERSION, content_hash)
 from openrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
+from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
 Genome = dict[str, str]  # 可进化体 target → 快照 id
 
@@ -110,6 +114,14 @@ class Runner:
             cells = getattr(w.config, "cells", None)
         self.cells_cfg = cells
         self.registry: CellRegistry | None = None
+        self.binding: Any = None
+        self._plans: dict[str, Any] = {}
+        config = getattr(w, "config", None)
+        self.records = (RecordStore(config.base_dir / config.records.path)
+                        if config is not None and getattr(config, "records", None) else None)
+        self.manifest: RunManifest | None = None
+        self.run_id = ""
+        self._episode_records: dict[str, str] = {}
         self.judge_target: str | None = None
         self.targets: dict[str, _Target] = {}
         self.genomes: dict[str, Genome] = {}
@@ -178,10 +190,18 @@ class Runner:
         coords = self.registry.coords_for_agent(task) if self.registry else None
         if coords is not None:
             visible = visible.model_copy(update={"metadata": {**visible.metadata, "env_coords": coords}})
+        receipt = None
+        if self.binding is not None and task.env_ref:
+            plan, receipt = self._bind(task)
+            visible = visible.model_copy(update={"metadata": {
+                **visible.metadata, "binding": {"env": plan.env, "plan_hash": plan.plan_hash, "image": plan.image}}})
         context = await self.context(visible, genome, exclude)
         gid = genome_id(genome)
         traj = await self.w.agent.run(visible, context, gid)
         traj.snapshot_id = traj.snapshot_id or gid
+        if receipt is not None and traj.metadata.get("binding_plan_hash") != receipt.plan_hash:
+            raise CellError(f"agent 没有回报执行方案（metadata.binding_plan_hash），说明它不支持执行绑定；"
+                            f"严格模式下不能把题交给它（题 {task.id}@{task.env_ref}）")
         if self.registry and task.env_ref and not traj.id.endswith(f"@{task.env_ref}"):
             traj.id = f"{traj.id}@{task.env_ref}"  # 同一道题在不同格里的轨迹要能区分（归因按轨迹 id 对号）
         if not traj.used_items:  # agent 没报告就当作给它的都用上了
@@ -189,7 +209,55 @@ class Runner:
         evidence = await self.w.evidence.collect(task, traj) if self.w.evidence else []
         verdict = await self.w.judge.evaluate(task, traj, evidence)
         env = [self.registry.evidence(task)] if self.registry and task.env_ref else []
-        return Episode(task=task, trajectory=traj, verdict=verdict, evidence=[*evidence, *verdict.collected, *env])
+        if receipt is not None:
+            env.append(Evidence.make("exec_receipt", receipt.model_dump(mode="json"), f"runtime:binding:{task.env_ref}",
+                                     self.binding.name))
+        ep = Episode(task=task, trajectory=traj, verdict=verdict, evidence=[*evidence, *verdict.collected, *env])
+        if self.records is not None:
+            self._record_episode(ep, receipt)
+        return ep
+
+    def _bind(self, task: Task) -> tuple[Any, Any]:
+        """执行前准备并核对这道题所在格的环境；不符就停。"""
+        cell = self.registry.cells[task.env_ref]
+        plan = self._plans.get(cell.id)
+        if plan is None:
+            plan = self._plans[cell.id] = self.binding.resolve(cell, self.registry.fingerprints[cell.id])
+        receipt = self.binding.prepare(plan)
+        check = self.binding.verify(plan, receipt, cell)
+        if not check.ok:
+            raise CellError(f"环境格 {cell.id} 的实际执行环境和声明不符：{'; '.join(check.mismatches)}")
+        return plan, receipt
+
+    def _record_episode(self, ep: Episode, receipt: Any) -> None:
+        """原始记录只追加：题目、轨迹、证据、回执各存一份，再写一条把它们串起来的 EvidenceRecord；判决作为派生记录。"""
+        rs, rid = self.records, self.run_id
+        traj_h = rs.put(ep.trajectory, "trajectory", rid)
+        rec = EvidenceRecord(run_id=rid, episode_id=ep.trajectory.id, task_digest=rs.put(ep.task, "task", rid),
+                             cell_fingerprint=self.registry.fingerprints.get(ep.task.env_ref) if self.registry else None,
+                             execution_receipt_hash=rs.put(receipt, "receipt", rid) if receipt is not None else None,
+                             raw_trajectory_hash=traj_h, raw_artifact_hashes=[rs.put(e, "evidence", rid) for e in ep.evidence],
+                             producer_ref=ep.trajectory.snapshot_id or "")
+        rec_h = rs.put(rec, "evidence_record", rid)
+        self._episode_records[ep.trajectory.id] = rec_h
+        rs.put(DerivedRecord(run_id=rid, what="verdict", source_hashes=[rec_h], method_ref=ep.verdict.judge_ref,
+                             output_hash=rs.put(ep.verdict, "verdict", rid)), "derived_record", rid)
+
+    def _record_attributions(self, attributions: list[Attribution]) -> None:
+        for a in attributions:
+            src = self._episode_records.get(a.episode_id)
+            if src is None:
+                raise RecordError(f"归因 {a.method} 指向的 episode {a.episode_id} 没有原始记录")
+            self.records.put(DerivedRecord(run_id=self.run_id, what="attribution", source_hashes=[src],
+                                           method_ref=a.method,
+                                           output_hash=self.records.put(a, "attribution", self.run_id)),
+                             "derived_record", self.run_id)
+
+    def _make_manifest(self) -> RunManifest:
+        config = self.w.config
+        refs = {k: v.rsplit(" (", 1)[0] for k, v in sorted(getattr(self.w, "refs", {}).items())}
+        return RunManifest(protocol=config.protocol, config_hash=content_hash(sanitized_config(config)),
+                           components=refs, cells=self.env_cells, openrsi=OPENRSI_VERSION)
 
     async def score(self, tasks: list[Task], genome: Genome, prefix: str) -> tuple[dict[str, float], list[Episode]]:
         await self.checkout(genome)  # 判别器按当前快照打分，所以先把所有可进化体切到这个版本
@@ -256,6 +324,14 @@ class Runner:
         await self._load_targets()
         if self.cells_cfg is not None:
             self.registry = await CellRegistry.open(w.env, self.cells_cfg, self.log)
+            if self.cells_cfg.binding is not None:
+                from .wiring import _import
+                self.binding = _import(self.cells_cfg.binding.python)(**self.cells_cfg.binding.with_)
+        if getattr(w, "config", None) is not None:
+            self.manifest = self._make_manifest()
+            self.run_id = self.manifest.manifest_hash[:16]
+            if self.records is not None:
+                self.records.put(self.manifest, "manifest", self.run_id)
 
         holdout = await self.tasks("holdout", 0, self.cfg.holdout_limit)
         _check_split(holdout, "holdout")
@@ -270,7 +346,8 @@ class Runner:
             m = self._with_epoch(m, 0.0)
             root = LineageEntry(id=genome_id(genome), target=self.lineage_target, generation=0, status="root",
                                 metrics=m, snapshots=genome, task_scores=self.last_task_scores,
-                                env_cells=self.env_cells)
+                                env_cells=self.env_cells,
+                                manifest=self.manifest.manifest_hash if self.manifest else None)
             entries = [await w.lineage.record(root)]
             self.log(f"root {root.id}: holdout={m['holdout']:.3f}")
         else:
@@ -280,6 +357,12 @@ class Runner:
                 self.registry.check_lineage(root.env_cells)
             elif root is not None and root.env_cells:
                 raise CellError("谱系是在环境格模式下跑的，现在的配置没有写 cells，分数不能接着比")
+            if root is not None and self.manifest and root.manifest and root.manifest != self.manifest.manifest_hash:
+                msg = (f"运行清单变了（{root.manifest[:12]} → {self.manifest.manifest_hash[:12]}）："
+                       "组件版本、配置或环境格和谱系开始时不一样，新旧结果不能混在一起")
+                if self.records is not None or self.binding is not None:
+                    raise RecordError(msg)
+                self.log("警告：" + msg)
 
         await self._seed_algorithm(entries)
         last_gen = max(e.generation for e in entries)
@@ -340,6 +423,8 @@ class Runner:
         if self.cfg.counterfactual_reruns and episodes:
             attributions += await self.counterfactual(episodes, parent_genome)
             await self.checkout(parent_genome)
+        if self.records is not None:
+            self._record_attributions(attributions)
         states = {t: await tgt.facade.export(parent_genome[t]) for t, tgt in self.targets.items()}
         allowed = self._allowed_targets(gen)
         if not allowed:

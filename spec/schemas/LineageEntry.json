@@ -230,6 +230,19 @@
       "title": "Env Cells",
       "type": "object"
     },
+    "manifest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "运行清单的哈希；续跑时必须一致（0.5 草案）",
+      "title": "Manifest"
+    },
     "created_at": {
       "title": "Created At",
       "type": "string"

@@ -15,7 +15,7 @@ from .types import (
     ScreenResult, SkillResult, Snapshot, Step, Task, TellRequest, Trajectory, Verdict, VerifyResult, content_hash,
 )
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 __all__ = [
     "Agent", "Algorithm", "AlgorithmStatus", "AnchorExample", "AskResult", "Attribution", "AttributionTarget",
