@@ -1,6 +1,6 @@
 [project]
 name = "openrsi-rsihub"
-version = "0.4.0"
+version = "0.4.1"
 description = "OpenRSI components as RSIHub operators (guard validate, no-regression gate, Shinka select)"
 requires-python = ">=3.10"
 license = "Apache-2.0"

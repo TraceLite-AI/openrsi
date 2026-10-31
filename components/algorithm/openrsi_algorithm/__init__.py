@@ -137,6 +137,26 @@ class GreedyAlgorithm(BaseAlgorithm):
         return self.best_id  # type: ignore[return-value]
 
 
+class IndependentAlgorithm(BaseAlgorithm):
+    """每一代都从根版本出发，接受的候选不被继承。对照实验用（two-loop 设计 §8B 的 B 组）：
+    和可以继承改进的算法用同样预算比较，排除"只是多试了几次"。"""
+
+    name = "openrsi/independent"
+    version = "0.4.1"
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.root_id: str | None = None
+
+    def _admit(self, cid: str, score: float, result: TellRequest, parent: str | None) -> None:
+        super()._admit(cid, score, result, parent)
+        if parent is None and self.root_id is None:
+            self.root_id = cid
+
+    def _pick(self) -> str:
+        return self.root_id  # type: ignore[return-value]
+
+
 class ArchiveAlgorithm(BaseAlgorithm):
     """with: temperature（越小越偏向高分版本）"""
 
@@ -320,8 +340,9 @@ class MapElitesAlgorithm(BaseAlgorithm):
         return self.elites[self.rng.choice(cells)] if cells else self.best_id  # type: ignore[return-value]
 
 
-ALGORITHMS = {"greedy": GreedyAlgorithm, "archive": ArchiveAlgorithm, "pareto": ParetoAlgorithm,
-              "shinka": ShinkaAlgorithm, "islands": IslandAlgorithm, "map-elites": MapElitesAlgorithm}
+ALGORITHMS = {"greedy": GreedyAlgorithm, "independent": IndependentAlgorithm, "archive": ArchiveAlgorithm,
+              "pareto": ParetoAlgorithm, "shinka": ShinkaAlgorithm, "islands": IslandAlgorithm,
+              "map-elites": MapElitesAlgorithm}
 
 
 def main() -> None:
@@ -336,5 +357,5 @@ def main() -> None:
     serve(ALGORITHMS[args.kind](metric=args.metric, max_generations=args.max_generations, patience=args.patience))
 
 
-__all__ = ["ALGORITHMS", "ArchiveAlgorithm", "BaseAlgorithm", "GreedyAlgorithm", "IslandAlgorithm",
-           "MapElitesAlgorithm", "ParetoAlgorithm", "ShinkaAlgorithm", "main"]
+__all__ = ["ALGORITHMS", "ArchiveAlgorithm", "BaseAlgorithm", "GreedyAlgorithm", "IndependentAlgorithm",
+           "IslandAlgorithm", "MapElitesAlgorithm", "ParetoAlgorithm", "ShinkaAlgorithm", "main"]

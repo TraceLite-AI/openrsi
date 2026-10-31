@@ -229,10 +229,13 @@ class HarnessAgent(Agent):
     timeout       每道题的超时（秒）
     env           传给 agent 的环境变量名列表（比如 ANTHROPIC_API_KEY），其余环境变量不传
     docker_image  可选；给了就在容器里运行（仓库只读挂载到 /work）
+
+    支持执行绑定（P2）：题目带 metadata.binding 时，把其中的环境变量加给 agent 进程（容器里用 -e 传入），
+    并在轨迹 metadata.binding_plan_hash 里回报方案，运行时据此确认题目确实按这份方案执行。
     """
 
     name = "openrsi/harness-agent"
-    version = "0.4.0"
+    version = "0.4.1"
 
     def __init__(self, repo: str | Path, command: list[str] | None = None, timeout: float = 300.0,
                  env: list[str] | None = None, docker_image: str | None = None):
@@ -242,7 +245,7 @@ class HarnessAgent(Agent):
         self.env_names = list(env or [])
         self.docker_image = docker_image
 
-    def _argv(self) -> list[str]:
+    def _argv(self, extra_env: dict[str, str] | None = None) -> list[str]:
         if not self.docker_image:
             cmd = list(self.command)
             if cmd and cmd[0] in ("python", "python3"):
@@ -250,6 +253,7 @@ class HarnessAgent(Agent):
                 cmd[0] = sys.executable
             return cmd
         flags = [x for n in self.env_names for x in ("-e", n)]
+        flags += [x for k, v in sorted((extra_env or {}).items()) for x in ("-e", f"{k}={v}")]
         return ["docker", "run", "--rm", "-i", "--network", "none" if not self.env_names else "bridge",
                 "-v", f"{self.repo}:/work:ro", "-w", "/work", *flags, self.docker_image, *self.command]
 
@@ -260,9 +264,12 @@ class HarnessAgent(Agent):
         env = {n: os.environ[n] for n in self.env_names if n in os.environ}
         env.setdefault("PATH", os.environ.get("PATH", ""))
         env["PYTHONDONTWRITEBYTECODE"] = "1"  # 不在 harness 仓库里留 __pycache__
+        binding = task.metadata.get("binding") if isinstance(task.metadata.get("binding"), dict) else None
+        bound_env = {str(k): str(v) for k, v in (binding or {}).get("env", {}).items()}
+        env.update(bound_env)
         start = time.monotonic()
         try:
-            proc = subprocess.run(self._argv(), input=payload, capture_output=True, text=True, timeout=self.timeout,
+            proc = subprocess.run(self._argv(bound_env), input=payload, capture_output=True, text=True, timeout=self.timeout,
                                   cwd=self.repo, env=env)
         except subprocess.TimeoutExpired:
             return self._failed(task, snapshot_id, f"agent 超时（{self.timeout}s）")
@@ -277,6 +284,8 @@ class HarnessAgent(Agent):
         data.setdefault("task_id", task.id)
         data.setdefault("snapshot_id", snapshot_id)
         data.setdefault("metadata", {})["duration_s"] = round(time.monotonic() - start, 3)
+        if binding:
+            data["metadata"]["binding_plan_hash"] = binding.get("plan_hash")
         try:
             return Trajectory.model_validate(data)
         except ValueError as e:

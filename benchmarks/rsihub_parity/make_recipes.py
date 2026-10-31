@@ -10,6 +10,7 @@ Terminal-Bench 2 全部 89 题，按 50 / 19 / 20 划分 train / gate / sealed�
   shinka     在 openrsi 基础上 select=openrsi_shinka（可选）
 
 用法：python make_recipes.py /path/to/RSIHub [--generations 10] [--max-task-regressions 2] [--arms baseline,openrsi]
+                             [--strict-gate]
 """
 import argparse
 import copy
@@ -44,7 +45,7 @@ def base_recipe(rsihub: Path, generations: int) -> dict:
     return recipe
 
 
-def arm(recipe: dict, name: str, max_regressions: int) -> dict:
+def arm(recipe: dict, name: str, max_regressions: int, strict_gate: bool = False) -> dict:
     r = copy.deepcopy(recipe)
     r["experiment"]["id"] = f"openrsi-parity-{name}"
     ops = r["operators"]
@@ -53,7 +54,8 @@ def arm(recipe: dict, name: str, max_regressions: int) -> dict:
             "protected_paths": ["evaluator/**"],  # Hyperagents 允许改 operators/，所以只保护评估器
             "compile_globs": ["operators/mutate.py", "target/**/*.py"]}}  # 和 hyperagents validate 一样的编译检查
         ops["gate"] = {"operator": "openrsi_no_regression", "config": {
-            "max_task_regressions": max_regressions, "task_tolerance": 0.0, "allow_equal": True}}
+            "max_task_regressions": max_regressions, "task_tolerance": 0.0, "allow_equal": True,
+            "strict": strict_gate}}  # 严格：拿不到可比的逐题分数就拒绝，不退回只比总分
     if name == "shinka":
         ops["select"] = {"operator": "openrsi_shinka", "config": {"selection_lambda": 10.0}}
     return r
@@ -65,6 +67,8 @@ def main() -> None:
     ap.add_argument("--generations", type=int, default=10)
     ap.add_argument("--max-task-regressions", type=int, default=2)
     ap.add_argument("--arms", default="baseline,openrsi")
+    ap.add_argument("--strict-gate", action="store_true",
+                    help="gate 用严格模式：逐题向量必须覆盖同一批题，否则拒绝（推荐；默认关，保持和以前的配方一致）")
     args = ap.parse_args()
     rsihub = Path(args.rsihub).resolve()
     counts = split_counts(89, SPLIT)
@@ -73,7 +77,8 @@ def main() -> None:
     for name in args.arms.split(","):
         out = rsihub / "recipes" / f"openrsi_parity_{name}" / "evolve.yaml"
         out.parent.mkdir(parents=True, exist_ok=True)
-        text = yaml.safe_dump(arm(base, name, args.max_task_regressions), sort_keys=False, allow_unicode=True)
+        text = yaml.safe_dump(arm(base, name, args.max_task_regressions, args.strict_gate), sort_keys=False,
+                              allow_unicode=True)
         out.write_text(text)
         print(f"{name:9s} {out}  sha256={hashlib.sha256(text.encode()).hexdigest()[:12]}")
     print(f"划分：{counts}（89 题，seed 0）")

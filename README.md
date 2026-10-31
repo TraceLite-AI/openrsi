@@ -214,7 +214,7 @@ evolvables:
   prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
 ```
 
-Environment cells (draft for 0.5, opt-in): an env that implements `rsi_env_cells` declares cells (environment coordinates plus pinned versions; see [the draft](spec/drafts/environment-cells.md)). Add a `cells:` section to run each task once per cell. The runtime keys per-task scores as `<task_id>@<cell_id>`, stops if a cell's fingerprint changes or a task's `env_ref` is wrong, and records the cells in the lineage. Without `cells:` a run behaves exactly as in 0.4. Each episode also gets an `env_cell` evidence record (cell, coordinates, fingerprint) written by the runtime, which `CellContrastAttributor` uses to compare the same task across cells. The runtime checks declarations only; it does not make the agent actually run in that environment.
+Environment cells (draft for 0.5, opt-in): an env that implements `rsi_env_cells` declares cells (environment coordinates plus pinned versions; see [the draft](spec/drafts/environment-cells.md)). Add a `cells:` section to run each task once per cell. The runtime keys per-task scores as `<task_id>@<cell_id>`, stops if a cell's fingerprint changes or a task's `env_ref` is wrong, and records the cells in the lineage. Without `cells:` a run behaves exactly as in 0.4. Each episode also gets an `env_cell` evidence record (cell, coordinates, fingerprint) written by the runtime, which `CellContrastAttributor` uses to compare the same task across cells. The runtime checks declarations only; it does not make the agent actually run in that environment. For that, add `cells.binding` (strict mode): before every task the runtime prepares the cell, runs pre-registered probes in a subprocess and compares them with the declared coordinates, and the agent must report the plan it used (`HarnessAgent` does). With `records: {path}` the raw tasks, trajectories, evidence and receipts are stored content-addressed and append-only, verdicts and attributions as derived records, and resuming with a different run manifest is refused. `runtime/openrsi_runtime/outer.py` upgrades a judge or an attribution method only after a frozen validation plan passes on independent labels and someone approves; off by default.
 
 ```yaml
 cells:
@@ -272,7 +272,20 @@ A small run on CPU (12 train / 15 holdout tasks, 3 generations) completed end to
 | V3: GRPO, Qwen2.5-0.5B, validation score before → after, OpenRSI reward vs built-in | *pending* |
 | V4: two chained SFT runs through `WeightsEvolvable`, then rollback | *pending* |
 
-### 4. Cost of the component split (measured)
+### 4. Native loop A/B/C (synthetic smoke, not a benchmark)
+
+[`benchmarks/native_loop`](benchmarks/native_loop/README.md): A = no improvement, B = equal search budget but every generation starts from the root, C = equal budget and improvements are inherited. Budget 400 agent calls per arm; sealed test of 40 tasks run once per arm after the final version is locked.
+
+<!-- RESULTS:native-loop -->
+| Arm | Sealed pass rate (seed 0 / 1 / 2) |
+|---|---|
+| A: frozen | 0.000 / 0.125 / 0.125 |
+| B: independent from root | 0.375 / 0.500 / 0.500 |
+| C: inherits improvements | 1.000 / 1.000 / 1.000 |
+
+This is the `secret_ops` toy task: it shows the machinery works, not how well a real agent improves.
+
+### 5. Cost of the component split (measured)
 
 [`benchmarks/composition/overhead.py`](benchmarks/composition/overhead.py), Python 3.13, 4-core CPU:
 
@@ -288,7 +301,7 @@ A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with ev
 
 OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 166 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
+- **Tested in CI:** 255 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 
@@ -312,6 +325,7 @@ The protocol specification and in-repo guides are currently written in Chinese. 
 | [examples/small_model/README.md](examples/small_model/README.md) | the small-model pipeline |
 | [field_tests/README.md](field_tests/README.md) | tests to run against real verl and RSIHub |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | the RSIHub parity experiment |
+| [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | the native A/B/C experiment |
 | [REVIEW.md](REVIEW.md) | the review checklist and per-version baselines |
 
 ## Repository Layout
@@ -324,7 +338,7 @@ components/         official components: judge, memory, evolvables, harness, llm
                     proposer, algorithm, gate, guard, lineage
 adapters/           verl, RSIHub, DSPy, LangGraph
 examples/           runnable examples
-benchmarks/         RSIHub parity, composition overhead
+benchmarks/         RSIHub parity, native A/B/C, composition overhead
 field_tests/        tests to run on real frameworks and hardware
 tests/              unit and integration tests, including tests/xlang (JavaScript)
 ```

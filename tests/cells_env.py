@@ -58,3 +58,38 @@ class RecordingAgent(RuleAgent):
         RecordingAgent.seen.append(dict(task.metadata))
         assert task.reference is None
         return super().run(task, context, snapshot_id)
+
+
+UTC = EnvCell(id="utc", coords={"E2.1:os": "linux", "E4.1:时区": "UTC"},
+              pins={"image": "base@sha256:cccc", "pin_policy": "digest"})
+SHANGHAI = EnvCell(id="shanghai", coords={"E2.1:os": "linux", "E4.1:时区": "Asia/Shanghai"},
+                   pins={"image": "base@sha256:dddd", "pin_policy": "digest"})
+CP1252 = EnvCell(id="cp1252", coords={"E4.1:默认编码": "cp1252"},
+                 pins={"image": "base@sha256:eeee", "pin_policy": "digest"})
+
+
+class TZCellsEnv(CellsEnv):
+    """两个时区格；with_cp1252=True 时多一个声明 cp1252 编码的格（大多数宿主机做不出来，用来测漂移）。"""
+
+    name, version = "test/tz-cells-env", "0.1.0"
+
+    def __init__(self, seed: int = 0, with_cp1252: bool = False):
+        super().__init__(seed=seed)
+        self.with_cp1252 = with_cp1252
+
+    def cells(self) -> list[EnvCell]:
+        return [UTC, SHANGHAI, *([CP1252] if self.with_cp1252 else [])]
+
+
+class BindingAwareAgent(RuleAgent):
+    """进程内的测试 agent：照方案回报 plan_hash（真实执行器应当像 HarnessAgent 那样把环境变量加给子进程）。"""
+
+    seen: list[dict] = []
+
+    def run(self, task, context, snapshot_id=None):
+        traj = super().run(task, context, snapshot_id)
+        binding = task.metadata.get("binding")
+        BindingAwareAgent.seen.append(binding)
+        if binding:
+            traj.metadata["binding_plan_hash"] = binding["plan_hash"]
+        return traj

@@ -423,6 +423,7 @@ class LineageEntry(_Model):
                                           "环境格模式下键是 <task_id>@<cell_id>")
     env_cells: dict[str, str] = Field(default_factory=dict,
                                       description="环境格模式下这次评估用到的格：格 id → 指纹（0.5 草案）")
+    manifest: str | None = Field(default=None, description="运行清单的哈希；续跑时必须一致（0.5 草案）")
     created_at: str = Field(default_factory=now_iso)
 
 
