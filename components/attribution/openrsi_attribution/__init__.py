@@ -1,6 +1,7 @@
 """基于证据的归因：把判决里没通过的 rubric 项，顺着它引用的证据追到轨迹步骤；把成败记到用过的 memory 条目上。
 
 不需要重跑 agent，代价很低，适合每代都跑。需要反事实重放的归因（去掉一条 memory 重跑）留给运行时做。
+CellContrastAttributor 在此之上做跨格对比：同一道题只在某些环境格失败时，把责任归到环境坐标上。
 """
 from __future__ import annotations
 
@@ -65,6 +66,67 @@ class RubricEvidenceAttributor(Attributor):
         return Attribution(episode_id=traj.id, targets=targets, method="rubric-evidence", rationale=why)
 
 
+def _cell_info(ep: Episode) -> tuple[str | None, dict[str, str]]:
+    """这个 episode 所在的格和坐标：优先读编排方记录的 env_cell 证据，没有就只用 task.env_ref。"""
+    for e in ep.evidence:
+        if e.type == "env_cell" and isinstance(e.content, dict) and e.verify():
+            return str(e.content.get("cell")), {str(k): str(v) for k, v in (e.content.get("coords") or {}).items()}
+    return ep.task.env_ref, {}
+
+
+class CellContrastAttributor(RubricEvidenceAttributor):
+    """在证据归因之上做跨格对比（环境格模式，0.5 草案）。同一道题在几个格里都做了时：
+
+    - 有的格过、有的格挂：挂的那几个 episode 记 env 责任，指向"挂的格和所有过的格都不一样"的坐标
+      （ref 写成 <坐标键>=<值>）；找不到这样的坐标就指向格本身（cell:<格 id>）
+    - 所有格都挂：记 component agent:capability 责任，说明和环境无关
+    - 所有格都过，或者只在一个格里做过：不加东西，和 RubricEvidenceAttributor 一样
+
+    同一道题在不同格里的结果是天然的对照实验，不用额外重跑。坐标只是相关，不证明是它导致的。
+    """
+
+    name = "openrsi/cell-contrast-attribution"
+    version = "0.4.1"
+
+    def __init__(self, env_weight: float = 0.8, capability_weight: float = 0.5):
+        self.env_weight, self.capability_weight = env_weight, capability_weight
+
+    def explain(self, episodes: list[Episode]) -> list[Attribution]:
+        out = super().explain(episodes)
+        groups: dict[str, list[int]] = defaultdict(list)
+        for i, ep in enumerate(episodes):
+            if _cell_info(ep)[0] is not None:
+                groups[ep.task.id].append(i)
+        for idx in groups.values():
+            cells = {_cell_info(episodes[i])[0] for i in idx}
+            if len(cells) < 2:
+                continue
+            passed = [i for i in idx if episodes[i].verdict.passed]
+            failed = [i for i in idx if not episodes[i].verdict.passed]
+            if not failed:
+                continue
+            if not passed:
+                for i in failed:
+                    out[i].targets.append(AttributionTarget(
+                        kind="component", ref="agent:capability", weight=-self.capability_weight,
+                        note=f"这道题在全部 {len(cells)} 个格里都失败，和环境无关"))
+                continue
+            ok_cells = sorted({_cell_info(episodes[i])[0] for i in passed})
+            ok_coords = [_cell_info(episodes[i])[1] for i in passed]
+            for i in failed:
+                cell, coords = _cell_info(episodes[i])
+                odd = sorted(k for k, v in coords.items() if all(c.get(k) != v for c in ok_coords))
+                note = f"同一道题在 {', '.join(ok_cells)} 通过，在 {cell} 失败"
+                if odd:
+                    share = self.env_weight / len(odd)
+                    out[i].targets += [AttributionTarget(kind="env", ref=f"{k}={coords[k]}", weight=-share, note=note)
+                                       for k in odd]
+                else:
+                    out[i].targets.append(AttributionTarget(kind="env", ref=f"cell:{cell}",
+                                                            weight=-self.env_weight, note=note))
+        return out
+
+
 def item_scores(attributions: list[Attribution]) -> dict[str, tuple[float, int]]:
     """跨 episode 汇总每个 memory 条目的净权重和出现次数，提案器可以用它淘汰有害条目。"""
     acc: dict[str, list[float]] = defaultdict(list)
@@ -76,7 +138,12 @@ def item_scores(attributions: list[Attribution]) -> dict[str, tuple[float, int]]
 
 
 def main() -> None:
-    serve(RubricEvidenceAttributor())
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="openrsi-attribution")
+    ap.add_argument("--kind", choices=["rubric-evidence", "cell-contrast"], default="rubric-evidence")
+    args = ap.parse_args()
+    serve(CellContrastAttributor() if args.kind == "cell-contrast" else RubricEvidenceAttributor())
 
 
-__all__ = ["RubricEvidenceAttributor", "item_scores", "main"]
+__all__ = ["CellContrastAttributor", "RubricEvidenceAttributor", "item_scores", "main"]

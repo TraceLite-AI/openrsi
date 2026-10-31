@@ -5,6 +5,7 @@
 - RubricAuditor：给判别器提补丁。找"判别器判了通过、但它自己收集的证据显示有问题"的 episode，
   补上漏掉的检查项。不需要人工标注；补丁是否真的更好，由运行时在 anchor 集上验证。
 - CompositeProposer：把几个提案器组合起来，各自负责自己类型的可进化体。
+- RoutedProposer：组合提案器的一种，按归因把这一代交给对应的成员（缺记忆 → 记忆提案器，环境坐标 → 提示提案器……）。
 """
 from __future__ import annotations
 
@@ -275,9 +276,65 @@ class CompositeProposer(Proposer):
         chosen = [hint] if hint in self.members else list(self.members)
         out: list[Patch] = []
         for name in chosen:
-            for p in self.members[name].propose(request):
-                out.append(p.model_copy(update={"proposer_ref": f"{p.proposer_ref or self.members[name].ref}#{name}"}))
+            out += self._run(name, request)
         return out[: request.max_patches]
+
+    def _run(self, name: str, request: ProposalRequest, note: str | None = None) -> list[Patch]:
+        out = []
+        for p in self.members[name].propose(request):
+            update: dict[str, Any] = {"proposer_ref": f"{p.proposer_ref or self.members[name].ref}#{name}"}
+            if note:
+                update["rationale"] = f"{p.rationale}；{note}" if p.rationale else note
+            out.append(p.model_copy(update=update))
+        return out
+
+
+class RoutedProposer(CompositeProposer):
+    """with: proposers（同 CompositeProposer）、routes、default。
+
+    routes 是有序列表，每项 {match: 匹配, to: 成员名}。match 写成归因目标的 kind（如 env、step、item），
+    或 kind:ref 前缀（如 component:memory:missing）。每一代把本轮归因里匹配到的责任（负权重）加起来，
+    交给责任最大的那条路由的成员；平手取靠前的。没有匹配到时交给 default，default 不填就所有成员都跑。
+    算法通过 hints["proposer"] 点名时以算法为准。补丁说明里写明分流依据。
+    能改什么仍由配置的可进化体决定，分流只在已有成员里选。
+    """
+
+    name = "openrsi/routed-proposer"
+    version = "0.4.1"
+
+    def __init__(self, proposers: list[str | dict[str, Any]], routes: list[dict[str, str]],
+                 default: str | None = None):
+        super().__init__(proposers)
+        for r in routes:
+            if not r.get("match") or r.get("to") not in self.members:
+                raise ValueError(f"路由要写成 {{match: 归因类型, to: 成员名}}，成员可选 {sorted(self.members)}，收到 {r}")
+        if default is not None and default not in self.members:
+            raise ValueError(f"default {default!r} 不是成员，可选：{sorted(self.members)}")
+        self.routes, self.default = list(routes), default
+
+    @staticmethod
+    def _matches(match: str, kind: str, ref: str) -> bool:
+        want_kind, _, prefix = match.partition(":")
+        return kind == want_kind and ref.startswith(prefix)
+
+    def blame(self, request: ProposalRequest) -> list[tuple[str, float]]:
+        """每条路由匹配到的总责任（负权重取绝对值），顺序同 routes。"""
+        return [(r["match"], sum(-t.weight for a in request.attributions for t in a.targets
+                                 if t.weight < 0 and self._matches(r["match"], t.kind, t.ref)))
+                for r in self.routes]
+
+    def propose(self, request: ProposalRequest) -> list[Patch]:
+        if request.hints.get("proposer") in self.members:
+            return super().propose(request)
+        scores = self.blame(request)
+        best = max(range(len(scores)), key=lambda i: (scores[i][1], -i), default=None)
+        if best is not None and scores[best][1] > 0:
+            route = self.routes[best]
+            note = f"分流：{route['match']} 责任 {scores[best][1]:.2f} 最大 → {route['to']}"
+            return self._run(route["to"], request, note)[: request.max_patches]
+        if self.default:
+            return self._run(self.default, request, "分流：没有匹配的归因 → 默认成员")[: request.max_patches]
+        return super().propose(request)
 
 
 def main() -> None:
@@ -289,5 +346,5 @@ def main() -> None:
     serve(CompositeProposer.REGISTRY[args.kind]())
 
 
-__all__ = ["ClaudeProposer", "CompositeProposer", "LessonProposer", "ProposedPatch", "RubricAuditor", "main",
-           "pick_target"]
+__all__ = ["ClaudeProposer", "CompositeProposer", "LessonProposer", "ProposedPatch", "RoutedProposer", "RubricAuditor",
+           "main", "pick_target"]

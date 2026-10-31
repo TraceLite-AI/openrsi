@@ -1,0 +1,12 @@
+protocol: openrsi/0.4
+name: openrsi/routed-proposer
+version: 0.4.1
+description: 组合提案器：按本轮归因的责任落在哪一类（环境坐标、缺记忆、某一步……），把这一代交给对应的成员提案器；算法点名时以算法为准。只在已配置的成员和可进化体里选。
+kinds: [proposer]
+implements:
+  - rsi_component_info
+  - rsi_proposer_propose
+capabilities: {}
+runtime:
+  transport: stdio
+  command: [openrsi-serve, "openrsi_proposer:RoutedProposer", --with, '{"proposers": ["lesson"], "routes": [{"match": "component:memory:missing", "to": "lesson"}]}']

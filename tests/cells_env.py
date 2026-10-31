@@ -5,6 +5,7 @@
   bad_ref      按格取题时把 env_ref 写错
   duplicate    同一个格里同一道题出两次
   at_ids       题目 id 带 @
+  variant_shift  variant 格里标准答案加 1：模拟"环境改变了正确答案"，agent 在这个格会做错
 """
 from __future__ import annotations
 
@@ -22,9 +23,10 @@ class CellsEnv(SecretOpsEnv):
     name, version = "test/cells-env", "0.1.0"
 
     def __init__(self, seed: int = 0, drift_after: int | None = None, bad_ref: bool = False,
-                 duplicate: bool = False, at_ids: bool = False):
+                 duplicate: bool = False, at_ids: bool = False, variant_shift: bool = False):
         super().__init__(seed=seed)
         self.drift_after, self.bad_ref, self.duplicate, self.at_ids = drift_after, bad_ref, duplicate, at_ids
+        self.variant_shift = variant_shift
         self.cells_calls = 0
 
     def cells(self) -> list[EnvCell]:
@@ -40,6 +42,8 @@ class CellsEnv(SecretOpsEnv):
             return base
         ref = "variant" if self.bad_ref and cell == "plain" else cell
         out = [t.model_copy(update={"env_ref": ref, "id": f"{t.id}@x" if self.at_ids else t.id}) for t in base]
+        if self.variant_shift and cell == "variant":
+            out = [t.model_copy(update={"reference": {"expected": t.reference["expected"] + 1}}) for t in out]
         if self.duplicate and out:
             out.append(out[0])
         return out
