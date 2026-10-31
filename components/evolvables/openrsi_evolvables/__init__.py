@@ -3,6 +3,10 @@
 - PromptEvolvable：agent 指令的各个段落。render() 按顺序拼成完整 prompt。
 - SkillLibrary：agent 能调用的 Python 函数。条目的 data.code 是源码，data.entry 是入口函数名（默认 run）。
   invoke() 在独立子进程里执行（见 sandbox.py 的限制说明）。
+
+元层可进化体（Improver 层，运行时按 loop.meta_every 进化，agent 看不到，按"下游改进"准入）：
+- ImproverEvolvable：提案器的策略说明（type improver）。提案器从 hints["improver"] 读到它
+- CurriculumEvolvable：练习题怎么挑（type curriculum）。条目 data = {tag, weight}，只影响 train 取题，不碰考试题
 """
 from __future__ import annotations
 
@@ -47,6 +51,67 @@ class PromptEvolvable(ItemStore):
         """按 data.order（默认 0）和 id 排序，拼成完整的 prompt。"""
         items = sorted(self.items(snapshot_id).values(), key=lambda i: (i.data.get("order", 0), i.id))
         return "\n\n".join(i.text for i in items)
+
+
+class ImproverEvolvable(PromptEvolvable):
+    """提案器的策略（Improver × Harness）：几段说明或参数，提案器自己决定怎么读。
+    with: 同 PromptEvolvable；条目的 data 可以放结构化参数（如 {"max_rules": 2}）。"""
+
+    name = "openrsi/improver"
+    version = "0.4.1"
+    evolvable_type = "improver"
+    surfaces = ["strategy"]
+
+    def __init__(self, target: str = "improver", path: str | Path | None = None, max_chars: int = 4000,
+                 initial: list[dict[str, Any]] | None = None):
+        super().__init__(target, path, max_chars, initial)
+
+    def example_ops(self) -> list[dict[str, Any]]:
+        return [{"op": "add", "item": {"id": "__openrsi_probe__", "kind": "improver",
+                                       "text": "openrsi conformance probe", "tags": ["probe"]}}]
+
+
+class CurriculumEvolvable(ItemStore):
+    """练习题的挑选（环境 × Solver 的搜索侧）：每个条目给一个标签的权重。
+    运行时取 train 题时，按标签权重排序、去掉权重为 0 的标签，再截到 train_limit；没写的标签权重是 1。
+    考试题（holdout）不受影响。with: initial（可选，{tag: weight}）"""
+
+    name = "openrsi/curriculum"
+    version = "0.4.1"
+    evolvable_type = "curriculum"
+    surfaces = ["tag_weights"]
+
+    def __init__(self, target: str = "curriculum", path: str | Path | None = None,
+                 initial: dict[str, float] | None = None):
+        super().__init__(target, path)
+        if initial and not self.items():
+            ops = [{"op": "add", "item": {"id": f"tag:{t}", "kind": "curriculum", "text": f"{t} weight {w}",
+                                          "data": {"tag": t, "weight": w}}} for t, w in sorted(initial.items())]
+            self.apply(Patch(target=target, ops=ops, rationale="initial curriculum"))
+
+    def validate_item(self, item: Item) -> None:
+        tag, weight = item.data.get("tag"), item.data.get("weight")
+        if not isinstance(tag, str) or not tag:
+            raise ComponentError(f"课程条目 {item.id} 缺少 data.tag")
+        if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight < 0:
+            raise ComponentError(f"课程条目 {item.id} 的 data.weight 必须是非负数")
+
+    def example_ops(self) -> list[dict[str, Any]]:
+        return [{"op": "add", "item": {"id": "tag:__probe__", "kind": "curriculum", "text": "probe",
+                                       "data": {"tag": "__probe__", "weight": 1}}}]
+
+
+def apply_curriculum(tasks: list[Any], items: list[dict[str, Any]], limit: int | None) -> list[Any]:
+    """按课程挑练习题：权重 0 的标签去掉，其余按（最大标签权重降序，原顺序）排，截到 limit。"""
+    weights = {d["data"]["tag"]: float(d["data"]["weight"]) for d in items
+               if isinstance(d, dict) and isinstance(d.get("data"), dict) and "tag" in d["data"]}
+
+    def w(task: Any) -> float:
+        tags = list(getattr(task, "tags", []) or [])
+        return max((weights.get(t, 1.0) for t in tags), default=1.0)
+
+    ranked = [t for _, _, t in sorted((-w(t), i, t) for i, t in enumerate(tasks) if w(t) > 0)]
+    return ranked[:limit] if limit else ranked
 
 
 def check_skill_code(code: str, entry: str) -> None:
@@ -104,4 +169,5 @@ def main() -> None:
     serve(cls(target=args.target or args.kind, path=args.path))
 
 
-__all__ = ["PromptEvolvable", "SkillLibrary", "check_skill_code", "main", "run_skill"]
+__all__ = ["CurriculumEvolvable", "ImproverEvolvable", "PromptEvolvable", "SkillLibrary", "apply_curriculum",
+           "check_skill_code", "main", "run_skill"]

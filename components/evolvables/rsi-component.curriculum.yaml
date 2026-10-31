@@ -1,0 +1,18 @@
+protocol: openrsi/0.4
+name: openrsi/curriculum
+version: 0.4.1
+description: 练习题的挑选（type curriculum）：标签权重，只影响 train 取题，不碰考试题。运行时按 loop.meta_every 进化，按同预算下的下游提升准入。
+kinds: [evolvable]
+implements:
+  - rsi_component_info
+  - rsi_evolvable_describe
+  - rsi_evolvable_snapshot
+  - rsi_evolvable_apply
+  - rsi_evolvable_rollback
+  - rsi_evolvable_diff
+  - rsi_evolvable_export
+capabilities: {snapshot_tree: true, meta: true}
+runtime:
+  transport: stdio
+  command: [openrsi-serve, "openrsi_evolvables:CurriculumEvolvable", --with, '{"path": "./curriculum-store"}']
+evolvable_surfaces: [tag_weights]

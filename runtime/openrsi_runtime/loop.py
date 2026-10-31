@@ -22,6 +22,13 @@
 环境格模式（编排文件写了 cells，见 cells.py）：取题经 CellRegistry，逐题分数的键是 <task_id>@<cell_id>，
 谱系的 env_cells 记下格的指纹，续跑时必须一致。
 
+元层进化（loop.meta_every，可进化体类型是 improver 或 curriculum 时）：
+  - 元层对象不进 agent 的上下文；普通代只改解题侧，元层代只改一个元层对象（轮流）
+  - 元层候选的准入看"下游改进"：同一个父版本、同样的预算，分别用当前和候选的元层状态跑一轮
+    练习 → 提案 → 考试，比较考试分的提升；候选必须真的带来提升、而且比当前多 meta_min_gain 以上
+  - 接受时连同它产出的那个解题侧改进一起进谱系，这样算法下一代会从它出发
+  - curriculum 只影响练习题怎么挑，考试题不变
+
 判别器参与进化时（loop.judge_every）：
   - agent 侧和判别器轮流进化，同一代只改一边，分数变化才能归因
   - 判别器的修改会改变 holdout 的打分标准，所以它的准入看 anchor（与人工标注的一致率），不看 holdout
@@ -45,6 +52,7 @@ from .config import CellsConfig, LoopConfig
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
 Genome = dict[str, str]  # 可进化体 target → 快照 id
+META_TYPES = ("improver", "curriculum")  # 元层可进化体：agent 看不到，按下游改进准入
 
 
 class IsolationError(RuntimeError):
@@ -123,6 +131,7 @@ class Runner:
         self.run_id = ""
         self._episode_records: dict[str, str] = {}
         self.judge_target: str | None = None
+        self.meta_targets: list[str] = []
         self.targets: dict[str, _Target] = {}
         self.genomes: dict[str, Genome] = {}
         self.metrics: dict[str, dict[str, float]] = {}
@@ -143,6 +152,11 @@ class Runner:
             raise ValueError("没有可进化体")
         if self.judge_target and not self.cfg.judge_every:
             self.log(f"判别器 {self.judge_target} 是可进化体，但没有配置 loop.judge_every，本次不进化它")
+        self.meta_targets = sorted(t for t, x in self.targets.items() if x.info.type in META_TYPES)
+        if self.meta_targets and not self.cfg.meta_every:
+            self.log(f"元层可进化体 {self.meta_targets} 没有配置 loop.meta_every，本次不进化它们")
+        if not self._solver_targets():
+            raise ValueError("至少要有一个解题侧的可进化体（memory、prompt、skill、harness……）")
         self.lineage_target = "+".join(sorted(self.targets))
 
     async def checkout(self, genome: Genome) -> None:
@@ -162,7 +176,7 @@ class Runner:
         """agent 能看到的内容：memory 按题目检索，其他可进化体（prompt、skill）整个给；判别器的 rubric 不给。"""
         out: list[Item] = []
         for t, tgt in self.targets.items():
-            if t == self.judge_target:
+            if t == self.judge_target or t in self.meta_targets:
                 continue
             if "memory" in tgt.kinds:
                 out += await tgt.facade.retrieve(query=_query(task), tags=task.tags or None, k=self.cfg.retrieve_k,
@@ -289,12 +303,38 @@ class Runner:
     def _with_epoch(m: dict[str, float], epoch: float) -> dict[str, float]:
         return {**m, "judge_epoch": epoch, "progress": 2 * epoch + m.get("holdout", 0.0)}
 
+    def _solver_targets(self) -> list[str]:
+        return [t for t in self.targets if t != self.judge_target and t not in getattr(self, "meta_targets", [])]
+
     def _allowed_targets(self, gen: int) -> list[str]:
-        if self.judge_target is None:
-            return list(self.targets)
-        if self.cfg.judge_every and gen % self.cfg.judge_every == 0:
+        if self.judge_target is not None and self.cfg.judge_every and gen % self.cfg.judge_every == 0:
             return [self.judge_target]
-        return [t for t in self.targets if t != self.judge_target]
+        return self._solver_targets()
+
+    def _meta_turn(self, gen: int) -> str | None:
+        """这一代是不是元层代、轮到哪个元层对象。和判别器代撞上时让给判别器。"""
+        if not self.meta_targets or not self.cfg.meta_every or gen % self.cfg.meta_every:
+            return None
+        if self.judge_target is not None and self.cfg.judge_every and gen % self.cfg.judge_every == 0:
+            return None
+        return self.meta_targets[(gen // self.cfg.meta_every - 1) % len(self.meta_targets)]
+
+    async def _train_tasks(self, gen: int, genome: Genome) -> list[Task]:
+        """取练习题；有 curriculum 时先取整轮的题，再按课程挑、截到 train_limit。"""
+        curricula = [t for t in self.meta_targets if self.targets[t].info.type == "curriculum"]
+        if not curricula:
+            return await self.tasks("train", gen, self.cfg.train_limit)
+        from openrsi_evolvables import apply_curriculum
+        pool = await self.tasks("train", gen, None)
+        items = []
+        for t in curricula:
+            exported = await self.targets[t].facade.export(genome[t])
+            items += exported if isinstance(exported, list) else []
+        return apply_curriculum(pool, items, self.cfg.train_limit)
+
+    async def _improver_hint(self, genome: Genome) -> dict[str, Any]:
+        return {t: await self.targets[t].facade.export(genome[t]) for t in self.meta_targets
+                if self.targets[t].info.type == "improver"}
 
     async def counterfactual(self, episodes: list[Episode], genome: Genome) -> list[Attribution]:
         """拿掉一条用过的条目，重跑同一道题：分数掉了说明它有用，涨了说明它有害。"""
@@ -410,10 +450,13 @@ class Runner:
                     task_scores=e.task_scores, proposer=e.patch.proposer_ref if e.patch else None))
 
     async def _generation(self, gen: int, parent: str, proposer_hint: str | None = None) -> GenerationReport:
+        meta = self._meta_turn(gen)
+        if meta is not None:
+            return await self._meta_generation(gen, parent, meta, proposer_hint)
         w = self.w
         parent_genome = self.genomes[parent]
         await self.checkout(parent_genome)
-        train = await self.tasks("train", gen, self.cfg.train_limit)
+        train = await self._train_tasks(gen, parent_genome)
         _check_split(train, "train")
         episodes = [await self.episode(t, parent_genome) for t in train]
         report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
@@ -437,7 +480,8 @@ class Runner:
             target=self.targets[allowed[0]].info, targets=[self.targets[t].info for t in allowed],
             parent_snapshot=parent, episodes=episodes, attributions=attributions,
             state=states[allowed[0]], states=states, max_patches=self.cfg.max_patches,
-            hints={"proposer": proposer_hint} if proposer_hint else {}))
+            hints={**({"proposer": proposer_hint} if proposer_hint else {}),
+                   **({"improver": imp} if (imp := await self._improver_hint(parent_genome)) else {})}))
 
         if not patches:
             report.note = "提案器没有提出修改"
@@ -449,6 +493,127 @@ class Runner:
             report.candidates.append(await self._candidate(gen, parent, parent_genome, patch, report.train_score,
                                                            allowed))
         await self.checkout(parent_genome)
+        return report
+
+    # ------------------------------------------------------------ 元层
+
+    async def _guard_blocks(self, patch: Patch, info: EvolvableInfo) -> str | None:
+        if not self.w.guard:
+            return None
+        g = await self.w.guard.inspect(patch, info)
+        return None if g.allowed else "护栏拦截：" + ", ".join(sorted({f.rule for f in g.findings if f.severity == "block"}))
+
+    async def _trial(self, gen: int, parent: str, genome: Genome) -> dict[str, Any] | None:
+        """在给定的元层状态下跑一轮普通改进：练习 → 归因 → 提案 → 考试。返回解题侧候选和它的考试提升。"""
+        w = self.w
+        await self.checkout(genome)
+        train = await self._train_tasks(gen, genome)
+        _check_split(train, "train")
+        episodes = [await self.episode(t, genome) for t in train]
+        attributions = await w.attribution.explain(episodes) if w.attribution and episodes else []
+        states = {t: await tgt.facade.export(genome[t]) for t, tgt in self.targets.items()}
+        solver = self._solver_targets()
+        improver = await self._improver_hint(genome)
+        patches = await w.proposer.propose(ProposalRequest(
+            target=self.targets[solver[0]].info, targets=[self.targets[t].info for t in solver],
+            parent_snapshot=genome_id(genome), episodes=episodes, attributions=attributions,
+            state=states[solver[0]], states=states, max_patches=1,
+            hints={"role": "solver", **({"improver": improver} if improver else {})}))
+        if not patches:
+            return None
+        patch = patches[0]
+        t = solver[0] if len(solver) == 1 else patch.target
+        if t not in solver:
+            return None
+        patch = patch.model_copy(update={"target": self.targets[t].info.target, "base_snapshot": genome[t]})
+        if await self._guard_blocks(patch, self.targets[t].info):
+            return None
+        try:
+            snap = await self.targets[t].facade.apply(patch)
+        except (ToolCallError, ComponentError, ValueError, KeyError):
+            return None
+        g2 = {**genome, t: snap.id}
+        m, _ = await self.score(self.holdout, g2, "holdout")
+        m = self._with_epoch(m, self.metrics[parent].get("judge_epoch", 0.0))
+        gain = m["holdout"] - self.metrics[parent].get("holdout", 0.0)
+        return {"gain": gain, "genome": g2, "metrics": m, "task_scores": dict(self.last_task_scores), "patch": patch,
+                "train_score": fmean(e.verdict.score for e in episodes) if episodes else 0.0}
+
+    def _meta_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        """给元层提案器看的近况：最近接受的版本和它们的考试分。"""
+        rows = [{"id": cid, "holdout": m.get("holdout"), "meta_gain": m.get("meta_gain_candidate")}
+                for cid, m in self.metrics.items()]
+        return rows[-limit:]
+
+    async def _meta_generation(self, gen: int, parent: str, meta: str, proposer_hint: str | None) -> GenerationReport:
+        w = self.w
+        pg = self.genomes[parent]
+        await self.checkout(pg)
+        train = await self._train_tasks(gen, pg)
+        _check_split(train, "train")
+        episodes = [await self.episode(t, pg) for t in train]
+        report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
+                                  train_score=fmean(e.verdict.score for e in episodes) if episodes else 0.0,
+                                  note=f"元层进化代：{meta}")
+        attributions = await w.attribution.explain(episodes) if w.attribution and episodes else []
+        if self.records is not None:
+            self._record_attributions(attributions)
+        states = {t: await tgt.facade.export(pg[t]) for t, tgt in self.targets.items()}
+        info = self.targets[meta].info
+        patches = await w.proposer.propose(ProposalRequest(
+            target=info, targets=[info], parent_snapshot=parent, episodes=episodes, attributions=attributions,
+            state=states[meta], states=states, max_patches=1,
+            hints={"role": "meta", "meta_target": meta, "meta_history": self._meta_history(),
+                   **({"proposer": proposer_hint} if proposer_hint else {})}))
+
+        async def reject(reason: str) -> GenerationReport:
+            report.note += f"；{reason}"
+            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False,
+                                               proposer=patches[0].proposer_ref if patches else proposer_hint))
+            report.candidates.append(Candidate(id=None, reason=reason, target=meta))
+            await self.checkout(pg)
+            return report
+
+        if not patches:
+            return await reject("提案器没有提出元层修改")
+        patch = patches[0].model_copy(update={"target": info.target, "base_snapshot": pg[meta]})
+        blocked = await self._guard_blocks(patch, info)
+        if blocked:
+            return await reject(blocked)
+        try:
+            snap = await self.targets[meta].facade.apply(patch)
+        except (ToolCallError, ComponentError, ValueError, KeyError) as e:
+            return await reject(f"元层补丁被拒：{e}")
+
+        base = await self._trial(gen, parent, pg)
+        cand = await self._trial(gen, parent, {**pg, meta: snap.id})
+        base_gain = base["gain"] if base else 0.0
+        cand_gain = cand["gain"] if cand else 0.0
+        checks = [GateCheck(name="meta_gain", passed=cand_gain > base_gain + self.cfg.meta_min_gain,
+                            detail=f"同预算下游提升：当前 {base_gain:+.4f} → 候选 {cand_gain:+.4f}"
+                                   f"（要求多 {self.cfg.meta_min_gain} 以上）"),
+                  GateCheck(name="meta_produces_improvement", passed=cand is not None and cand_gain > 0,
+                            detail="候选元层状态下产出的解题侧改进必须真的提高考试分")]
+        accepted = all(c.passed for c in checks)
+        genome = cand["genome"] if cand else {**pg, meta: snap.id}
+        cid = genome_id(genome)
+        m = {**(cand["metrics"] if cand else self.metrics[parent]), "train_of_parent": report.train_score,
+             "meta_gain_base": base_gain, "meta_gain_candidate": cand_gain}
+        tasks = cand["task_scores"] if cand else {}
+        decision = GateDecision(candidate_id=cid, accepted=accepted, checks=checks,
+                                reason="元层候选带来更多下游提升" if accepted else
+                                "未通过：" + ", ".join(c.name for c in checks if not c.passed))
+        await w.lineage.record(LineageEntry(
+            id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
+            status="accepted" if accepted else "rejected", metrics=m, decision=decision, patch=patch,
+            snapshots=genome, task_scores=tasks, env_cells=self.env_cells))
+        if accepted:
+            self.genomes[cid], self.metrics[cid], self.task_scores[cid] = genome, m, tasks
+        await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid, accepted=accepted,
+                                           metrics=m, task_scores=tasks, proposer=patch.proposer_ref))
+        report.candidates.append(Candidate(id=cid, metrics=m, accepted=accepted, reason=decision.reason or "",
+                                           target=meta))
+        await self.checkout(pg)
         return report
 
     async def _candidate(self, gen: int, parent: str, parent_genome: Genome, patch: Patch,

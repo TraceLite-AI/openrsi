@@ -24,7 +24,7 @@ from typing import Any
 
 from openrsi import Agent, Attribution, ComponentError, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 
 def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float = 0.0,
@@ -248,6 +248,58 @@ def _copies(text: str, problem: str, span: int = 60) -> bool:
     return any(problem[i:i + span] in flat for i in range(0, len(problem) - span + 1, span // 2))
 
 
+def strategy_notes(request: ProposalRequest) -> str:
+    """元层（improver）给提案器的策略说明，来自运行时的 hints["improver"]；没有就是空串，请求和以前一样。"""
+    texts = [str(d.get("text", "")).strip() for items in (request.hints.get("improver") or {}).values()
+             for d in (items or []) if isinstance(d, dict) and str(d.get("text", "")).strip()]
+    return "\n\nStrategy notes for how to rewrite (maintained by the improver layer):\n" + \
+        "\n".join(f"- {t}" for t in texts) if texts else ""
+
+
+STRATEGY_SYSTEM = (
+    "You maintain the strategy notes that guide another model when it rewrites an AI assistant's system prompt. "
+    "You see the current notes and how recent rewrites scored on a held-out test. Write improved notes: short, "
+    "general rules about how to rewrite well. Do not mention specific problems or answers. Reply with the notes "
+    "only, one per line.")
+
+
+class StrategyRewriter(Proposer):
+    """元层提案器：改写 improver 可进化体里的策略说明（PromptRewriter 会读它）。
+    只响应 target 类型是 improver 的请求，其余返回空。with: base_url、model、max_chars、temperature、api_key_env"""
+
+    name = "openrsi/strategy-rewriter"
+    version = __version__
+
+    def __init__(self, base_url: str, model: str = "policy", max_chars: int = 1500, temperature: float = 0.7,
+                 max_tokens: int = 400, timeout: float = 300.0, api_key_env: str | None = None):
+        self.base_url, self.model, self.max_chars = base_url, model, max_chars
+        self.temperature, self.max_tokens, self.timeout = temperature, max_tokens, timeout
+        self.api_key = os.environ.get(api_key_env) if api_key_env else None
+
+    def propose(self, request: ProposalRequest) -> list[Patch]:
+        target = request.target
+        if target.type != "improver":
+            return []
+        items = {d["id"]: d for d in request.state or [] if isinstance(d, dict) and "id" in d}
+        current = "\n".join(str(d.get("text", "")) for d in items.values()) or "(none)"
+        history = "\n".join(f"- holdout {h.get('holdout')}" for h in request.hints.get("meta_history") or [])
+        user = f"Current notes:\n{current}\n\nRecent held-out scores of accepted versions:\n{history or '(none)'}"
+        try:
+            out = chat(self.base_url, self.model, [{"role": "system", "content": STRATEGY_SYSTEM},
+                                                   {"role": "user", "content": user}],
+                       temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
+                       api_key=self.api_key)
+        except ComponentError:
+            return []
+        text = out["text"].strip().strip("`").strip()
+        if not text or len(text) > self.max_chars or text == current:
+            return []
+        item = Item(id="strategy", kind="improver", text=text, data={"order": 0})
+        return [Patch(target=target.target, base_snapshot=request.parent_snapshot,
+                      ops=[{"op": "replace" if "strategy" in items else "add", "item": item.model_dump(mode="json")}],
+                      proposer_ref=self.ref, rationale="rewrite improver strategy from recent held-out scores")]
+
+
 class PromptRewriter(Proposer):
     """with: base_url、model（可以就是被进化的那个小模型，也可以换成更强的）、item_id（默认 instructions）、
     max_examples（给 LLM 看几道错题）、max_chars、temperature、api_key_env、
@@ -292,7 +344,7 @@ class PromptRewriter(Proposer):
         user = (f"Current system prompt:\n{current or '(empty)'}\n\n{header}Failures:\n\n"
                 + "\n\n---\n\n".join(examples))
         try:
-            out = chat(self.base_url, self.model, [{"role": "system", "content": REWRITE_SYSTEM},
+            out = chat(self.base_url, self.model, [{"role": "system", "content": REWRITE_SYSTEM + strategy_notes(request)},
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
@@ -319,4 +371,5 @@ class PromptRewriter(Proposer):
         return text
 
 
-__all__ = ["ChatAgent", "ManagedServer", "PromptRewriter", "attribution_context", "chat", "render_prompt", "task_text"]
+__all__ = ["ChatAgent", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context", "chat",
+           "render_prompt", "strategy_notes", "task_text"]
