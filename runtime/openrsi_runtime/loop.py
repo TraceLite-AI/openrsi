@@ -32,9 +32,9 @@ from dataclasses import dataclass, field
 from statistics import fmean
 from typing import Any, Callable
 
-from openrsi import (AnchorExample, Attribution, AttributionTarget, ComponentError, Episode, EvolvableInfo, GateCheck,
-                     GateDecision, GateRequest, Item, LineageEntry, Patch, ProposalRequest, Task, TellRequest,
-                     ToolCallError, content_hash)
+from openrsi import (AnchorExample, Attribution, AttributionTarget, ComponentError, Episode, EvolvableInfo,
+                     GateCheck, GateDecision, GateRequest, Item, LineageEntry, Patch, ProposalRequest, Task,
+                     TellRequest, ToolCallError, content_hash)
 from openrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
@@ -188,7 +188,8 @@ class Runner:
             traj.used_items = [i.id for i in context]
         evidence = await self.w.evidence.collect(task, traj) if self.w.evidence else []
         verdict = await self.w.judge.evaluate(task, traj, evidence)
-        return Episode(task=task, trajectory=traj, verdict=verdict, evidence=[*evidence, *verdict.collected])
+        env = [self.registry.evidence(task)] if self.registry and task.env_ref else []
+        return Episode(task=task, trajectory=traj, verdict=verdict, evidence=[*evidence, *verdict.collected, *env])
 
     async def score(self, tasks: list[Task], genome: Genome, prefix: str) -> tuple[dict[str, float], list[Episode]]:
         await self.checkout(genome)  # 判别器按当前快照打分，所以先把所有可进化体切到这个版本

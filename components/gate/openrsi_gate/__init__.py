@@ -10,6 +10,8 @@
 - anchor        有 anchor 分数时，候选不能比父快照低超过 anchor_tolerance
 - no_regression 可选（Self-Harness、AHE 的做法）：逐题比较，分数下降超过 task_tolerance 的题不能多于
                 max_task_regressions 道；设为 0 就是"修好失败的同时，任何一道题都不许变差"
+- no_cell_regression 可选（环境格模式）：按 <task_id>@<cell_id> 的键逐格求平均，平均分下降超过 cell_tolerance
+                的格不能多于 max_cell_regressions 个；设为 0 就是"任何一个环境都不许变差"
 - cost          有 cost 且设置了 max_cost 时，不能超预算
 """
 from __future__ import annotations
@@ -57,13 +59,15 @@ def paired_z(baseline: dict[str, float], candidate: dict[str, float]) -> tuple[f
 
 class HoldoutGate(Gate):
     name = "openrsi/holdout-gate"
-    version = "0.4.1"
+    version = "0.4.2"
 
     def __init__(self, metric: str = "holdout", min_gain: float = 0.0, significance_z: float | None = None,
                  anchor_tolerance: float = 0.0, max_cost: float | None = None,
                  max_task_regressions: int | None = None, task_tolerance: float = 0.0,
-                 paired_significance_z: float | None = None):
+                 paired_significance_z: float | None = None,
+                 max_cell_regressions: int | None = None, cell_tolerance: float = 0.0):
         self.paired_significance_z = paired_significance_z
+        self.max_cell_regressions, self.cell_tolerance = max_cell_regressions, cell_tolerance
         self.max_task_regressions = max_task_regressions
         self.task_tolerance = task_tolerance
         self.metric = metric
@@ -113,6 +117,9 @@ class HoldoutGate(Gate):
                                         detail=f"{len(worse)} 道题变差（上限 {self.max_task_regressions}）"
                                                + (f"：{shown}" if worse else "")))
 
+        if self.max_cell_regressions is not None:
+            checks.append(self._cells(request))
+
         if self.max_cost is not None and "cost" in cand:
             ok = cand["cost"] <= self.max_cost
             checks.append(GateCheck(name="cost", passed=ok, detail=f"cost {cand['cost']} / 上限 {self.max_cost}"))
@@ -133,6 +140,24 @@ class HoldoutGate(Gate):
         z, detail = paired_z(request.baseline_tasks, request.candidate_tasks)
         return GateCheck(name="paired_significance", passed=z >= need,
                          detail=f"{detail}；z={z:.2f}（要求 ≥ {need}）")
+
+    def _cells(self, request: GateRequest) -> GateCheck:
+        """环境格模式下逐格不退步：逐题分数的键是 <task_id>@<cell_id>，按格求平均，比较父版本和候选。"""
+        def by_cell(scores: dict[str, float]) -> dict[str, float]:
+            acc: dict[str, list[float]] = {}
+            for key, v in scores.items():
+                if "@" in key:
+                    acc.setdefault(key.rsplit("@", 1)[1], []).append(v)
+            return {c: sum(vs) / len(vs) for c, vs in acc.items()}
+
+        base, cand = by_cell(request.baseline_tasks), by_cell(request.candidate_tasks)
+        if not base or set(base) != set(cand):
+            return GateCheck(name="no_cell_regression", passed=False,
+                             detail="缺少按格的逐题分数，或父版本和候选的格不一致")
+        worse = sorted(c for c in base if cand[c] < base[c] - self.cell_tolerance)
+        shown = ", ".join(f"{c} {base[c]:.3f}→{cand[c]:.3f}" for c in worse[:5])
+        return GateCheck(name="no_cell_regression", passed=len(worse) <= self.max_cell_regressions,
+                         detail=f"{len(worse)} 个格变差（上限 {self.max_cell_regressions}）" + (f"：{shown}" if worse else ""))
 
 
 def main() -> None:

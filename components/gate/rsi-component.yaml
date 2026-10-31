@@ -1,7 +1,7 @@
 protocol: openrsi/0.4
 name: openrsi/holdout-gate
-version: 0.4.1
-description: 候选必须在 holdout 上真的变好；可选显著性检验（含逐题配对检验）、anchor 不退步、成本上限。
+version: 0.4.2
+description: 候选必须在 holdout 上真的变好；可选显著性检验（含逐题配对检验）、anchor 不退步、逐题不回退、逐格不回退（环境格模式）、成本上限。
 kinds: [gate]
 implements:
   - rsi_component_info

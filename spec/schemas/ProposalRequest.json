@@ -45,12 +45,14 @@
       "additionalProperties": true,
       "properties": {
         "kind": {
+          "description": "env（0.5 草案）：环境坐标，ref 写成 <坐标键>=<值>，或 cell:<格 id>",
           "enum": [
             "step",
             "item",
             "component",
             "patch",
-            "rubric"
+            "rubric",
+            "env"
           ],
           "title": "Kind",
           "type": "string"

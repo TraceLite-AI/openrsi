@@ -301,7 +301,8 @@ class Episode(_Model):
 # ---------------------------------------------------------------- 归因
 
 class AttributionTarget(_Model):
-    kind: Literal["step", "item", "component", "patch", "rubric"]
+    kind: Literal["step", "item", "component", "patch", "rubric", "env"] = Field(
+        description="env（0.5 草案）：环境坐标，ref 写成 <坐标键>=<值>，或 cell:<格 id>")
     ref: str
     weight: float = Field(ge=-1.0, le=1.0, description="负数是责任，正数是功劳")
     note: str | None = None
