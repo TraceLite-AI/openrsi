@@ -214,7 +214,7 @@ evolvables:
   prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
 ```
 
-环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时还会给每个 episode 记一条 `env_cell` 证据（格、坐标、指纹），`CellContrastAttributor` 据此对比同一道题在不同格里的结果。运行时只核对声明，不保证 agent 真的在那个环境里执行。
+环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时还会给每个 episode 记一条 `env_cell` 证据（格、坐标、指纹），`CellContrastAttributor` 据此对比同一道题在不同格里的结果。运行时只核对声明，不保证 agent 真的在那个环境里执行。要确认这一点，加上 `cells.binding`（严格模式）：每道题执行前运行时准备好这个格，在子进程里跑预先登记的探测，和声明的坐标核对，agent 还必须回报它用的方案（`HarnessAgent` 会这么做）。加上 `records: {path}` 后，原始的题目、轨迹、证据和执行回执按内容寻址、只追加地存档，判决和归因作为派生记录另存，续跑时运行清单不一致就拒绝。`runtime/openrsi_runtime/outer.py` 负责外围组件（判别器、归因方法）的升级：冻结的验证计划在独立标签上通过、并且有人批准，才会升级；默认关闭。
 
 ```yaml
 cells:
@@ -272,7 +272,20 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 | V3：GRPO，Qwen2.5-0.5B，验证分训练前 → 训练后，OpenRSI 奖励对比自带奖励 | 待补 |
 | V4：通过 `WeightsEvolvable` 连续两次 SFT，再回滚 | 待补 |
 
-### 4. 组件化的开销（已测）
+### 4. 原生循环 A/B/C（合成冒烟实验，不是 benchmark）
+
+[`benchmarks/native_loop`](benchmarks/native_loop/README.md)：A 不做改进；B 搜索预算相同，但每一代都从根版本出发；C 预算相同，可以继承接受过的改进。每组 400 次 agent 调用；锁定最终版本后各做一次 40 题的封存考试。
+
+<!-- RESULTS:native-loop -->
+| 组 | 封存考试通过率（种子 0 / 1 / 2） |
+|---|---|
+| A：不改进 | 0.000 / 0.125 / 0.125 |
+| B：每代从根版本出发 | 0.375 / 0.500 / 0.500 |
+| C：继承改进 | 1.000 / 1.000 / 1.000 |
+
+这是 `secret_ops` 玩具任务，只说明机制在工作，不代表真实 agent 能改进多少。
+
+### 5. 组件化的开销（已测）
 
 [`benchmarks/composition/overhead.py`](benchmarks/composition/overhead.py)，Python 3.13，4 核 CPU：
 
@@ -288,7 +301,7 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 
 OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
 
-- **CI 覆盖：** 166 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
+- **CI 覆盖：** 255 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
 - **在真实模型上跑过：** 小模型全流程（CPU）。
 - **还没真实跑过：** GPU 规模的小模型实验、verl 训练、RSIHub 配方。见[实验](#实验)。
 
@@ -310,6 +323,7 @@ OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议
 | [examples/small_model/README.md](examples/small_model/README.md) | 小模型全流程 |
 | [field_tests/README.md](field_tests/README.md) | 在真实 verl、RSIHub 上跑的测试 |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | 和 RSIHub 拉齐的对照实验 |
+| [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | 原生循环 A/B/C 对照实验 |
 | [REVIEW.md](REVIEW.md) | 审查清单和各版本基线 |
 
 ## 目录结构
@@ -322,7 +336,7 @@ components/         官方组件：judge、memory、evolvables、harness、llm�
                     proposer、algorithm、gate、guard、lineage
 adapters/           verl、RSIHub、DSPy、LangGraph
 examples/           能直接跑的示例
-benchmarks/         RSIHub 对照实验、组件化开销
+benchmarks/         RSIHub 对照实验、原生 A/B/C、组件化开销
 field_tests/        要在真实框架和硬件上跑的测试
 tests/              单元测试和集成测试，含 tests/xlang（JavaScript）
 ```

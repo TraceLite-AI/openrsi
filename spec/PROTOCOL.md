@@ -169,4 +169,5 @@ loop: {generations: 20, retrieve_k: 5, max_patches: 1}
 - 编排文件写了 `cells` 才进入环境格模式（第 13 节的格式之外加一节 `cells: {train, holdout, expose_coords_to_agent}`）。这时编排方必须：每次取题前核对指纹，变了就停止；检查 `env_ref`；逐题分数的键写成 `<task_id>@<cell_id>`，重复就停止；在 `LineageEntry.env_cells` 记下格 id 到指纹；续跑时格必须和谱系一致。默认不把坐标交给 agent。
 - 环境格模式下编排方应当给每个 episode 加一条 `type: env_cell` 的证据，内容是格 id、坐标和指纹，来源写成 `runtime:cell:<格 id>`；它由编排方记录，不交给 agent。
 - 归因可以用 `kind: env` 指向环境坐标：`ref` 写成 `<坐标键>=<值>`（如 `E4.1:默认编码=cp1252`），坐标不明时写 `cell:<格 id>`。参考实现 `CellContrastAttributor` 用同一道题在不同格里的结果做对比得出它；这是相关，不证明因果。
-- 环境格只是声明，不是隔离手段。
+- 环境格只是声明，不是隔离手段。要确认题目真的在格里执行，用执行绑定（参考运行时，0.5 草案）：`cells.binding` 配一个绑定实现，编排方每道题执行前准备环境、在子进程里跑预先登记的探测、对照坐标核对，不符就停止；交给 agent 的题目带 `metadata.binding = {env, plan_hash, image}`，agent 必须在轨迹 `metadata.binding_plan_hash` 里回报所用方案，没回报的 agent 不能在这个模式下使用。回执作为 `type: exec_receipt` 的证据进入 episode。
+- `LineageEntry.manifest`（0.5 草案，可选）：运行清单的哈希，覆盖脱敏后的配置、组件名和版本、格的指纹。续跑时清单不一致，严格模式（配置了 `records`）下编排方必须停止，否则应当警告。

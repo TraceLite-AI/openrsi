@@ -1,6 +1,6 @@
 # 草案：双层进化、受控环境绑定与独立验证
 
-状态：设计稿。实施进度：P0（归因进入 PromptRewriter）和 P1（环境格协议与运行时）已在参考实现落地，P2 及以后未实现。
+状态：设计稿。实施进度：P0–P4 已在参考实现落地（P2 `runtime/openrsi_runtime/bindings.py`、`records.py`；P3 `benchmarks/native_loop`；P4 `runtime/openrsi_runtime/outer.py`）。P5 的适配器严格模式已实现，真实 RSIHub 运行尚未进行。
 代码核对基线：`9a23c1b08b172fcbe32acea6526eaa6b428b90b9`（2026-10-30 main）。
 环境定义、坐标、EnvCell 和工具兼容规则沿用 [environment-cells.md](environment-cells.md)，不另建一套。
 本文中的接口名是拟议契约，除“当前实现”明确列出的能力外，不表示已经可用。
