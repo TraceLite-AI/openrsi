@@ -82,19 +82,23 @@ The runtime enforces these rules itself rather than trusting components to follo
 | Harness (agent code) | git commit | write / delete / unified diff, within mutable paths | `openrsi-harness` |
 | Model weights | checkpoint | one training run (SFT via `train_sft.py` or verl) | `openrsi-verl` |
 | Judge rubric | rubric items | add / tighten checks; gated on human-label agreement | `openrsi-judge` |
+| Improver strategy (meta) | notes / parameters the proposer reads | replace; gated on downstream gain | `openrsi-evolvables` |
+| Curriculum (meta) | tag weights for picking train tasks | replace; gated on downstream gain | `openrsi-evolvables` |
+
+Meta evolvables (`loop.meta_every`) are never shown to the agent and never changed in ordinary generations. In a meta generation the runtime runs one ordinary round under the current and under the candidate meta state with the same budget, and keeps the candidate only if the improvement it produces on holdout is larger; the accepted version carries that improvement with it. Judges and attribution methods are upgraded by the outer loop (`runtime/openrsi_runtime/outer.py`), which can generate and validate candidates on its own but never promotes without a named approver. `runtime/openrsi_runtime/nesting.py` wraps a whole inner run as an agent (`LoopAgent` + `GainJudge`), so an outer loop can evolve the inner loop's algorithm, proposer or attribution; the inner env, judge, gate, guard, lineage and budget stay fixed. Gate, guard, sealed tests, human labels and budgets are never evolved.
 
 ### Components
 
 | Kind | Official implementation | Package |
 |---|---|---|
-| judge, evidence | `EvidenceJudge` (rubric + evidence, optional LLM checks), `EvolvingJudge` | `openrsi-judge` |
+| judge, evidence | `EvidenceJudge` (rubric + evidence, optional LLM checks), `EvolvingJudge`; `GainJudge` scores a nested run | `openrsi-judge`, `openrsi-runtime` |
 | attribution | `RubricEvidenceAttributor`, `CellContrastAttributor` (blames environment coordinates when a task fails in some cells only); counterfactual reruns in the runtime | `openrsi-attribution` |
-| proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `PromptRewriter`, `DistillProposer` | `openrsi-proposer`, `openrsi-llm`, `openrsi-verl` |
+| proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `CurriculumProposer` and `StrategyRewriter` (meta layer), `PromptRewriter`, `DistillProposer` | `openrsi-proposer`, `openrsi-llm`, `openrsi-verl` |
 | algorithm | 6 algorithms, see below | `openrsi-algorithm` |
 | gate | `HoldoutGate` (gain, significance, paired per-task significance, anchor, cost, per-task and per-cell no-regression) | `openrsi-gate` |
 | guard | `PolicyGuard` (dangerous code, secrets, protected items and paths, eval tampering) | `openrsi-guard` |
 | lineage | `LineageStore` (JSONL, resumable) | `openrsi-lineage` |
-| agent | `ChatAgent` (any OpenAI-compatible endpoint, restarts vLLM when weights change), `HarnessAgent` | `openrsi-llm`, `openrsi-harness` |
+| agent | `ChatAgent` (any OpenAI-compatible endpoint, restarts vLLM when weights change), `HarnessAgent`, `LoopAgent` (a whole inner run) | `openrsi-llm`, `openrsi-harness`, `openrsi-runtime` |
 | evolvable, memory, skill | see the table above | |
 | env | user-provided; examples include GSM8K | |
 
@@ -301,7 +305,7 @@ A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with ev
 
 OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 255 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
+- **Tested in CI:** 284 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 

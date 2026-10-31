@@ -55,3 +55,6 @@
 - P3 原生 A/B/C：`IndependentAlgorithm`（algorithm 0.4.1，每代从根出发）；`benchmarks/native_loop` 等搜索预算（硬上限，覆盖重跑和失败）、锁定后才做封存考试、报告逐题和配对差值，标明合成冒烟。`tests/test_native_loop.py`
 - P4 外循环：`runtime/openrsi_runtime/outer.py`，默认关闭。白名单只有 judge、attribution；验证计划和候选在提案时冻结；固定评估器只调候选的 evaluate / explain、对照独立标签（误放率不许升高）；升级要通过验证且有批准人，失败或崩溃不动活动版本，可回滚，全部记录只追加。`tests/test_outer_loop.py`
 - P5 RSIHub 严格模式：openrsi-rsihub 0.4.1，gate 不退回只比总分、逐题向量必须覆盖同一批题；validate 总保护 evaluator/operators、默认编译检查、`required_files`。对齐实验只在 gate 用严格模式（Hyperagents 允许改 operators）。仍未在真实 RSIHub 上运行。`tests/test_rsihub_strict.py`
+- 元层（Improver × Harness、环境 × Solver 的搜索侧）：`ImproverEvolvable`、`CurriculumEvolvable`（evolvables 0.4.1，各有清单）。类型是 improver / curriculum 的可进化体不进 agent 上下文、普通代不交给提案器，只在 `loop.meta_every` 的元层代改；准入看同预算下的下游考试提升（当前 vs 候选各跑一轮普通改进），必须为正且超过 `meta_min_gain`，接受时连同产出的解题侧改进一起入谱系。curriculum 只影响练习题挑选。`CurriculumProposer`（proposer 0.4.2）、`StrategyRewriter`，`PromptRewriter` 读 `hints["improver"]`（llm 0.4.2）。`tests/test_meta_evolution.py`
+- 外循环自动出候选：`OuterLoop.auto_round` + `judge_check_candidates` / `grid_candidates`；开发集筛选、开发集和资格集不得重叠、只返回待批准的最佳结果，从不自动升级。`tests/test_outer_auto.py`
+- 循环即 agent：`runtime/openrsi_runtime/nesting.py`，`LoopAgent` 每道外层题跑一整轮内层（全新目录、固定代数、可选调用上限），`GainJudge` 按内层提升打分；外层只能改 `OVERRIDABLE` 里的内层配置，环境、判别器、取证、准入、护栏、谱系、记录、环境格和预算是不动点。`tests/test_nesting.py`
