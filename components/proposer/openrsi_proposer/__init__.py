@@ -5,6 +5,7 @@
 - RubricAuditor：给判别器提补丁。找"判别器判了通过、但它自己收集的证据显示有问题"的 episode，
   补上漏掉的检查项。不需要人工标注；补丁是否真的更好，由运行时在 anchor 集上验证。
 - CompositeProposer：把几个提案器组合起来，各自负责自己类型的可进化体。
+- CurriculumProposer：元层提案器，按练习结果调整课程（curriculum 可进化体）。
 - RoutedProposer：组合提案器的一种，按归因把这一代交给对应的成员（缺记忆 → 记忆提案器，环境坐标 → 提示提案器……）。
 """
 from __future__ import annotations
@@ -240,6 +241,41 @@ class RubricAuditor(Proposer):
                       rationale="判别器漏判：" + "；".join(notes))]
 
 
+class CurriculumProposer(Proposer):
+    """元层提案器：根据本轮练习结果调整课程（curriculum 可进化体的标签权重）。只响应 curriculum 类型的请求。
+
+    某个标签的练习题全都做对了 → 权重 0（已经掌握，不再占练习名额）；有做错的 → 权重 focus（默认 2）。
+    with: focus（失败标签的权重）"""
+
+    name = "openrsi/curriculum-proposer"
+    version = "0.4.2"
+
+    def __init__(self, focus: float = 2.0):
+        self.focus = focus
+
+    def propose(self, request: ProposalRequest) -> list[Patch]:
+        if request.target.type != "curriculum":
+            return []
+        seen: dict[str, list[bool]] = defaultdict(list)
+        for ep in request.episodes:
+            for tag in ep.task.tags:
+                seen[tag].append(ep.verdict.passed)
+        current = {d["data"]["tag"]: d for d in request.state or [] if isinstance(d, dict) and "tag" in d.get("data", {})}
+        ops = []
+        for tag, results in sorted(seen.items()):
+            weight = 0.0 if all(results) else self.focus
+            old = current.get(tag)
+            if old is not None and float(old["data"]["weight"]) == weight:
+                continue
+            item = Item(id=f"tag:{tag}", kind="curriculum", text=f"{tag} weight {weight}",
+                        data={"tag": tag, "weight": weight})
+            ops.append({"op": "replace" if old is not None else "add", "item": item.model_dump(mode="json")})
+        if not ops:
+            return []
+        return [Patch(target=request.target.target, base_snapshot=request.parent_snapshot, ops=ops,
+                      proposer_ref=self.ref, rationale=f"curriculum: {len(ops)} tag weights from train results")]
+
+
 class CompositeProposer(Proposer):
     """with: proposers（列表）。依次调用，补丁合在一起返回。每一项可以是：
     - 内置名字：lesson / claude / rubric-auditor
@@ -251,7 +287,8 @@ class CompositeProposer(Proposer):
 
     name = "openrsi/composite-proposer"
     version = "0.4.0"
-    REGISTRY = {"lesson": LessonProposer, "claude": ClaudeProposer, "rubric-auditor": RubricAuditor}
+    REGISTRY = {"lesson": LessonProposer, "claude": ClaudeProposer, "rubric-auditor": RubricAuditor,
+                "curriculum": CurriculumProposer}
 
     def __init__(self, proposers: list[str | dict[str, Any]]):
         import importlib
@@ -341,10 +378,10 @@ def main() -> None:
     import argparse
 
     ap = argparse.ArgumentParser(prog="openrsi-proposer")
-    ap.add_argument("--kind", choices=["lesson", "claude", "rubric-auditor"], default="lesson")
+    ap.add_argument("--kind", choices=["lesson", "claude", "rubric-auditor", "curriculum"], default="lesson")
     args = ap.parse_args()
     serve(CompositeProposer.REGISTRY[args.kind]())
 
 
-__all__ = ["ClaudeProposer", "CompositeProposer", "LessonProposer", "ProposedPatch", "RoutedProposer", "RubricAuditor",
-           "main", "pick_target"]
+__all__ = ["ClaudeProposer", "CompositeProposer", "CurriculumProposer", "LessonProposer", "ProposedPatch",
+           "RoutedProposer", "RubricAuditor", "main", "pick_target"]

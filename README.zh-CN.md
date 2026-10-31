@@ -82,19 +82,23 @@ flowchart LR
 | harness（agent 代码） | git 提交 | 写入、删除文件或统一 diff，限定在可改范围内 | `openrsi-harness` |
 | 模型权重 | checkpoint | 一次训练（`train_sft.py` 或 verl 做 SFT） | `openrsi-verl` |
 | 判别器 rubric | rubric 条目 | 增加或收紧检查项，按人工标注一致率准入 | `openrsi-judge` |
+| 提案器策略（元层） | 提案器读取的说明或参数 | 替换；按下游提升准入 | `openrsi-evolvables` |
+| 课程（元层） | 挑练习题用的标签权重 | 替换；按下游提升准入 | `openrsi-evolvables` |
+
+元层可进化体（`loop.meta_every`）不交给 agent，普通代也不改它们。元层代里，运行时在同样的预算下，分别用当前和候选的元层状态各跑一轮普通改进，只有候选带来的考试提升更大才接受，并且连同它产出的那个改进一起进谱系。判别器和归因方法由外循环升级（`runtime/openrsi_runtime/outer.py`）：它能自己生成候选并验证，但没有批准人就不升级。`runtime/openrsi_runtime/nesting.py` 把一整轮内层运行包装成 agent（`LoopAgent` + `GainJudge`），外层就能进化内层的算法、提案器或归因方法；内层的环境、判别器、准入、护栏、谱系和预算保持不动。准入、护栏、封存考试、人工标签和预算永远不进化。
 
 ### 组件
 
 | 类型 | 官方实现 | 包 |
 |---|---|---|
-| 判别、取证 | `EvidenceJudge`（rubric + 证据，可选 LLM 检查项）、`EvolvingJudge` | `openrsi-judge` |
+| 判别、取证 | `EvidenceJudge`（rubric + 证据，可选 LLM 检查项）、`EvolvingJudge`；`GainJudge` 给嵌套运行打分 | `openrsi-judge`、`openrsi-runtime` |
 | 归因 | `RubricEvidenceAttributor`、`CellContrastAttributor`（同一道题只在部分格失败时，归到环境坐标）；运行时支持反事实重跑 | `openrsi-attribution` |
-| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`PromptRewriter`、`DistillProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
+| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`CurriculumProposer` 和 `StrategyRewriter`（元层）、`PromptRewriter`、`DistillProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
 | 算法 | 6 种，见下表 | `openrsi-algorithm` |
 | 准入 | `HoldoutGate`（提升幅度、显著性、逐题配对检验、anchor、成本、逐题不回退、逐格不回退） | `openrsi-gate` |
 | 护栏 | `PolicyGuard`（危险代码、密钥、受保护条目和路径、篡改评估） | `openrsi-guard` |
 | 谱系 | `LineageStore`（JSONL，可续跑） | `openrsi-lineage` |
-| 执行体 | `ChatAgent`（任何 OpenAI 兼容接口，换权重时重启 vLLM）、`HarnessAgent` | `openrsi-llm`、`openrsi-harness` |
+| 执行体 | `ChatAgent`（任何 OpenAI 兼容接口，换权重时重启 vLLM）、`HarnessAgent`、`LoopAgent`（一整轮内层运行） | `openrsi-llm`、`openrsi-harness`、`openrsi-runtime` |
 | 可进化体、memory、skill | 见上表 | |
 | 环境 | 由用户提供；示例里有 GSM8K | |
 
@@ -301,7 +305,7 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 
 OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
 
-- **CI 覆盖：** 255 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
+- **CI 覆盖：** 284 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
 - **在真实模型上跑过：** 小模型全流程（CPU）。
 - **还没真实跑过：** GPU 规模的小模型实验、verl 训练、RSIHub 配方。见[实验](#实验)。
 

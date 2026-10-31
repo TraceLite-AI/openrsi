@@ -1,6 +1,6 @@
 [project]
 name = "openrsi-proposer"
-version = "0.4.1"
+version = "0.4.2"
 description = "Memory patch proposers (rule-based lessons and Claude-backed reflection)"
 requires-python = ">=3.10"
 license = "Apache-2.0"
