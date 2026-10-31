@@ -1,0 +1,12 @@
+protocol: openrsi/0.4
+name: openrsi/cell-contrast-attribution
+version: 0.4.1
+description: 证据归因之上做跨格对比：同一道题只在某些环境格失败时，把责任归到挂的格独有的环境坐标（kind env）；所有格都失败时归到 agent 能力。用于环境格模式（0.5 草案）。
+kinds: [attribution]
+implements:
+  - rsi_component_info
+  - rsi_attribution_explain
+capabilities: {env_cells: required}
+runtime:
+  transport: stdio
+  command: [openrsi-attribution, --kind, cell-contrast]

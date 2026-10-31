@@ -58,7 +58,7 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 ## 5. 归因
 
 - `rsi_attribution_explain` 对每个 episode 返回一条 `Attribution`，`episode_id` 等于 `trajectory.id`。
-- `AttributionTarget.weight` 在 -1 到 1 之间：负数是责任，正数是功劳。`kind` 取 `step`、`item`、`component`、`patch`、`rubric`。
+- `AttributionTarget.weight` 在 -1 到 1 之间：负数是责任，正数是功劳。`kind` 取 `step`、`item`、`component`、`patch`、`rubric`，以及 `env`（0.5 草案，见第 14 节）。
 - 失败的 episode 应当至少有一个负权重目标。
 
 ## 6. 可进化体
@@ -167,4 +167,6 @@ loop: {generations: 20, retrieve_k: 5, max_patches: 1}
 - `EnvCell`：`id`（不得含 `@`）、`axes`、`coords`、`stage`、`pins`、`card`、`probes`。指纹是 `axes`、`coords`、`stage`、`pins` 的规范 JSON 的 SHA-256。
 - `rsi_env_cells()` 可选，返回 `EnvCell` 列表。`rsi_env_tasks` 多一个可选参数 `cell`：给了只出这个格的题，题目的 `env_ref` 必须等于格 id；未知的格、或没声明格的 env 收到 `cell`，必须返回工具错误。不传 `cell` 时行为和 0.4 相同。
 - 编排文件写了 `cells` 才进入环境格模式（第 13 节的格式之外加一节 `cells: {train, holdout, expose_coords_to_agent}`）。这时编排方必须：每次取题前核对指纹，变了就停止；检查 `env_ref`；逐题分数的键写成 `<task_id>@<cell_id>`，重复就停止；在 `LineageEntry.env_cells` 记下格 id 到指纹；续跑时格必须和谱系一致。默认不把坐标交给 agent。
+- 环境格模式下编排方应当给每个 episode 加一条 `type: env_cell` 的证据，内容是格 id、坐标和指纹，来源写成 `runtime:cell:<格 id>`；它由编排方记录，不交给 agent。
+- 归因可以用 `kind: env` 指向环境坐标：`ref` 写成 `<坐标键>=<值>`（如 `E4.1:默认编码=cp1252`），坐标不明时写 `cell:<格 id>`。参考实现 `CellContrastAttributor` 用同一道题在不同格里的结果做对比得出它；这是相关，不证明因果。
 - 环境格只是声明，不是隔离手段。

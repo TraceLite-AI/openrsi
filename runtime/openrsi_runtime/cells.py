@@ -7,6 +7,7 @@
   - 逐题分数的键是 <task_id>@<cell_id>，所以题目 id 和格 id 都不能含 @
   - 钉住清单不是 digest 时给出警告：同一个 tag 两次拉到的可能不是同一个镜像
   - 轨迹 id 在取证之前加上 @<cell_id>（loop.py），同一道题在不同格里的轨迹和归因不会混
+  - 每个 episode 多一条 env_cell 证据（格 id、坐标、指纹），归因器据此做跨格对比
 
 只做声明和核对。题目真的在哪个环境里执行，是 agent / harness 的事（设计稿的 P2 执行绑定），这里不保证。
 """
@@ -14,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from openrsi import EnvCell, Task
+from openrsi import EnvCell, Evidence, Task
 
 from .config import CellsConfig
 
@@ -89,6 +90,13 @@ class CellRegistry:
                 seen.add(key)
                 out.append(t)
         return out
+
+    def evidence(self, task: Task) -> Evidence:
+        """这道题所在格的环境证据。由编排方记录，不是 agent 自报；agent 看不到它。"""
+        cell = self.cells[task.env_ref]
+        return Evidence.make("env_cell", {"cell": cell.id, "axes": cell.axes, "coords": dict(cell.coords),
+                                          "fingerprint": self.fingerprints.get(cell.id, cell.fingerprint())},
+                             f"runtime:cell:{cell.id}", "openrsi/runtime")
 
     def coords_for_agent(self, task: Task) -> dict[str, str] | None:
         if not self.cfg.expose_coords_to_agent or task.env_ref not in self.cells:

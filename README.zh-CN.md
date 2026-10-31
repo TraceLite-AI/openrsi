@@ -88,10 +88,10 @@ flowchart LR
 | 类型 | 官方实现 | 包 |
 |---|---|---|
 | 判别、取证 | `EvidenceJudge`（rubric + 证据，可选 LLM 检查项）、`EvolvingJudge` | `openrsi-judge` |
-| 归因 | `RubricEvidenceAttributor`；运行时支持反事实重跑 | `openrsi-attribution` |
-| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`PromptRewriter`、`DistillProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
+| 归因 | `RubricEvidenceAttributor`、`CellContrastAttributor`（同一道题只在部分格失败时，归到环境坐标）；运行时支持反事实重跑 | `openrsi-attribution` |
+| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`PromptRewriter`、`DistillProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
 | 算法 | 6 种，见下表 | `openrsi-algorithm` |
-| 准入 | `HoldoutGate`（提升幅度、显著性、anchor、成本、逐题不回退） | `openrsi-gate` |
+| 准入 | `HoldoutGate`（提升幅度、显著性、anchor、成本、逐题不回退、逐格不回退） | `openrsi-gate` |
 | 护栏 | `PolicyGuard`（危险代码、密钥、受保护条目和路径、篡改评估） | `openrsi-guard` |
 | 谱系 | `LineageStore`（JSONL，可续跑） | `openrsi-lineage` |
 | 执行体 | `ChatAgent`（任何 OpenAI 兼容接口，换权重时重启 vLLM）、`HarnessAgent` | `openrsi-llm`、`openrsi-harness` |
@@ -214,7 +214,7 @@ evolvables:
   prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
 ```
 
-环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时只核对声明，不保证 agent 真的在那个环境里执行。
+环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时还会给每个 episode 记一条 `env_cell` 证据（格、坐标、指纹），`CellContrastAttributor` 据此对比同一道题在不同格里的结果。运行时只核对声明，不保证 agent 真的在那个环境里执行。
 
 ```yaml
 cells:
