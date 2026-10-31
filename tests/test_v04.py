@@ -1,6 +1,7 @@
 """v0.4：前沿进化算法、逐题不回退准入、harness 进化、verl 适配、RSIHub 适配。"""
 import asyncio
 import json
+import math
 import random
 import shutil
 import subprocess
@@ -160,6 +161,37 @@ def test_gate_no_regression():
     assert HoldoutGate(max_task_regressions=1).check(GateRequest(
         candidate_id="x", baseline={"holdout": 0.66}, candidate={"holdout": 0.67}, baseline_tasks=base,
         candidate_tasks={"a": 1.0, "b": 1.0, "c": 0.0})).accepted
+
+
+def test_gate_paired_significance():
+    from openrsi_gate import paired_z
+    # 10 道题，候选修好 6 道、改坏 0 道：McNemar z = 6 / √6 ≈ 2.45
+    base = {f"t{i}": 0.0 for i in range(6)} | {f"t{i}": 1.0 for i in range(6, 10)}
+    cand = {f"t{i}": 1.0 for i in range(10)}
+    z, detail = paired_z(base, cand)
+    assert abs(z - 6 / math.sqrt(6)) < 1e-9 and "修好 6、改坏 0" in detail
+    req = GateRequest(candidate_id="c", baseline={"holdout": 0.4}, candidate={"holdout": 1.0},
+                      baseline_tasks=base, candidate_tasks=cand)
+    assert HoldoutGate(paired_significance_z=1.96).check(req).accepted
+    assert not HoldoutGate(paired_significance_z=3.0).check(req).accepted
+    # 总分一样涨了 0.2，但这是修好 3 道、改坏 1 道换来的：z = 2 / 2 = 1，不算显著
+    flip = {"a": 1.0, "b": 1.0, "c": 1.0, "d": 0.0, "e": 0.0}
+    noisy = GateRequest(candidate_id="n", baseline={"holdout": 0.4}, candidate={"holdout": 0.6},
+                        baseline_tasks={"a": 0.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 0.0}, candidate_tasks=flip)
+    d = HoldoutGate(paired_significance_z=1.64).check(noisy)
+    assert not d.accepted and "z=1.00" in next(c for c in d.checks if c.name == "paired_significance").detail
+    # 连续分数：逐题差值都一样大时 z 为无穷大；有正有负且均值为 0 时 z 为 0
+    assert paired_z({"a": 0.2, "b": 0.5}, {"a": 0.3, "b": 0.6})[0] == math.inf
+    assert paired_z({"a": 0.2, "b": 0.5}, {"a": 0.3, "b": 0.4})[0] == 0.0
+    # 缺逐题分数、候选少做了题：都不通过
+    gate = HoldoutGate(paired_significance_z=0.0)
+    assert not gate.check(GateRequest(candidate_id="m", baseline={"holdout": 0.0},
+                                      candidate={"holdout": 1.0})).accepted
+    short = gate.check(GateRequest(candidate_id="s", baseline={"holdout": 0.0}, candidate={"holdout": 1.0},
+                                   baseline_tasks={"a": 0.0, "b": 0.0}, candidate_tasks={"a": 1.0}))
+    assert not short.accepted and "缺 1 道" in short.checks[-1].detail
+    # 不开这个选项时行为和以前一样
+    assert all(c.name != "paired_significance" for c in HoldoutGate().check(req).checks)
 
 
 # ---------------------------------------------------------------- A. 运行时：逐题分数、筛查、提案器提示
