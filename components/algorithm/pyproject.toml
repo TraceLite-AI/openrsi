@@ -1,6 +1,6 @@
 [project]
 name = "openrsi-algorithm"
-version = "0.4.0"
+version = "0.4.1"
 description = "Search strategies (greedy, archive-based open-ended) over snapshot lineages"
 requires-python = ">=3.10"
 license = "Apache-2.0"
