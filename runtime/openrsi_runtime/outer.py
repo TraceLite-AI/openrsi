@@ -14,12 +14,17 @@ attribution 的验证：留出的干预样本，每个样本知道真正的原�
 
 验证计划（阈值、样本量、资格集哈希）在提案时锁定，看完结果再改会被拒绝。
 所有提案、验证、升级、回滚都按内容寻址写进 RecordStore，只追加。
+
+自动出候选（auto_round）：候选生成器给出一批候选（judge：在当前 rubric 上加一个检查项；归因：方法和参数网格），
+可选先在开发集上用固定评估器筛一遍，再逐个在冻结的资格集上验证；返回最好的那个"待批准"的结果。
+自动化到此为止：auto_round 从不升级，升级仍然要 promote + 批准人。开发集和资格集不能有同一道题。
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, Callable, Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -109,6 +114,50 @@ class AttributionFixture(BaseModel):
 def _improves(base: float, cand: float, min_gain: float) -> bool:
     """必须真的变好：严格高于当前版本，且提升不小于计划登记的 min_gain。"""
     return cand > base and cand - base >= min_gain
+
+
+@dataclass
+class CandidateSpec:
+    """一个自动生成的候选：引用名、冻结内容（算哈希用）、构造函数。"""
+
+    ref: str
+    content: Any
+    build: Callable[[], Any]
+    hypothesis: str = ""
+
+
+def judge_check_candidates(base_rubric: dict[str, Any], *, checks: Iterable[str] | None = None,
+                           judge_kwargs: dict[str, Any] | None = None) -> list[CandidateSpec]:
+    """在当前 rubric 上各加一个还没有的检查项（必过项），每种加法是一个候选。"""
+    from openrsi_judge import EvidenceJudge
+    from openrsi_judge.rubric import CHECKS
+
+    have = {i["check"] for i in base_rubric.get("items", [])}
+    out = []
+    for check in sorted(checks or CHECKS):
+        if check in have or check == "llm":
+            continue
+        rubric = {**base_rubric, "items": [*base_rubric.get("items", []),
+                                           {"id": f"auto-{check}", "check": check, "required": True}]}
+        out.append(CandidateSpec(ref=f"judge+{check}", content=rubric, hypothesis=f"加上必过检查 {check}",
+                                 build=lambda r=rubric: EvidenceJudge(r, **(judge_kwargs or {}))))
+    return out
+
+
+def grid_candidates(target: str, grid: dict[str, list[Any]]) -> list[CandidateSpec]:
+    """一个组件类的参数网格，每组参数是一个候选。target 是 module:Class。"""
+    import importlib
+    import itertools
+
+    module, _, name = target.partition(":")
+    cls = getattr(importlib.import_module(module), name)
+    keys = sorted(grid)
+    out = []
+    for values in itertools.product(*(grid[k] for k in keys)) if keys else [()]:
+        kw = dict(zip(keys, values))
+        out.append(CandidateSpec(ref=f"{target}{kw or ''}", content={"target": target, "with": kw},
+                                 hypothesis=f"换成 {name}({kw})", build=lambda kw=kw: cls(**kw)))
+    return out
 
 
 # ---------------------------------------------------------------- 固定评估器
@@ -248,10 +297,53 @@ class OuterLoop:
         self._set_active(state)
         return rec
 
+    def _metric(self, kind: str, metrics: dict[str, float]) -> float:
+        return metrics["agreement"] if kind == "judge" else metrics["localization"]
+
+    def auto_round(self, target_kind: str, base_ref: str, base: Any, candidates: Iterable[CandidateSpec],
+                   plan: ValidationPlan, qualification: list[Any], *, dev: list[Any] | None = None,
+                   top_k: int | None = None) -> tuple[OuterProposal, OuterValidation] | None:
+        """自动跑一轮：（可选）开发集筛选 → 逐个提案并在冻结的资格集上验证 → 返回最好的通过者，等人批准。
+        不会升级任何东西。候选崩溃时记一条 outer_error，继续下一个。"""
+        cands = list(candidates)
+        if dev is not None:
+            ids = lambda xs: {  # noqa: E731
+                (x.task.id if hasattr(x, "task") else tuple(e.task.id for e in x.episodes)) for x in xs}
+            if ids(dev) & ids(qualification):
+                raise OuterError("开发集和资格集有同一道题：资格集必须是候选生成过程从没见过的")
+            scored = []
+            for c in cands:
+                try:
+                    m = (self.evaluator.judge_metrics(c.build(), dev) if target_kind == "judge"
+                         else self.evaluator.attribution_metrics(c.build(), dev))
+                    scored.append((self._metric(target_kind, m), c))
+                except Exception as e:  # noqa: BLE001  候选崩了就跳过，留档
+                    self.records.put({"stage": "dev", "candidate": c.ref, "error": f"{type(e).__name__}: {e}"},
+                                     "outer_error")
+            scored.sort(key=lambda x: -x[0])
+            cands = [c for _, c in scored[: top_k or len(scored)]]
+        best: tuple[float, OuterProposal, OuterValidation] | None = None
+        for c in cands:
+            proposal = self.propose(target_kind, base_ref, c.ref, c.content, c.hypothesis or "自动生成的候选", plan,
+                                    expected_effect="自动搜索")
+            try:
+                v = self.validate(proposal, plan, base, c.build(), c.content, qualification)
+            except OuterError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                self.records.put({"stage": "qualification", "proposal_id": proposal.proposal_id,
+                                  "error": f"{type(e).__name__}: {e}"}, "outer_error")
+                continue
+            score = self._metric(target_kind, v.candidate_metrics)
+            if v.accepted and (best is None or score > best[0]):
+                best = (score, proposal, v)
+        return (best[1], best[2]) if best else None
+
     def history(self) -> list[dict[str, Any]]:
         return [{"kind": r["kind"], **self.records.get(r["hash"])} for r in self.records.entries()
                 if r["kind"].startswith("outer_")]
 
 
-__all__ = ["ALLOWED", "AttributionFixture", "FixedEvaluator", "OuterError", "OuterLoop", "OuterProposal",
-           "OuterValidation", "PromotionRecord", "ValidationPlan", "qualification_hash"]
+__all__ = ["ALLOWED", "AttributionFixture", "CandidateSpec", "FixedEvaluator", "OuterError", "OuterLoop",
+           "OuterProposal", "OuterValidation", "PromotionRecord", "ValidationPlan", "grid_candidates",
+           "judge_check_candidates", "qualification_hash"]
