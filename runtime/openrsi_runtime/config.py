@@ -65,6 +65,19 @@ class LoopConfig(BaseModel):
                                        description="每代最多做几次反事实重跑（拿掉一条 memory 重跑同一道题），0 表示不做")
 
 
+class BindingSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    python: str = Field(description="module:Class，ExecutionBinding 的子类，如 openrsi_runtime.bindings:EnvVarBinding")
+    with_: dict[str, Any] = Field(default_factory=dict, alias="with")
+
+
+class RecordsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(description="不可变记录库的目录（相对编排文件）")
+
+
 class CellsConfig(BaseModel):
     """环境格模式（0.5 草案）。写了这一节才启用；不写时按 0.4 运行，即使 env 实现了 rsi_env_cells。"""
 
@@ -74,6 +87,8 @@ class CellsConfig(BaseModel):
     holdout: list[str] | None = Field(default=None, description="holdout 用哪些格；不填用 env 声明的全部格")
     expose_coords_to_agent: bool = Field(
         default=False, description="把格的坐标放进交给 agent 的 task.metadata.env_coords；默认不给，agent 自己探测")
+    binding: BindingSpec | None = Field(
+        default=None, description="执行绑定（严格模式）：每道题执行前准备并核对环境，agent 必须回报所用方案")
 
     @model_validator(mode="after")
     def _ids(self) -> "CellsConfig":
@@ -99,6 +114,8 @@ class RunConfig(BaseModel):
         default_factory=dict, description="memory 之外参与进化的对象（prompt、skill 等），名字随意")
     loop: LoopConfig = Field(default_factory=LoopConfig)
     cells: CellsConfig | None = Field(default=None, description="环境格模式（0.5 草案），写了才启用")
+    records: RecordsConfig | None = Field(
+        default=None, description="不可变记录（P2）：原始题目/轨迹/证据/回执按内容寻址存档；也让续跑严格核对运行清单")
     base_dir: Path = Field(default=Path("."), exclude=True)
 
     @model_validator(mode="after")

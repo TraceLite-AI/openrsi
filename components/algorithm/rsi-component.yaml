@@ -1,7 +1,7 @@
 protocol: openrsi/0.4
 name: openrsi/archive
 version: 0.4.0
-description: 进化算法（父代选择和停止）。--kind 可选 archive（DGM 式加权抽样）、greedy、pareto（GEPA 式按任务的前沿）、shinka（新颖性筛选 + 提议者 bandit）、islands（AlphaEvolve 式岛屿模型）、map-elites。
+description: 进化算法（父代选择和停止）。--kind 可选 archive（DGM 式加权抽样）、greedy、independent（每代都从根版本出发，对照实验用）、pareto（GEPA 式按任务的前沿）、shinka（新颖性筛选 + 提议者 bandit）、islands（AlphaEvolve 式岛屿模型）、map-elites。
 kinds: [algorithm]
 implements:
   - rsi_component_info

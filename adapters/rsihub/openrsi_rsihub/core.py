@@ -47,14 +47,22 @@ def task_scores(row: dict[str, Any]) -> dict[str, float]:
 
 def gate_decide(child: dict[str, Any], parent: dict[str, Any] | None, *, max_task_regressions: int | None = 0,
                 task_tolerance: float = 0.0, min_gain: float = 0.0, allow_equal: bool = False,
-                require_task_scores: bool = False) -> tuple[bool, str]:
+                require_task_scores: bool = False, strict: bool = False) -> tuple[bool, str]:
     """用 OpenRSI 的 HoldoutGate 判定：总分提升，且逐题回退不超过上限（Self-Harness / AHE 的不回退准入）。
 
     和 RSIHub 的 parent_eligible 一样，先要求这次评估是完整、可作父代的（有这两个字段时）。
     拿不到可比的逐题分数时（父代分数是按任务集哈希另找的、或没有 task_vector），默认退回只比总分，
     require_task_scores=True 时直接拒绝。
+
+    strict=True（受控对照实验用，two-loop 设计 §8A）：不退回只比总分，并且
+      - 回退上限必须显式给出（max_task_regressions 不能是 None）
+      - 父代和候选都要有任务集哈希且相同，父代分数不能是另找来的（_matched_from_evals）
+      - 父代和候选的逐题向量必须覆盖同一批题：候选漏题、多题、某题评估不完整都直接拒绝
     """
     from openrsi_gate import HoldoutGate
+
+    if strict and max_task_regressions is None:
+        return False, "严格模式必须显式设置 max_task_regressions"
 
     outcome = child.get("outcome")
     if outcome is not None and outcome != "benchmark_complete":
@@ -70,8 +78,16 @@ def gate_decide(child: dict[str, Any], parent: dict[str, Any] | None, *, max_tas
         return False, f"任务集不同（{ch} vs {ph}），不能比较"
     child_tasks, parent_tasks = task_scores(child), task_scores(parent)
     comparable = bool(child_tasks and parent_tasks) and not parent.get("_matched_from_evals")
-    if not comparable and require_task_scores:
+    if not comparable and (require_task_scores or strict):
         return False, "缺少可比的逐题分数"
+    if strict:
+        if not ch or not ph or ch != ph:
+            return False, f"严格模式要求父代和候选有相同的任务集哈希（{ch} vs {ph}）"
+        listed = set((child.get("task_vector") or {}).get("tasks") or {})
+        missing, extra = sorted(set(parent_tasks) - set(child_tasks)), sorted(set(child_tasks) - set(parent_tasks))
+        incomplete = sorted(listed - set(child_tasks))
+        if missing or extra or incomplete:
+            return False, (f"逐题向量对不上：候选缺 {missing[:5]}，多出 {extra[:5]}，评估不完整 {incomplete[:5]}")
     gate = HoldoutGate(min_gain=-1e-12 if allow_equal and min_gain == 0 else min_gain,
                        max_task_regressions=max_task_regressions if comparable else None,
                        task_tolerance=task_tolerance)
@@ -166,16 +182,26 @@ def compile_check(checkout: Path, globs: list[str]) -> list[str]:
 
 def guard_checkout(checkout: Path, *, protected_paths: list[str] | None = None, check_code: bool = False,
                    max_removals: int = 50, compile_globs: list[str] | None = None,
+                   required_files: list[str] | None = None, strict: bool = False,
                    ) -> tuple[bool, str, list[dict[str, Any]]]:
     """用 OpenRSI 的 PolicyGuard 检查候选改动：受保护路径、密钥、提示注入、可选的代码检查。
 
     compile_globs 给出时，还要求匹配的 Python 文件都能编译（如 ["target/**/*.py", "operators/**/*.py"]）。
+    required_files 里的文件改动后必须还在。strict=True 时：evaluator/** 和 operators/** 总在受保护列表里
+    （配置不能把它们去掉），没给 compile_globs 时默认编译检查 target/**/*.py 和 operators/**/*.py。
     """
     from openrsi_guard import PolicyGuard
 
+    if strict:
+        protected_paths = sorted(set(protected_paths or []) | set(DEFAULT_PROTECTED))
+        compile_globs = compile_globs or ["target/**/*.py", "operators/**/*.py"]
     ops = checkout_ops(checkout)
     if not ops:
         return False, "候选没有任何改动", []
+    gone = [f for f in required_files or [] if not (Path(checkout) / f).is_file()]
+    if gone:
+        return False, f"必需文件缺失：{', '.join(gone)}", [{"rule": "required_file", "severity": "block",
+                                                         "message": f} for f in gone]
     guard = PolicyGuard(protected_paths=DEFAULT_PROTECTED if protected_paths is None else protected_paths,
                         check_harness_code=check_code, max_ops=max(1000, len(ops)), max_removals=max_removals)
     report = guard.inspect(Patch(target="harness", ops=ops))

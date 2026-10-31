@@ -84,7 +84,20 @@ python benchmarks/rsihub_parity/compare.py $RSIHUB
 哪一步失败就把那一步的终端输出发来。最可能出问题的两处：
 
 - 第 7 步：`evolve init` 不一定接受本地仓库（`file://`）作为 target，`run --max-generations 0` 也不一定被接受（脚本失败时会打印替代命令）。
-- gate 拿不到逐题分数：这时 `openrsi_no_regression` 会退回只比总分，原因里写着"只比总分"，compare 的逐代列表里能看到。
+- gate 拿不到逐题分数：默认 `openrsi_no_regression` 会退回只比总分，原因里写着"只比总分"，compare 的逐代列表里能看到。生成配方时加 `--strict-gate` 就改为直接拒绝（候选漏题、多题、某题评估不完整、任务集哈希不同也都拒绝），推荐正式实验用。
+
+## 严格模式和这个实验的边界
+
+适配器有严格模式（`strict: true`，见 `adapters/rsihub/openrsi_rsihub/core.py`）：
+
+- gate：回退上限必须显式给出；父代和候选的逐题向量必须覆盖同一批题、任务集哈希一致，否则拒绝，不退回只比总分。
+- validate：`evaluator/**` 和 `operators/**` 总受保护（配置漏写也一样），默认编译检查，`required_files` 里的文件不能被删。
+
+这个对照实验只对 gate 用严格模式（`--strict-gate`）。validate 不用：Hyperagents 原版允许改 `operators/`，如果 openrsi 组强制保护它，两组能改的范围就不一样了，比较不公平。要做"两组可改范围相同、算子固定"的受控实验，应当另开一组配方，两组都保护 `operators/**`，不能和这个原版对齐实验混在一起报告。
+
+## 现在的状态
+
+还没有在真实的 RSIHub 上跑过。原因：要 RSIHub 自己的环境、OpenAI API key，按上面的估计约 1800 美元。适配器的逻辑（gate、validate、select 背后的 `core.py`）有单元测试和逐项负向探针（`tests/test_rsihub_strict.py`），但这不能代替真实运行，结果出来之前不能说"已兼容"或"有提升"。
 
 ## 之后
 
