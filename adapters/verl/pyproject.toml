@@ -1,10 +1,10 @@
 [project]
 name = "openrsi-verl"
-version = "0.4.0"
+version = "0.4.1"
 description = "OpenRSI x verl: judges as reward functions, judge-verified training data, model weights as an evolvable"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.4,<0.5", "pyyaml>=6"]
+dependencies = ["openrsi-sdk>=0.4,<0.5", "openrsi-weights>=0.4.1,<0.5", "pyyaml>=6"]
 
 [project.optional-dependencies]
 parquet = ["pandas>=2", "pyarrow>=14"]

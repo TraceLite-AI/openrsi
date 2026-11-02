@@ -80,7 +80,7 @@ flowchart LR
 | prompt | 有序段落 | 增、改、删段落 | `openrsi-evolvables` |
 | skill | Python 函数，在受限子进程里执行 | 增、改、删代码 | `openrsi-evolvables` |
 | harness（agent 代码） | git 提交 | 写入、删除文件或统一 diff，限定在可改范围内 | `openrsi-harness` |
-| 模型权重 | checkpoint | 一次训练（`train_sft.py` 或 verl 做 SFT） | `openrsi-verl` |
+| 模型权重 | checkpoint | 一次训练：用判别器判对的回答做 SFT，或用 DPO / KTO 让判错的回答也派上用场；自带训练器（`trainer: builtin`，torch + transformers，可选 LoRA）或任何外部命令（verl、LLaMA-Factory 等） | `openrsi-weights` |
 | 判别器 rubric | rubric 条目 | 增加或收紧检查项，按人工标注一致率准入 | `openrsi-judge` |
 | 提案器策略（元层） | 提案器读取的说明或参数 | 替换；按下游提升准入 | `openrsi-evolvables` |
 | 课程（元层） | 挑练习题用的标签权重 | 替换；按下游提升准入 | `openrsi-evolvables` |
@@ -121,7 +121,8 @@ flowchart LR
 git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
 pip install -e sdk/python -e runtime -e components/judge -e components/memory -e components/attribution \
             -e components/proposer -e components/algorithm -e components/gate -e components/lineage \
-            -e components/evolvables -e components/guard -e components/harness -e components/llm -e adapters/verl
+            -e components/evolvables -e components/guard -e components/harness -e components/llm -e components/weights \
+            -e adapters/verl
 
 cd examples/secret_ops
 openrsi run      # 跑到停为止；中断后再运行会从谱系接着跑
@@ -305,7 +306,7 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 
 OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
 
-- **CI 覆盖：** 284 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
+- **CI 覆盖：** 299 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
 - **在真实模型上跑过：** 小模型全流程（CPU）。
 - **还没真实跑过：** GPU 规模的小模型实验、verl 训练、RSIHub 配方。见[实验](#实验)。
 

@@ -2,25 +2,19 @@
 
 - RL（PPO / GRPO）：每行 {data_source, prompt, ability, reward_model: {style, ground_truth}, extra_info}，
   标准答案只放在 reward_model.ground_truth 里，不进 prompt。
-- SFT：每行 {"messages": [...]}，只取 train 划分里判别器判为通过的轨迹（拒绝采样式的自我蒸馏）。
+- SFT / DPO / KTO 的数据转换在 openrsi_weights.data（这里重新导出 SFT 部分，旧代码照常可用）。
   holdout / anchor / final 的轨迹一律拒绝导出，避免评估集泄漏进训练。
 """
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from openrsi import Episode, Task
+from openrsi import Task
 
 
-class DataLeakError(ValueError):
-    """试图把非 train 划分的数据导出成训练数据。"""
-
-
-def default_prompt(task: Task) -> str:
-    x = task.input
-    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False)
+from openrsi_weights.data import (DataLeakError, default_prompt, episode_messages, episodes_to_sft_rows,  # noqa: F401
+                                  write_rows)
 
 
 def tasks_to_rl_rows(tasks: Iterable[Task], data_source: str, *, ability: str = "agent",
@@ -48,53 +42,3 @@ def tasks_to_rl_rows(tasks: Iterable[Task], data_source: str, *, ability: str = 
             "extra_info": {"split": t.split, "index": t.id, "input": t.input, "tags": list(t.tags)},
         })
     return rows
-
-
-def _text(x: Any) -> str:
-    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False)
-
-
-def episode_messages(ep: Episode, prompt_fn: Callable[[Task], str] = default_prompt) -> list[dict[str, Any]]:
-    """轨迹转成对话。agent 自己记下了 user 消息（比如 ChatAgent）就原样用轨迹里的对话（含系统提示）；
-    否则用 prompt_fn(task) 作为 user。工具调用和结果按顺序展开，最终输出作为最后一条 assistant。"""
-    steps = ep.trajectory.steps
-    own = any(s.type == "message" and s.role == "user" for s in steps)
-    msgs: list[dict[str, Any]] = [] if own else [{"role": "user", "content": prompt_fn(ep.task)}]
-    for s in steps:
-        if s.type == "message" and s.role in ("assistant", "user", "system"):
-            msgs.append({"role": s.role, "content": _text(s.content)})
-        elif s.type == "tool_call":
-            msgs.append({"role": "assistant", "content": json.dumps({"tool": s.name, "arguments": s.arguments or {}},
-                                                                    ensure_ascii=False)})
-        elif s.type == "tool_result":
-            msgs.append({"role": "tool", "content": _text(s.content)})
-    final = _text(ep.trajectory.output)
-    if not (msgs and msgs[-1]["role"] == "assistant" and msgs[-1]["content"] == final):
-        msgs.append({"role": "assistant", "content": final})
-    return msgs
-
-
-def episodes_to_sft_rows(episodes: Iterable[Episode], *, min_score: float = 1.0,
-                         prompt_fn: Callable[[Task], str] = default_prompt) -> list[dict[str, Any]]:
-    rows = []
-    for ep in episodes:
-        if ep.task.split != "train":
-            raise DataLeakError(f"{ep.task.id} 属于 {ep.task.split}，不能导出成训练数据")
-        if ep.verdict.passed and ep.verdict.score >= min_score:
-            rows.append({"messages": episode_messages(ep, prompt_fn),
-                         "extra_info": {"task_id": ep.task.id, "score": ep.verdict.score,
-                                        "judge": ep.verdict.judge_ref}})
-    return rows
-
-
-def write_rows(rows: list[dict[str, Any]], path: str | Path) -> Path:
-    """按扩展名写 .jsonl 或 .parquet（parquet 需要 pandas 和 pyarrow）。"""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.suffix == ".parquet":
-        import pandas as pd
-
-        pd.DataFrame(rows).to_parquet(path)
-    else:
-        path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
-    return path

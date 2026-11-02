@@ -1,4 +1,4 @@
-"""OpenRSI × verl：判别器当奖励函数、训练数据导出、模型权重作为可进化体。
+"""OpenRSI × verl：判别器当奖励函数、RL 训练数据导出；权重可进化体在 openrsi-weights 包里，这里重新导出旧名字。
 
     from openrsi_verl import make_compute_score, tasks_to_rl_rows, WeightsEvolvable, DistillProposer
 
@@ -12,7 +12,7 @@ verl 的训练命令示例（参数名以你安装的 verl 版本为准）：
 """
 from .data import DataLeakError, episode_messages, episodes_to_sft_rows, tasks_to_rl_rows, write_rows
 from .reward import compute_score, load_judge, make_compute_score, reference_from
-from .weights import DistillProposer, WeightsEvolvable
+from .weights import DistillProposer, PreferenceProposer, WeightsEvolvable
 
 
 def reward_path() -> str:
@@ -44,6 +44,6 @@ def main() -> None:
                                 model_glob=args.model_glob))
 
 
-__all__ = ["DataLeakError", "DistillProposer", "WeightsEvolvable", "compute_score", "episode_messages",
+__all__ = ["DataLeakError", "DistillProposer", "PreferenceProposer", "WeightsEvolvable", "compute_score", "episode_messages",
            "episodes_to_sft_rows", "load_judge", "main", "make_compute_score", "reference_from", "reward_path",
            "tasks_to_rl_rows", "write_rows"]

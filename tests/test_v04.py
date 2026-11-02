@@ -481,7 +481,7 @@ def test_weights_model_glob_picks_latest_step(tmp_path):
 def test_weights_conformance_and_manifest(tmp_path):
     report = asyncio.run(check(build_server(WeightsEvolvable("m", tmp_path / "w", dry_run=True))))
     assert report.ok, report.text()
-    manifest = load_manifest(ROOT / "adapters/verl/rsi-component.yaml")
+    manifest = load_manifest(ROOT / "components/weights/rsi-component.yaml")
     info = served_info(WeightsEvolvable("m", tmp_path / "w2", dry_run=True))
     assert (manifest.name, manifest.version) == (info.name, info.version)
     assert set(manifest.implements) == set(info.tools)

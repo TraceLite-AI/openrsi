@@ -80,7 +80,7 @@ The runtime enforces these rules itself rather than trusting components to follo
 | Prompt | ordered sections | add / replace / remove sections | `openrsi-evolvables` |
 | Skills | Python functions, run in a sandboxed subprocess | add / replace / remove code | `openrsi-evolvables` |
 | Harness (agent code) | git commit | write / delete / unified diff, within mutable paths | `openrsi-harness` |
-| Model weights | checkpoint | one training run (SFT via `train_sft.py` or verl) | `openrsi-verl` |
+| Model weights | checkpoint | one training run: SFT on judge-verified answers, or DPO / KTO that also learn from wrong answers; built-in trainer (`trainer: builtin`, torch + transformers, optional LoRA) or any external command (verl, LLaMA-Factory, ...) | `openrsi-weights` |
 | Judge rubric | rubric items | add / tighten checks; gated on human-label agreement | `openrsi-judge` |
 | Improver strategy (meta) | notes / parameters the proposer reads | replace; gated on downstream gain | `openrsi-evolvables` |
 | Curriculum (meta) | tag weights for picking train tasks | replace; gated on downstream gain | `openrsi-evolvables` |
@@ -121,7 +121,8 @@ Requires Python 3.10+.
 git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
 pip install -e sdk/python -e runtime -e components/judge -e components/memory -e components/attribution \
             -e components/proposer -e components/algorithm -e components/gate -e components/lineage \
-            -e components/evolvables -e components/guard -e components/harness -e components/llm -e adapters/verl
+            -e components/evolvables -e components/guard -e components/harness -e components/llm -e components/weights \
+            -e adapters/verl
 
 cd examples/secret_ops
 openrsi run      # runs until done; rerunning resumes from the lineage
@@ -305,7 +306,7 @@ A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with ev
 
 OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 284 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
+- **Tested in CI:** 299 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 

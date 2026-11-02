@@ -63,6 +63,8 @@ class LoopConfig(BaseModel):
                                     description="每隔几代轮到判别器进化；其余代只改 agent 侧。不填则判别器不进化")
     counterfactual_reruns: int = Field(default=0, ge=0,
                                        description="每代最多做几次反事实重跑（拿掉一条 memory 重跑同一道题），0 表示不做")
+    train_samples: int = Field(default=1, ge=1,
+                               description="每道练习题答几次（agent 要有随机性）；>1 时偏好训练（DPO）才有同题的对错配对")
     meta_every: int | None = Field(default=None, ge=2,
                                    description="每隔几代做一次元层进化（improver、curriculum 类型的可进化体）；不填则元层不进化")
     meta_min_gain: float = Field(default=0.0, ge=0.0,
