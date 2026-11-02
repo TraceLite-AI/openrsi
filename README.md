@@ -32,7 +32,6 @@
 
 ## News
 
-- **2026-11** · Directed self-improvement (`loop.directed`): group comparison against an unchanged control, evidence pooled across groups, momentum over directions, optional line search and a convergence test. On a toy problem with a known optimum it matches or slightly beats the current loop and accepts about half as many harmful changes; see [Experiments](#6-directed-vs-random-walk-toy-problem-not-a-benchmark).
 - **2026-11** · Renamed to AnyRSI (formerly OpenRSI, which clashed with another project). Package names, the CLI and the protocol identifier are now `anyrsi`.
 - **2026-11** · RSIHub task banks (Harbor format) work as an AnyRSI environment, split by the same rule as RSIHub; one loop now evolves both agent code and weights. See [examples/rsihub_weights](examples/rsihub_weights/README.md).
 - **2026-10** · v0.4: six evolution algorithms (GEPA-style Pareto, ShinkaEvolve, AlphaEvolve-style islands, MAP-Elites, archive, greedy), per-task no-regression gating, harness (agent code) and model-weight evolution, and adapters for [verl](https://github.com/volcengine/verl) and [RSIHub](https://github.com/simple-agent-lab/RSIHub).
@@ -306,22 +305,11 @@ This is the `secret_ops` toy task: it shows the machinery works, not how well a 
 
 A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with every component in its own process. Real agents spend seconds to minutes per task, so the overhead is negligible. Components called on every agent step should stay in-process.
 
-### 6. Directed vs random walk (toy problem, not a benchmark)
-
-[`benchmarks/directed_toy`](benchmarks/directed_toy/README.md): the optimum is known (true pass rate 0.39 at the start, 0.85 at best), effects are small and noise is large. 20 seeds, 6000 agent calls per arm. A is the current loop, B adds a significance gate on the holdout, C is directed mode (default settings), D adds two edits per direction and a line search.
-
-| Proposer | A | B | C | D |
-|---|---|---|---|---|
-| Good | 0.730 | 0.457 | 0.751 | 0.717 |
-| Poor | 0.581 | 0.413 | 0.616 | 0.552 |
-
-Values are the true pass rate of the final version. With a small holdout, the strict gate does worst; directed mode matches the current loop and gains more as the proposer gets worse (not yet significant), while accepting about half as many harmful changes. See that directory's README.
-
 ## Project Status
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 337 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 316 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 
@@ -347,7 +335,6 @@ The protocol specification and in-repo guides are currently written in Chinese. 
 | [field_tests/README.md](field_tests/README.md) | tests to run against real verl and RSIHub |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | the RSIHub parity experiment |
 | [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | the native A/B/C experiment |
-| [benchmarks/directed_toy/README.md](benchmarks/directed_toy/README.md) | directed vs random walk (toy problem) |
 | [REVIEW.md](REVIEW.md) | the review checklist and per-version baselines |
 
 ## Repository Layout

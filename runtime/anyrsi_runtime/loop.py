@@ -29,12 +29,6 @@
   - 接受时连同它产出的那个解题侧改进一起进谱系，这样算法下一代会从它出发
   - curriculum 只影响练习题怎么挑，考试题不变
 
-有方向的自我改进（loop.directed，见 directed.py）：
-  - 普通的解题侧代换成一组比较："不改"对照 + 几个候选方向 × 每个方向几个具体修改，全部在同一批练习题上做
-  - Friedman 检验、嵌套方差分析、相对对照的配对检验（Bonferroni 门槛）决定方向是否成立
-  - 方向成立后可选线搜索（loop.directed.steps）定改动大小；胜出的修改再走一遍正常的 holdout 准入
-  - 动量记住各方向的效果，决定下一组先试哪些方向；连续 patience 组没有方向胜过不改，就判定收敛并停止
-
 判别器参与进化时（loop.judge_every）：
   - agent 侧和判别器轮流进化，同一代只改一边，分数变化才能归因
   - 判别器的修改会改变 holdout 的打分标准，所以它的准入看 anchor（与人工标注的一致率），不看 holdout
@@ -44,8 +38,6 @@
 from __future__ import annotations
 
 import hashlib
-import math
-import random
 from dataclasses import dataclass, field
 from statistics import fmean
 from typing import Any, Callable
@@ -57,7 +49,6 @@ from anyrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
-from .directed import DirectionResult, GroupResult, Version, analyze_group, flat, mean_z, pick_directions, update_momentum
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
 Genome = dict[str, str]  # 可进化体 target → 快照 id
@@ -85,7 +76,6 @@ class GenerationReport:
     train_score: float
     candidates: list[Candidate] = field(default_factory=list)
     note: str = ""
-    group: dict[str, Any] | None = None  # 有方向模式下这一组的统计结论
 
 
 @dataclass
@@ -147,13 +137,6 @@ class Runner:
         self.metrics: dict[str, dict[str, float]] = {}
         self.task_scores: dict[str, dict[str, float]] = {}
         self.last_task_scores: dict[str, float] = {}
-        self.momentum: dict[str, float] = {}      # 有方向模式：各方向的动量
-        self.step_center: dict[str, Any] = {}     # 有方向模式：各方向上次线搜索选中的步长
-        self.flat_groups = 0                      # 连续几组没有方向胜过不改
-        self.evidence: dict[str, dict[str, list[float]]] = {}  # 父版本 → 方向 → 累积的逐题配对差值
-        self.edits: dict[str, dict[str, list[tuple[float, Any]]]] = {}  # 父版本 → 方向 → [(优势, 修改)]
-        self.looks: dict[str, dict[str, int]] = {}  # 父版本 → 方向 → 已经检验过几次
-        self.converged: str | None = None
 
     # ------------------------------------------------------------ 可进化体
 
@@ -442,9 +425,6 @@ class Runner:
             reports.append(report)
             if self.on_generation:
                 self.on_generation(report)
-            if self.converged:
-                self.log(f"停止：{self.converged}")
-                break
 
         best = await w.lineage.best(self.cfg.metric, self.lineage_target)
         if best:
@@ -479,8 +459,6 @@ class Runner:
         meta = self._meta_turn(gen)
         if meta is not None:
             return await self._meta_generation(gen, parent, meta, proposer_hint)
-        if self.cfg.directed is not None and self._allowed_targets(gen) == self._solver_targets():
-            return await self._directed_generation(gen, parent)
         w = self.w
         parent_genome = self.genomes[parent]
         await self.checkout(parent_genome)
@@ -705,231 +683,6 @@ class Runner:
                                                   baseline_tasks=self.task_scores.get(parent, {}),
                                                   candidate_tasks=tasks))
         decision.checks += guard_checks  # 护栏的警告也留档
-        status = "accepted" if decision.accepted else "rejected"
-        await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
-                                            status=status, metrics=m, decision=decision, patch=patch,
-                                            snapshots=genome, task_scores=tasks, env_cells=self.env_cells))
-        if decision.accepted:
-            self.genomes[cid], self.metrics[cid], self.task_scores[cid] = genome, m, tasks
-        await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid,
-                                           accepted=decision.accepted, metrics=m, task_scores=tasks,
-                                           proposer=patch.proposer_ref))
-        return Candidate(id=cid, metrics=m, accepted=decision.accepted, reason=decision.reason or "", target=t)
-
-    # ------------------------------------------------------------ 有方向的自我改进
-
-    async def _version(self, tasks: list[Task], genome: Genome, direction: str | None, edit: int,
-                       repeats: int) -> tuple[Version, list[Episode]]:
-        """一个版本在这批题上各做 repeats 次：每题取平均分，rubric 每项取通过率。"""
-        await self.checkout(genome)
-        scores: dict[str, float] = {}
-        rubric: dict[str, dict[str, float]] = {}
-        episodes: list[Episode] = []
-        for task in tasks:
-            eps = [await self.episode(task, genome, sample=i) for i in range(repeats)]
-            episodes += eps
-            key = self._key(task)
-            scores[key] = fmean(e.verdict.score for e in eps)
-            items: dict[str, list[float]] = {}
-            for e in eps:
-                for r in e.verdict.rubric:
-                    if r.result in ("pass", "fail"):
-                        items.setdefault(r.id, []).append(1.0 if r.result == "pass" else 0.0)
-            rubric[key] = {k: fmean(v) for k, v in items.items()}
-        return Version(direction=direction, edit=edit, task_scores=scores, rubric=rubric), episodes
-
-    def _direction_candidates(self, attributions: list[Attribution]) -> dict[str, float]:
-        """候选方向 → 支持度。预先命名的方向总在；归因里在 ≥ min_support 道错题上被追责的对象也算。"""
-        d = self.cfg.directed
-        named = list(d.directions) if isinstance(d.directions, list) else list(d.directions.keys())
-        counts: dict[str, set[str]] = {}
-        if d.from_attribution:
-            for a in attributions:
-                for t in a.targets:
-                    if t.weight < 0:
-                        counts.setdefault(f"{t.kind}:{t.ref}", set()).add(a.episode_id)
-        out = {name: float(len(counts.get(name, ()))) for name in named}
-        out.update({k: float(len(v)) for k, v in counts.items() if len(v) >= d.min_support and k not in out})
-        return out
-
-    def _direction_text(self, name: str, support: float, attributions: list[Attribution]) -> str:
-        d = self.cfg.directed
-        if isinstance(d.directions, dict) and name in d.directions:
-            return d.directions[name]
-        notes = [t.note for a in attributions for t in a.targets
-                 if t.weight < 0 and f"{t.kind}:{t.ref}" == name and t.note][:3]
-        text = f"fix what attribution blames: {name} (blamed in {int(support)} failed episodes)"
-        return text + (" — e.g. " + "; ".join(notes) if notes else "")
-
-    async def _directed_edit(self, parent: str, pg: Genome, direction: dict[str, Any], edit: int, step: Any,
-                             episodes: list[Episode], attributions: list[Attribution], states: dict[str, Any],
-                             seen: set[str]) -> tuple[Genome, Patch, str] | None:
-        """让提案器沿一个方向写一个修改，应用后返回新版本；没提出、重复、越界、被护栏或可进化体拒绝时返回 None。"""
-        solver = self._solver_targets()
-        await self.checkout(pg)
-        patches = await self.w.proposer.propose(ProposalRequest(
-            target=self.targets[solver[0]].info, targets=[self.targets[t].info for t in solver],
-            parent_snapshot=parent, episodes=episodes, attributions=attributions,
-            state=states[solver[0]], states=states, max_patches=1,
-            hints={"role": "solver", "direction": direction, "edit": edit,
-                   **({"step": step} if step is not None else {}),
-                   **({"improver": imp} if (imp := await self._improver_hint(pg)) else {})}))
-        if not patches:
-            return None
-        patch = patches[0]
-        t = solver[0] if len(solver) == 1 else patch.target
-        if t not in solver:
-            return None
-        patch = patch.model_copy(update={"target": self.targets[t].info.target, "base_snapshot": pg[t]})
-        key = content_hash([t, patch.ops])
-        if key in seen:
-            return None  # 同一组里一模一样的修改只算一次
-        seen.add(key)
-        if await self._guard_blocks(patch, self.targets[t].info):
-            return None
-        try:
-            snap = await self.targets[t].facade.apply(patch)
-        except (ToolCallError, ComponentError, ValueError, KeyError):
-            return None
-        return {**pg, t: snap.id}, patch, t
-
-    def _tests_horizon(self) -> int:
-        d = self.cfg.directed
-        return d.horizon or d.group_size
-
-    async def _directed_generation(self, gen: int, parent: str) -> GenerationReport:
-        d = self.cfg.directed
-        w = self.w
-        pg = self.genomes[parent]
-        await self.checkout(pg)
-        train = await self._train_tasks(gen, pg)
-        _check_split(train, "train")
-        control, ctrl_eps = await self._version(train, pg, None, 0, d.repeats)
-        report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
-                                  train_score=fmean(control.task_scores.values()) if train else 0.0, note="组内比较")
-        attributions = await w.attribution.explain(ctrl_eps) if w.attribution and ctrl_eps else []
-        if self.records is not None:
-            self._record_attributions(attributions)
-
-        async def nothing(reason: str, is_flat: bool) -> GenerationReport:
-            report.note += f"；{reason}"
-            if is_flat:
-                self.flat_groups += 1
-                if self.flat_groups >= d.patience:
-                    self.converged = (f"连续 {self.flat_groups} 组有把握没有方向能提升 {d.min_effect} 以上，"
-                                      "在当前方向集合上局部收敛")
-            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
-            await self.checkout(pg)
-            return report
-
-        if not train:
-            return await nothing("没有练习题", False)
-        candidates = self._direction_candidates(attributions)
-        if not candidates:
-            return await nothing("没有候选方向（没有预先命名的方向，归因也没有反复出现的责任对象）", True)
-        rng = random.Random(f"{d.seed}:{gen}")
-        chosen = pick_directions(candidates, self.momentum, d.group_size, d.explore, rng)
-        states = {t: await tgt.facade.export(pg[t]) for t, tgt in self.targets.items()}
-        default_step = d.steps[len(d.steps) // 2] if d.steps else None
-
-        versions: list[Version] = []
-        made: dict[tuple[str, int], tuple[Genome, Patch, str]] = {}
-        seen: set[str] = set()
-        for name in chosen:
-            direction = {"id": name, "text": self._direction_text(name, candidates[name], attributions),
-                         "support": candidates[name]}
-            step = self.step_center.get(name, default_step)
-            for j in range(d.edits_per_direction):
-                got = await self._directed_edit(parent, pg, direction, j, step, ctrl_eps, attributions, states, seen)
-                if got is None:
-                    continue
-                v, _ = await self._version(train, got[0], name, j, d.repeats)
-                v.step = step
-                versions.append(v)
-                made[(name, j)] = got
-        if not versions:
-            return await nothing(f"提案器沿 {', '.join(chosen)} 没有写出可用的修改", False)
-
-        groups = {self._key(t): (t.env_ref or (t.tags[0] if t.tags else "*")) for t in train}
-        history = self.evidence.setdefault(parent, {})
-        looks = self.looks.setdefault(parent, {})
-        group = analyze_group(control, versions, alpha=d.alpha, tests=self._tests_horizon(), task_groups=groups,
-                              history=history, looks=looks)
-        for r in group.directions:  # 同一父版本下累积证据；记下每个修改，方向成立时从里面挑最好的
-            history.setdefault(r.direction, []).extend(r.diffs)
-            looks[r.direction] = looks.get(r.direction, 0) + 1
-        pool = self.edits.setdefault(parent, {})
-        for (name, j), got in made.items():
-            v = next(x for x in versions if x.direction == name and x.edit == j)
-            pool.setdefault(name, []).append(
-                (fmean(v.task_scores[k] - control.task_scores[k] for k in group.tasks), got))
-        self.momentum = update_momentum(self.momentum, group, d.momentum)
-        report.group = {**group.summary(), "momentum": dict(self.momentum), "tried": chosen}
-        if group.winner is not None:
-            name = group.winner
-            best = max(pool[name], key=lambda x: x[0])
-        else:
-            is_flat = flat(group, d.min_effect)
-            if is_flat or d.submit == "established":
-                return await nothing(group.reason + ("（有把握到头了）" if is_flat else "（证据还不够）"), is_flat)
-            # 方向还没定下来，但最好的那个具体修改照样可以送去准入（方向只决定往哪里多试）
-            cands = [(x[0], n, x) for n, xs in pool.items() for x in xs]
-            if not cands or max(c[0] for c in cands) <= 0:
-                return await nothing(group.reason + "（没有比不改好的修改）", False)
-            _, name, best = max(cands, key=lambda c: c[0])
-        self.flat_groups = 0
-        pool[name].remove(best)  # 送去准入的修改不再重复送；被拒以后方向还在，下一组会写新修改
-        best_adv, (genome, patch, t) = best
-        win = next((r for r in group.directions if r.direction == name), None) or DirectionResult(
-            direction=name, advantage=best_adv, z=0.0, significant=False, best_edit=-1)
-        step_used = self.step_center.get(win.direction, default_step)
-
-        if d.steps and group.winner is not None:  # 线搜索：方向成立时，沿它各档步长写一个修改，和同一个对照比
-            direction = {"id": win.direction, "text": self._direction_text(win.direction, candidates[win.direction],
-                                                                           attributions), "support": candidates[win.direction]}
-            tried = []
-            for k, step in enumerate(d.steps):
-                got = await self._directed_edit(parent, pg, direction, d.edits_per_direction + k, step, ctrl_eps,
-                                                attributions, states, seen)
-                if got is None:
-                    continue
-                v, _ = await self._version(train, got[0], win.direction, d.edits_per_direction + k, d.repeats)
-                diffs = [v.task_scores[x] - control.task_scores[x] for x in group.tasks]
-                mu, z = mean_z(diffs)
-                tried.append({"step": step, "advantage": mu, "z": z})
-                if mu > best_adv and z >= group.z_crit:
-                    genome, patch, t = got
-                    best_adv, step_used = mu, step
-            self.step_center[win.direction] = step_used
-            report.group["line_search"] = {"tried": tried, "chosen": step_used}
-
-        cand = await self._directed_candidate(gen, parent, pg, genome, patch, t, report.train_score, group, win,
-                                              step_used)
-        report.candidates.append(cand)
-        await self.checkout(pg)
-        return report
-
-    async def _directed_candidate(self, gen: int, parent: str, pg: Genome, genome: Genome, patch: Patch, t: str,
-                                  train_score: float, group: GroupResult, win: Any, step: Any) -> Candidate:
-        """组内胜出的修改走一遍正常的 holdout 准入；组内统计写进指标和准入记录。"""
-        w = self.w
-        cid = genome_id(genome)
-        m, _ = await self.score(self.holdout, genome, "holdout")
-        m["train_of_parent"] = train_score
-        m.update({"group_advantage": win.advantage, "group_friedman_p": group.friedman_p,
-                  "direction_established": 1.0 if group.established else 0.0})
-        if not math.isnan(group.anova_p):
-            m["group_anova_p"] = group.anova_p
-        if math.isfinite(win.z):
-            m["group_z"] = win.z
-        m = self._with_epoch(m, self.metrics[parent].get("judge_epoch", 0.0))
-        tasks = self.last_task_scores
-        decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=self.metrics[parent], candidate=m,
-                                                  baseline_tasks=self.task_scores.get(parent, {}),
-                                                  candidate_tasks=tasks))
-        detail = group.reason + (f"；步长 {step}" if step is not None else "")
-        decision.checks.append(GateCheck(name="group_comparison", passed=True, detail=detail))
-        patch = patch.model_copy(update={"rationale": f"[方向 {win.direction}] {patch.rationale or ''}".strip()})
         status = "accepted" if decision.accepted else "rejected"
         await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
                                             status=status, metrics=m, decision=decision, patch=patch,

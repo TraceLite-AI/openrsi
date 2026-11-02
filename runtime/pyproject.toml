@@ -1,6 +1,6 @@
 [project]
 name = "anyrsi-runtime"
-version = "0.4.4"
+version = "0.4.3"
 description = "Reference runtime that wires AnyRSI components (local or MCP) into a self-improvement loop"
 requires-python = ">=3.10"
 license = "Apache-2.0"
