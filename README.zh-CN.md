@@ -32,6 +32,7 @@
 
 ## 新闻
 
+- **2026-11** · 有方向的自我改进（`loop.directed`）：带"不改"对照的组内比较、跨组累积证据、动量选方向、可选的线搜索步长和收敛判据。在已知最优解的玩具问题上和现在的循环持平或略好，接受的坏改动约少一半，见[实验](#6-有方向-vs-随机游走玩具问题不是-benchmark)。
 - **2026-11** · 项目改名为 AnyRSI（原名 OpenRSI，和别的项目重名）。包名、命令行、协议标识都随之改为 `anyrsi`。
 - **2026-11** · RSIHub 的题库（Harbor 格式）可以直接当 AnyRSI 的环境，划分规则和 RSIHub 一致；同一个循环里既改 agent 代码、又训权重。见 [examples/rsihub_weights](examples/rsihub_weights/README.md)。
 - **2026-10** · v0.4：6 种进化算法（GEPA 式 Pareto、ShinkaEvolve、AlphaEvolve 式岛屿、MAP-Elites、档案、贪心）、逐题不回退准入、harness（agent 代码）和模型权重进化，以及 [verl](https://github.com/volcengine/verl)、[RSIHub](https://github.com/simple-agent-lab/RSIHub) 适配器。
@@ -305,11 +306,22 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 
 `secret_ops` 跑完 8 代：全部进程内 0.07 秒，每个组件单独一个进程 14 秒。真实 agent 每道题要几秒到几分钟，这点开销可以忽略；每一步都要调用的组件应当放在进程内。
 
+### 6. 有方向 vs 随机游走（玩具问题，不是 benchmark）
+
+[`benchmarks/directed_toy`](benchmarks/directed_toy/README.md)：最优解已知（真实答对率起点 0.39，最优 0.85），效果小、噪声大。20 个种子，每组 6000 次 agent 调用。A 是现在的循环，B 加考试题显著性准入，C 是有方向模式（默认配置），D 再加每方向 2 个修改和线搜索。
+
+| 提案器 | A | B | C | D |
+|---|---|---|---|---|
+| 较好 | 0.730 | 0.457 | 0.751 | 0.717 |
+| 很差 | 0.581 | 0.413 | 0.616 | 0.552 |
+
+表里是最终版本的真实答对率。考试题少时严格准入最差；有方向模式和现在的循环持平、提案器越差越有优势（还不显著），接受的坏改动约少一半。详见该目录的 README。
+
 ## 项目状态
 
 AnyRSI 处于 alpha 阶段（协议 `anyrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
 
-- **CI 覆盖：** 316 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 6 个端到端示例。
+- **CI 覆盖：** 337 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 6 个端到端示例。
 - **在真实模型上跑过：** 小模型全流程（CPU）。
 - **还没真实跑过：** GPU 规模的小模型实验、verl 训练、RSIHub 配方。见[实验](#实验)。
 
@@ -333,6 +345,7 @@ AnyRSI 处于 alpha 阶段（协议 `anyrsi/0.4`）。到目前为止，协议�
 | [field_tests/README.md](field_tests/README.md) | 在真实 verl、RSIHub 上跑的测试 |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | 和 RSIHub 拉齐的对照实验 |
 | [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | 原生循环 A/B/C 对照实验 |
+| [benchmarks/directed_toy/README.md](benchmarks/directed_toy/README.md) | 有方向 vs 随机游走（玩具问题） |
 | [REVIEW.md](REVIEW.md) | 审查清单和各版本基线 |
 
 ## 目录结构
