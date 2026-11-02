@@ -300,3 +300,16 @@ def test_config_validation():
         DirectedConfig(submit="whatever")
     with pytest.raises(ValueError):
         DirectedConfig(alpha=1.5)
+
+
+def test_direction_probe_common_random_numbers_find_the_right_direction():
+    """方向识别测试的小规模版本：公共随机数 + 每方向 3 个修改，3 个方向里挑对最好那个的概率要明显高于随机（1/3）。"""
+    import direction_probe as dp
+
+    model = dp.Model(q=0.6, collateral=0.5)
+    gains = model.true_gains(toy.START, draws=600)
+    weak = dp.single_group(model, toy.START, gains, G=3, N=30, m=1, repeats=1, trials=150)
+    strong = dp.single_group(model, toy.START, gains, G=3, N=30, m=3, repeats=1, trials=150, crn=True)
+    assert strong["P(平均优势最高=最好)"] > 0.55
+    assert strong["P(平均优势最高=最好)"] > weak["P(平均优势最高=最好)"] + 0.08
+    assert 0.2 < strong["P(随机=最好)"] < 0.5
