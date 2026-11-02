@@ -24,7 +24,7 @@ from typing import Any
 
 from openrsi import Agent, Attribution, ComponentError, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 
 def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float = 0.0,
@@ -116,7 +116,7 @@ def render_prompt(items: list[Item]) -> str:
 def task_text(task: Task) -> str:
     x = task.input
     if isinstance(x, dict):
-        return str(x.get("question") or x.get("prompt") or json.dumps(x, ensure_ascii=False))
+        return str(x.get("question") or x.get("prompt") or x.get("instruction") or json.dumps(x, ensure_ascii=False))
     return str(x)
 
 
@@ -371,5 +371,135 @@ class PromptRewriter(Proposer):
         return text
 
 
-__all__ = ["ChatAgent", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context", "chat",
-           "render_prompt", "strategy_notes", "task_text"]
+CODE_SYSTEM = (
+    "You improve the source code of an AI agent. You will see the agent's editable files and some tasks it failed, "
+    "with the tail of what it did and why it was judged wrong. Change the code so the agent does better on such "
+    "tasks in general: better tool use, planning, error recovery, checking its own work. Never hard-code answers "
+    "or content of specific tasks. Keep changes small and keep the code runnable. Reply with one JSON object only: "
+    '{"rationale": "<one sentence>", "files": [{"path": "<an editable path>", "content": "<the whole new file>"}]}. '
+    'Return {"rationale": "no change", "files": []} if nothing would help.')
+
+
+def _json_object(text: str) -> dict[str, Any] | None:
+    """从模型回复里取第一个完整的 JSON 对象（允许外面包着 ``` 代码块或说明文字）。"""
+    start = text.find("{")
+    while start != -1:
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text[start:])
+            return obj if isinstance(obj, dict) else None
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+    return None
+
+
+def _tail(ep_steps: list[Step], max_chars: int) -> str:
+    lines = []
+    for s in ep_steps:
+        if s.type == "tool_call":
+            lines.append(f"[call {s.name}] {json.dumps(s.arguments or {}, ensure_ascii=False)[:300]}")
+        elif s.type == "tool_result":
+            lines.append(f"[result] {str(s.content)[:300]}")
+        elif s.type == "observation":
+            lines.append(f"[observation{' error' if s.is_error else ''}] {str(s.content)[:300]}")
+        elif s.role == "assistant":
+            lines.append(f"[agent] {str(s.content)[:300]}")
+    return "\n".join(lines)[-max_chars:]
+
+
+class CodeRewriter(Proposer):
+    """harness 提案器：把答错的 train 题和可改的源码交给 LLM，让它改代码，生成 HarnessEvolvable 的 write 补丁。
+    只响应 harness 类型的目标。
+
+    with: base_url、model、api_key_env、max_examples（几道错题）、max_files（最多改几个文件）、
+          max_file_chars（单个文件上限，超过的文件不给模型看也不许它写）、trace_chars（每道错题附多少字符的过程）、
+          temperature、max_tokens、timeout、max_attribution_lines / max_attribution_chars
+
+    模型只能写 target.surfaces（可改范围）里已经存在的文件或新文件；写进错题原文的补丁直接丢掉。
+    最终是否允许由 HarnessEvolvable（可改范围、受保护路径）和护栏再把一次关。
+    """
+
+    name = "openrsi/code-rewriter"
+    version = __version__
+
+    def __init__(self, base_url: str, model: str = "policy", max_examples: int = 4, max_files: int = 3,
+                 max_file_chars: int = 20000, trace_chars: int = 2500, temperature: float = 0.4,
+                 max_tokens: int = 8000, timeout: float = 600.0, api_key_env: str | None = None,
+                 max_attribution_lines: int = 24, max_attribution_chars: int = 3000):
+        self.base_url, self.model = base_url, model
+        self.max_examples, self.max_files, self.max_file_chars, self.trace_chars = (max_examples, max_files,
+                                                                                    max_file_chars, trace_chars)
+        self.temperature, self.max_tokens, self.timeout = temperature, max_tokens, timeout
+        self.max_attribution_lines, self.max_attribution_chars = max_attribution_lines, max_attribution_chars
+        self.api_key = os.environ.get(api_key_env) if api_key_env else None
+
+    @staticmethod
+    def _editable(path: str, surfaces: list[str]) -> bool:
+        import fnmatch
+
+        return any(fnmatch.fnmatch(path, g) or (g.endswith("/**") and path.startswith(g[:-2])) for g in surfaces)
+
+    def propose(self, request: ProposalRequest) -> list[Patch]:
+        target = next((t for t in (request.targets or [request.target]) if t.type == "harness"), None)
+        if target is None:
+            return []
+        state = request.states.get(target.target, request.state) if request.states else request.state
+        files = {d["id"]: str(d.get("text", "")) for d in state or [] if isinstance(d, dict) and "id" in d
+                 and len(str(d.get("text", ""))) <= self.max_file_chars}
+        failed = [ep for ep in request.episodes if not ep.verdict.passed][: self.max_examples]
+        if not failed or not files:
+            return []
+        notes, used, dropped = {}, [], {}
+        if request.attributions and self.max_attribution_lines > 0:
+            notes, used, dropped = attribution_context(
+                request.attributions, [ep.trajectory.id for ep in failed], {ep.trajectory.id for ep in request.episodes},
+                max_lines=self.max_attribution_lines, max_chars=self.max_attribution_chars)
+        examples = []
+        for ep in failed:
+            why = "; ".join(r.note or r.id for r in ep.verdict.rubric if r.result == "fail") or "judged wrong"
+            text = (f"Task: {task_text(ep.task)[:1500]}\nWhat the agent did (tail):\n"
+                    f"{_tail(ep.trajectory.steps, self.trace_chars) or '(no trace)'}\nWhy wrong: {why}")
+            if ep.trajectory.id in notes:
+                text += "\nAttribution notes:\n" + "\n".join(f"- {n}" for n in notes[ep.trajectory.id])
+            examples.append(text)
+        header = f"{ATTRIBUTION_HEADER}\n\n" if notes else ""
+        listing = "\n\n".join(f"=== {p} ===\n{t}" for p, t in sorted(files.items()))
+        user = (f"Editable path patterns: {', '.join(target.surfaces) or '(any)'}\nAt most {self.max_files} files.\n\n"
+                f"Current files:\n\n{listing}\n\n{header}Failures:\n\n" + "\n\n---\n\n".join(examples))
+        try:
+            out = chat(self.base_url, self.model, [{"role": "system", "content": CODE_SYSTEM + strategy_notes(request)},
+                                                   {"role": "user", "content": user}],
+                       temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
+                       api_key=self.api_key)
+        except ComponentError:
+            return []
+        obj = _json_object(out["text"])
+        if obj is None or not isinstance(obj.get("files"), list):
+            return []
+        ops = []
+        for f in obj["files"]:
+            if len(ops) >= self.max_files:
+                break
+            if not isinstance(f, dict) or not isinstance(f.get("path"), str) or not isinstance(f.get("content"), str):
+                continue
+            path, content = f["path"].strip().lstrip("./"), f["content"]
+            if target.surfaces and not self._editable(path, target.surfaces):
+                continue
+            if len(content) > self.max_file_chars or files.get(path) == content:
+                continue
+            if any(_copies(content, task_text(ep.task)) and not _copies(files.get(path, ""), task_text(ep.task))
+                   for ep in failed):
+                return []  # 把错题原文写进了代码：等于背答案，整份丢掉
+            ops.append({"op": "write", "path": path, "content": content})
+        if not ops:
+            return []
+        rationale = str(obj.get("rationale") or "")[:300] or f"rewrite {len(ops)} files"
+        rationale += f" (from {len(failed)} train failures"
+        rationale += f"; attributions used {len(used)}: {','.join(used)})" if used else ")"
+        if dropped:
+            rationale += "; attributions dropped " + ", ".join(f"{k}={v}" for k, v in sorted(dropped.items()))
+        return [Patch(target=target.target, base_snapshot=request.parent_snapshot, ops=ops, proposer_ref=self.ref,
+                      rationale=rationale)]
+
+
+__all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context",
+           "chat", "render_prompt", "strategy_notes", "task_text"]

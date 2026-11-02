@@ -1,0 +1,12 @@
+protocol: openrsi/0.4
+name: openrsi/harbor-agent
+version: 0.4.2
+description: 每道题调一次 `harbor run`，把 result.json 和 agent/trajectory.json（ATIF）转成轨迹。被进化的 agent 代码经 PYTHONPATH 交给 Harbor；上下文里有权重条目时先启动或重启推理服务。
+kinds: [agent]
+implements:
+  - rsi_component_info
+  - rsi_agent_run
+capabilities: {harbor: true, managed_server: true}
+runtime:
+  transport: stdio
+  command: [openrsi-serve, "openrsi_rsihub:HarborAgent", --with, '{"agent_args": ["--agent", "oracle"]}']

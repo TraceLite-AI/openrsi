@@ -4,3 +4,4 @@ __pycache__/
 .ruff_cache/
 memory-store/
 .openrsi/
+examples/rsihub_weights/toy_tasks/

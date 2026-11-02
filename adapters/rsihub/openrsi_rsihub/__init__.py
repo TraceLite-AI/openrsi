@@ -12,12 +12,18 @@ RSIHub（simple-agent-lab/RSIHub）的算子是 library/<阶段>/<名字>.py 脚
 install 也会把当前环境的包路径写进脚本，作为找不到时的后备。
 
 另外 import_archive 把 RSIHub 的 archive.jsonl 转成 OpenRSI 谱系，方便和其他运行放在一起看。
+
+反方向（0.4.2）：harbor 模块把 RSIHub 的题库搬进 OpenRSI 的循环——RSIHubTaskEnv 按 RSIHub 的规则划分
+Harbor 数据集，HarborAgent 每道题调一次 `harbor run`，HarborRewardJudge 按验证脚本的奖励打分。
+这样可以在同一个循环里既改 agent 代码、又训权重（见 examples/rsihub_weights）。
 """
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
 
+from .harbor import (HarborAgent, HarborRewardJudge, PARITY_SPLIT, RSIHubTaskEnv, assign_splits,
+                     discover_task_names)
 from .core import (DEFAULT_PROTECTED, checkout_ops, compile_check, gate_decide, guard_checkout, import_archive, shinka_pick,
                    task_scores)
 
@@ -79,8 +85,18 @@ def main() -> None:
     a.add_argument("archive")
     a.add_argument("--lineage", required=True, help="LineageStore 的 JSONL 路径")
     a.add_argument("--target", default="harness")
+    s = sub.add_parser("split", help="按 RSIHub 的规则划分 Harbor 数据集，打印 train / gate / sealed 各有哪些题")
+    s.add_argument("dataset")
+    s.add_argument("--ratios", default=None, help='JSON，如 {"train": 0.6, "gate": 0.2, "sealed": 0.2}；默认对齐实验的划分')
+    s.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
-    if args.cmd == "install":
+    if args.cmd == "split":
+        import json
+
+        ratios = json.loads(args.ratios) if args.ratios else PARITY_SPLIT
+        result = assign_splits(discover_task_names(Path(args.dataset)), ratios, args.seed)
+        print(json.dumps({"counts": {k: len(v) for k, v in result.items()}, **result}, ensure_ascii=False, indent=2))
+    elif args.cmd == "install":
         for p in install(args.rsihub_root, embed_paths=not args.no_embed_paths, overwrite=args.overwrite):
             print(p)
     else:
@@ -93,5 +109,6 @@ def main() -> None:
         print(f"导入 {len(entries)} 条")
 
 
-__all__ = ["DEFAULT_PROTECTED", "LIBRARY", "OPERATORS", "checkout_ops", "compile_check", "gate_decide", "guard_checkout",
+__all__ = ["DEFAULT_PROTECTED", "HarborAgent", "HarborRewardJudge", "LIBRARY", "PARITY_SPLIT", "RSIHubTaskEnv",
+           "assign_splits", "discover_task_names", "OPERATORS", "checkout_ops", "compile_check", "gate_decide", "guard_checkout",
            "import_archive", "install", "main", "package_paths", "render_operator", "shinka_pick", "task_scores"]

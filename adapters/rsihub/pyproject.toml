@@ -1,13 +1,14 @@
 [project]
 name = "openrsi-rsihub"
-version = "0.4.1"
-description = "OpenRSI components as RSIHub operators (guard validate, no-regression gate, Shinka select)"
+version = "0.4.2"
+description = "OpenRSI components as RSIHub operators, and RSIHub task banks (Harbor) as an OpenRSI environment"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 dependencies = ["openrsi-sdk>=0.4,<0.5", "openrsi-gate>=0.4,<0.5", "openrsi-guard>=0.4,<0.5"]
 
 [project.optional-dependencies]
 lineage = ["openrsi-lineage>=0.4,<0.5"]
+server = ["openrsi-llm>=0.4,<0.5"]
 
 [project.scripts]
 openrsi-rsihub = "openrsi_rsihub:main"

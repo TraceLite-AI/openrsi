@@ -68,6 +68,13 @@ jobs:
           python make_toy_data.py toy_data
           openrsi run openrsi.mock.yaml
           openrsi best openrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
+      - name: End-to-end example (RSIHub task bank, code + weights, fake Harbor)
+        working-directory: examples/rsihub_weights
+        run: |
+          python make_toy_dataset.py toy_tasks
+          openrsi run openrsi.mock.yaml
+          openrsi best openrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
+          openrsi-rsihub split toy_tasks --ratios '{"train": 0.5, "gate": 0.25, "sealed": 0.25}' | python -c "import json,sys; assert json.load(sys.stdin)['counts'] == {'train': 30, 'gate': 15, 'sealed': 15}"
       - name: Adapter CLIs
         run: |
           openrsi-verl reward-path
