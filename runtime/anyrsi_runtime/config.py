@@ -49,38 +49,26 @@ class ComponentSpec(BaseModel):
         return self
 
 
-class DirectedConfig(BaseModel):
-    """有方向的自我改进（组内比较定方向、线搜索定步长、收敛判据），见 anyrsi_runtime.directed。
-
-    写了 loop.directed 才启用；启用后普通的解题侧代由组内比较代替（判别器代、元层代不变）。"""
+class GroupConfig(BaseModel):
+    """组提案：一次出一组候选，在考试题上算组内优势（见 anyrsi_runtime.group）。写了 loop.group 才启用；
+    启用后普通的解题侧代都按组来做（判别器代、元层代不变）。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    directions: list[str] | dict[str, str] = Field(
-        default_factory=list, description="预先命名的候选方向；dict 时值是给提案器看的说明")
-    from_attribution: bool = Field(default=True, description="把归因里反复出现的责任对象（kind:ref）也当作候选方向")
-    min_support: int = Field(default=2, ge=1, description="归因出来的方向至少在几道错题里出现才算候选")
-    group_size: int = Field(default=3, ge=1, description="每组试几个方向（G）")
-    edits_per_direction: int = Field(default=1, ge=1,
-                                     description="每个方向写几个不同的具体修改（m）；≥ 2 才能做嵌套方差分析，区分方向好还是"
-                                                 "写法运气好，但每组成本翻倍（玩具实验里没换来收益，见 benchmarks/directed_toy）")
-    explore: int = Field(default=1, ge=0, description="每组留几个名额给随机方向（不按动量排）")
-    repeats: int = Field(default=1, ge=1, description="每个版本每道题做几次取平均（k）")
-    alpha: float = Field(default=0.05, gt=0, lt=1, description="显著性水平")
-    horizon: int | None = Field(default=None, ge=1,
-                                description="Bonferroni 分摊的检验次数；不填按每组的方向数（组内校正）。"
-                                            "填 generations × group_size 就是整个运行的校正，更严但更慢")
-    momentum: float = Field(default=0.7, ge=0, lt=1, description="动量系数 β")
-    steps: list[Any] = Field(default_factory=list,
-                             description="线搜索的步长档位（如 [small, medium, large] 或 [1, 3, 5]）；空表示不做线搜索")
-    min_effect: float = Field(default=0.02, ge=0,
-                              description="收敛判据里\"值得的最小提升\" δ：所有试过的方向置信上界都低于它才算这一组没东西可改")
-    submit: str = Field(default="best_edit", pattern="^(best_edit|established)$",
-                        description="best_edit：每组把练习分最好的修改（优势 > 0）送去 holdout 准入；"
-                                    "established：只在方向检验成立时才送")
-    patience: int = Field(default=3, ge=1,
-                          description="连续几组\"有把握没有方向能提升 δ 以上\"，就判定收敛并停止（证据不足的组不计）")
-    seed: int = 0
+    size: int = Field(default=4, ge=1, description="每组几个候选（G）")
+    proposals: str = Field(default="samples", pattern="^(samples|directions)$",
+                           description="samples：同一提案器多采样；directions：沿归因反复指出的不同对象各出一个")
+    min_support: int = Field(default=2, ge=1, description="directions 模式下，一个对象至少在几道错题里被追责才算方向")
+    strategy: str | dict[str, Any] = Field(
+        default="parent_paired",
+        description="组内优势策略：parent_paired / grpo / best_of_n / training_free，"
+                    "或 {name: …, with: {…}}，或 {python: module:Class, with: {…}}")
+    confirm_fraction: float = Field(default=0.5, ge=0.0, lt=1.0,
+                                    description="考试题里留多少做确认半（准入只看确认半）；0 表示不分，挑和判用同一批题")
+    alpha: float = Field(default=0.05, gt=0, lt=1, description="parent_paired 的显著性水平（按组大小做 Bonferroni）")
+    common_seed: bool = Field(default=True, description="同一代同一道题给所有版本同一个 rollout_seed（公共随机数）")
+    experience_target: str | None = Field(default=None,
+                                          description="training_free 策略写经验的可进化体（memory 之类）")
 
 
 class LoopConfig(BaseModel):
@@ -103,7 +91,7 @@ class LoopConfig(BaseModel):
                                    description="每隔几代做一次元层进化（improver、curriculum 类型的可进化体）；不填则元层不进化")
     meta_min_gain: float = Field(default=0.0, ge=0.0,
                                  description="元层候选的下游提升至少要比当前版本多多少才接受")
-    directed: DirectedConfig | None = Field(default=None, description="有方向的自我改进：组内比较、线搜索、收敛判据")
+    group: GroupConfig | None = Field(default=None, description="组提案：一组候选在考试题上比较，按策略选或写经验")
 
 
 class BindingSpec(BaseModel):

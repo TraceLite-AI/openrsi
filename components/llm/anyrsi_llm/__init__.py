@@ -108,6 +108,12 @@ class ManagedServer:
         self.proc = None
 
 
+def seed_extra(task: Task) -> dict[str, Any] | None:
+    """题目带 rollout_seed 时给接口的 seed 参数（公共随机数）。"""
+    seed = (task.metadata or {}).get("rollout_seed")
+    return {"seed": int(seed)} if isinstance(seed, int) and not isinstance(seed, bool) else None
+
+
 def render_prompt(items: list[Item]) -> str:
     prompt = sorted((i for i in items if i.kind == "prompt"), key=lambda i: (i.data.get("order", 0), i.id))
     return "\n\n".join(i.text for i in prompt)
@@ -126,6 +132,9 @@ class ChatAgent(Agent):
     server              可选，{command: [...], port: 8100, startup_timeout: 600, log_dir: ...}
     default_system      没有 prompt 段落时用的系统提示
     temperature / max_tokens / timeout / api_key_env
+
+    题目带 metadata.rollout_seed 时（组提案模式给同一道题的父版本和所有候选同一个种子），把它作为 seed 传给接口，
+    让各版本在同一道题上的采样尽量一致（公共随机数），差别主要来自版本本身。vLLM、OpenAI 都支持 seed。
     """
 
     name = "anyrsi/chat-agent"
@@ -158,7 +167,7 @@ class ChatAgent(Agent):
             out = chat(self.base_url, self.model, [{"role": "system", "content": system},
                                                    {"role": "user", "content": question}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
-                       api_key=self.api_key)
+                       api_key=self.api_key, extra=seed_extra(task))
         except ComponentError as e:
             return Trajectory(id=f"traj-{task.id}-{snapshot_id}-error", task_id=task.id, snapshot_id=snapshot_id,
                               output=None, steps=[Step(id="s0", type="observation", content=str(e), is_error=True)],
@@ -246,21 +255,6 @@ def _copies(text: str, problem: str, span: int = 60) -> bool:
     if len(problem) <= span:
         return len(problem) >= 20 and problem in flat
     return any(problem[i:i + span] in flat for i in range(0, len(problem) - span + 1, span // 2))
-
-
-def direction_note(request: ProposalRequest) -> str:
-    """有方向模式（loop.directed）给的方向和步长，写成提案器请求末尾的一段；没有就是空串，请求和以前一样。"""
-    hints = request.hints or {}
-    d = hints.get("direction")
-    if not isinstance(d, dict) or not d.get("id"):
-        return ""
-    text = (f"\n\nThis change must follow one direction: {d.get('text') or d['id']}. "
-            "Change only what serves this direction; do not touch unrelated parts.")
-    if hints.get("edit"):
-        text += " Write a different variant from the obvious one."
-    if hints.get("step") is not None:
-        text += f" Size of the change: {hints['step']} (keep the edit within this size)."
-    return text
 
 
 def strategy_notes(request: ProposalRequest) -> str:
@@ -357,7 +351,7 @@ class PromptRewriter(Proposer):
             examples.append(text)
         header = f"{ATTRIBUTION_HEADER}\n\n" if notes else ""
         user = (f"Current system prompt:\n{current or '(empty)'}\n\n{header}Failures:\n\n"
-                + "\n\n---\n\n".join(examples) + direction_note(request))
+                + "\n\n---\n\n".join(examples))
         try:
             out = chat(self.base_url, self.model, [{"role": "system", "content": REWRITE_SYSTEM + strategy_notes(request)},
                                                    {"role": "user", "content": user}],
@@ -479,8 +473,7 @@ class CodeRewriter(Proposer):
         header = f"{ATTRIBUTION_HEADER}\n\n" if notes else ""
         listing = "\n\n".join(f"=== {p} ===\n{t}" for p, t in sorted(files.items()))
         user = (f"Editable path patterns: {', '.join(target.surfaces) or '(any)'}\nAt most {self.max_files} files.\n\n"
-                f"Current files:\n\n{listing}\n\n{header}Failures:\n\n" + "\n\n---\n\n".join(examples)
-                + direction_note(request))
+                f"Current files:\n\n{listing}\n\n{header}Failures:\n\n" + "\n\n---\n\n".join(examples))
         try:
             out = chat(self.base_url, self.model, [{"role": "system", "content": CODE_SYSTEM + strategy_notes(request)},
                                                    {"role": "user", "content": user}],
@@ -518,4 +511,4 @@ class CodeRewriter(Proposer):
 
 
 __all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context",
-           "chat", "direction_note", "render_prompt", "strategy_notes", "task_text"]
+           "chat", "render_prompt", "seed_extra", "strategy_notes", "task_text"]

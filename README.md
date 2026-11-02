@@ -32,7 +32,7 @@
 
 ## News
 
-- **2026-11** · Directed self-improvement (`loop.directed`): group comparison against an unchanged control, evidence pooled across groups, momentum over directions, optional line search and a convergence test. On a toy problem with a known optimum it matches or slightly beats the current loop and accepts about half as many harmful changes; see [Experiments](#6-directed-vs-random-walk-toy-problem-not-a-benchmark).
+- **2026-11** · Group proposals (`loop.group`): the proposer makes a group of candidates; the parent and every candidate take the same exam (holdout) tasks with a shared seed per task; half of the exam picks, the other half confirms. The group-advantage rule is pluggable: built-in parent-paired, GRPO-style, best-of-N and Training-Free-GRPO-style, or your own class with the same interface. On a toy problem the final score matches the current loop while harmful accepts drop from about 10% to 0; see [Experiments](#6-group-proposals-toy-problem-not-a-benchmark).
 - **2026-11** · Renamed to AnyRSI (formerly OpenRSI, which clashed with another project). Package names, the CLI and the protocol identifier are now `anyrsi`.
 - **2026-11** · RSIHub task banks (Harbor format) work as an AnyRSI environment, split by the same rule as RSIHub; one loop now evolves both agent code and weights. See [examples/rsihub_weights](examples/rsihub_weights/README.md).
 - **2026-10** · v0.4: six evolution algorithms (GEPA-style Pareto, ShinkaEvolve, AlphaEvolve-style islands, MAP-Elites, archive, greedy), per-task no-regression gating, harness (agent code) and model-weight evolution, and adapters for [verl](https://github.com/volcengine/verl) and [RSIHub](https://github.com/simple-agent-lab/RSIHub).
@@ -306,22 +306,22 @@ This is the `secret_ops` toy task: it shows the machinery works, not how well a 
 
 A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with every component in its own process. Real agents spend seconds to minutes per task, so the overhead is negligible. Components called on every agent step should stay in-process.
 
-### 6. Directed vs random walk (toy problem, not a benchmark)
+### 6. Group proposals (toy problem, not a benchmark)
 
-[`benchmarks/directed_toy`](benchmarks/directed_toy/README.md): the optimum is known (true pass rate 0.39 at the start, 0.85 at best), effects are small and noise is large. 20 seeds, 6000 agent calls per arm. A is the current loop, B adds a significance gate on the holdout, C is directed mode (default settings), D adds two edits per direction and a line search.
+[`benchmarks/group_toy`](benchmarks/group_toy/README.md): the optimum is known (true pass rate 0.39 at the start, 0.85 at best); 10 seeds, 6000 agent calls per arm. A is the current loop (one proposal per generation); the others use `loop.group` with 4 candidates per group, 30 exam tasks to pick and 30 to confirm.
 
-| Proposer | A | B | C | D |
-|---|---|---|---|---|
-| Good | 0.730 | 0.457 | 0.751 | 0.717 |
-| Poor | 0.581 | 0.413 | 0.616 | 0.552 |
+| Proposer | A | Parent-paired | GRPO-style | Best-of-N | Training-Free-GRPO-style |
+|---|---|---|---|---|---|
+| Good | 0.784 | 0.577 | 0.744 | 0.769 | 0.772 |
+| Poor | 0.732 | 0.467 | 0.696 | 0.696 | 0.688 |
 
-Values are the true pass rate of the final version. With a small holdout, the strict gate does worst; directed mode matches the current loop and gains more as the proposer gets worse (not yet significant), while accepting about half as many harmful changes. See that directory's README.
+Values are the true pass rate of the final version. The last three match A (differences not significant) while the share of accepted changes that are truly worse drops from about 10% to 0; the cost is taking the exam five times per generation. The parent-paired test is too strict on 30 tasks and makes the least progress.
 
 ## Project Status
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 337 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 334 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 
@@ -347,7 +347,7 @@ The protocol specification and in-repo guides are currently written in Chinese. 
 | [field_tests/README.md](field_tests/README.md) | tests to run against real verl and RSIHub |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | the RSIHub parity experiment |
 | [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | the native A/B/C experiment |
-| [benchmarks/directed_toy/README.md](benchmarks/directed_toy/README.md) | directed vs random walk (toy problem) |
+| [benchmarks/group_toy/README.md](benchmarks/group_toy/README.md) | four group-advantage strategies (toy problem) |
 | [REVIEW.md](REVIEW.md) | the review checklist and per-version baselines |
 
 ## Repository Layout
