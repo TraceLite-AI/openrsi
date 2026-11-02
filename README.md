@@ -32,6 +32,7 @@
 
 ## News
 
+- **2026-11** · RSIHub task banks (Harbor format) work as an OpenRSI environment, split by the same rule as RSIHub; one loop now evolves both agent code and weights. See [examples/rsihub_weights](examples/rsihub_weights/README.md).
 - **2026-10** · v0.4: six evolution algorithms (GEPA-style Pareto, ShinkaEvolve, AlphaEvolve-style islands, MAP-Elites, archive, greedy), per-task no-regression gating, harness (agent code) and model-weight evolution, and adapters for [verl](https://github.com/volcengine/verl) and [RSIHub](https://github.com/simple-agent-lab/RSIHub).
 - **2026-10** · An end-to-end pipeline that evolves a small model's system prompt and weights together ran on a real model (Qwen2.5-0.5B, CPU). GPU-scale results are [pending](#experiments).
 - **2026-10** · Component-design tests: every algorithm/gate combination, identical lineage across in-process / stdio / HTTP transports, and a JavaScript component dropped into the Python loop.
@@ -93,7 +94,7 @@ Meta evolvables (`loop.meta_every`) are never shown to the agent and never chang
 |---|---|---|
 | judge, evidence | `EvidenceJudge` (rubric + evidence, optional LLM checks), `EvolvingJudge`; `GainJudge` scores a nested run | `openrsi-judge`, `openrsi-runtime` |
 | attribution | `RubricEvidenceAttributor`, `CellContrastAttributor` (blames environment coordinates when a task fails in some cells only); counterfactual reruns in the runtime | `openrsi-attribution` |
-| proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `CurriculumProposer` and `StrategyRewriter` (meta layer), `PromptRewriter`, `DistillProposer` | `openrsi-proposer`, `openrsi-llm`, `openrsi-verl` |
+| proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `CurriculumProposer` and `StrategyRewriter` (meta layer), `PromptRewriter`, `CodeRewriter` (rewrites agent code), `DistillProposer`, `PreferenceProposer` | `openrsi-proposer`, `openrsi-llm`, `openrsi-verl` |
 | algorithm | 6 algorithms, see below | `openrsi-algorithm` |
 | gate | `HoldoutGate` (gain, significance, paired per-task significance, anchor, cost, per-task and per-cell no-regression) | `openrsi-gate` |
 | guard | `PolicyGuard` (dangerous code, secrets, protected items and paths, eval tampering) | `openrsi-guard` |
@@ -160,6 +161,7 @@ Each generation, ShinkaEvolve's UCB picks one of two proposers: rewrite the syst
 | [`judge_coevolution`](examples/judge_coevolution) | a judge that misses test tampering is fixed, gated on human labels, then the agent stops cheating |
 | [`harness_ops`](examples/harness_ops) | evolving the agent's own code in a git repo; an edit to `eval/` is blocked |
 | [`small_model`](examples/small_model) | real LLM; system prompt and weights evolve together |
+| [`rsihub_weights`](examples/rsihub_weights) | an RSIHub task bank (Harbor) inside the OpenRSI loop; agent code and weights evolve together |
 | [`judge_standalone.py`](examples/judge_standalone.py) | using the judge alone, in-process and over MCP |
 
 ## Use a Single Component
@@ -233,7 +235,7 @@ cells:
 |---|---|---|
 | Any MCP client | every component | yes (Python and JavaScript clients) |
 | [verl](https://github.com/volcengine/verl) | judge as `compute_score` reward; RL/SFT data export that refuses non-train data; model weights as an evolvable | not yet ([field tests](field_tests/README.md) ready) |
-| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | guard `validate`, no-regression `gate`, Shinka `select` operators; archive import | not yet ([field tests](field_tests/README.md), [parity benchmark](benchmarks/rsihub_parity/README.md) ready) |
+| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | guard `validate`, no-regression `gate`, Shinka `select` operators; archive import; the other way round, RSIHub task banks as an OpenRSI environment (`RSIHubTaskEnv`, `HarborAgent`, `HarborRewardJudge`) | not yet ([field tests](field_tests/README.md), [parity benchmark](benchmarks/rsihub_parity/README.md) ready) |
 | [DSPy](https://github.com/stanfordnlp/dspy) | judge as a metric, including GEPA feedback | with stubs only |
 | [LangGraph](https://github.com/langchain-ai/langgraph) | state to trajectory conversion | with stubs only |
 | vLLM / any OpenAI-compatible API | `ChatAgent` and `PromptRewriter` | transformers server on CPU; vLLM pending |
@@ -306,7 +308,7 @@ A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with ev
 
 OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 299 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and five end-to-end examples.
+- **Tested in CI:** 316 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 
@@ -314,7 +316,7 @@ OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far hav
 
 - [ ] Fill in the experiment tables above
 - [ ] Reinforcement learning (GRPO via verl) as a weights patch inside the loop, not only SFT
-- [ ] Run OpenRSI's own runtime on Terminal-Bench 2 and τ³-bench via Harbor, with the same splits as RSIHub
+- [ ] Run OpenRSI's own runtime on Terminal-Bench 2 and τ³-bench via Harbor, with the same splits as RSIHub (components and config ready: [examples/rsihub_weights](examples/rsihub_weights/README.md); not yet run on real hardware)
 - [ ] TypeScript SDK
 - [ ] Adapters for OpenEvolve, Letta, OpenAI Agents SDK
 - [ ] English translation of the protocol specification
@@ -328,6 +330,7 @@ The protocol specification and in-repo guides are currently written in Chinese. 
 | [spec/PROTOCOL.md](spec/PROTOCOL.md) | the protocol: component kinds, tools, data isolation, versioning |
 | [spec/tools.json](spec/tools.json), [spec/schemas/](spec/schemas) | machine-readable tool and data schemas |
 | [examples/small_model/README.md](examples/small_model/README.md) | the small-model pipeline |
+| [examples/rsihub_weights/README.md](examples/rsihub_weights/README.md) | code and weights evolving together on an RSIHub task bank |
 | [field_tests/README.md](field_tests/README.md) | tests to run against real verl and RSIHub |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | the RSIHub parity experiment |
 | [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | the native A/B/C experiment |

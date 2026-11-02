@@ -32,6 +32,7 @@
 
 ## 新闻
 
+- **2026-11** · RSIHub 的题库（Harbor 格式）可以直接当 OpenRSI 的环境，划分规则和 RSIHub 一致；同一个循环里既改 agent 代码、又训权重。见 [examples/rsihub_weights](examples/rsihub_weights/README.md)。
 - **2026-10** · v0.4：6 种进化算法（GEPA 式 Pareto、ShinkaEvolve、AlphaEvolve 式岛屿、MAP-Elites、档案、贪心）、逐题不回退准入、harness（agent 代码）和模型权重进化，以及 [verl](https://github.com/volcengine/verl)、[RSIHub](https://github.com/simple-agent-lab/RSIHub) 适配器。
 - **2026-10** · 小模型同时进化系统提示和权重的全流程，在真实模型上跑通（Qwen2.5-0.5B，CPU）。GPU 规模的结果[待补](#实验)。
 - **2026-10** · 组件化设计的测试：所有算法 × 准入组合；进程内、stdio、HTTP 三种传输方式得到的谱系完全一致；JavaScript 写的组件能直接接进 Python 循环。
@@ -93,7 +94,7 @@ flowchart LR
 |---|---|---|
 | 判别、取证 | `EvidenceJudge`（rubric + 证据，可选 LLM 检查项）、`EvolvingJudge`；`GainJudge` 给嵌套运行打分 | `openrsi-judge`、`openrsi-runtime` |
 | 归因 | `RubricEvidenceAttributor`、`CellContrastAttributor`（同一道题只在部分格失败时，归到环境坐标）；运行时支持反事实重跑 | `openrsi-attribution` |
-| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`CurriculumProposer` 和 `StrategyRewriter`（元层）、`PromptRewriter`、`DistillProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
+| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`CurriculumProposer` 和 `StrategyRewriter`（元层）、`PromptRewriter`、`CodeRewriter`（改 agent 代码）、`DistillProposer`、`PreferenceProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
 | 算法 | 6 种，见下表 | `openrsi-algorithm` |
 | 准入 | `HoldoutGate`（提升幅度、显著性、逐题配对检验、anchor、成本、逐题不回退、逐格不回退） | `openrsi-gate` |
 | 护栏 | `PolicyGuard`（危险代码、密钥、受保护条目和路径、篡改评估） | `openrsi-guard` |
@@ -160,6 +161,7 @@ openrsi run openrsi.yaml                                             # Qwen2.5-0
 | [`judge_coevolution`](examples/judge_coevolution) | 漏判改测试的判别器被修好（按人工标注准入），随后执行体不再作弊 |
 | [`harness_ops`](examples/harness_ops) | 在 git 仓库里进化 agent 自己的代码；改 `eval/` 的补丁被拦下 |
 | [`small_model`](examples/small_model) | 真实 LLM，系统提示和权重一起进化 |
+| [`rsihub_weights`](examples/rsihub_weights) | RSIHub 的题库（Harbor）进 OpenRSI 的循环，agent 代码和权重一起进化 |
 | [`judge_standalone.py`](examples/judge_standalone.py) | 单独使用判别器，进程内和走 MCP 两种方式 |
 
 ## 只用其中一个组件
@@ -233,7 +235,7 @@ cells:
 |---|---|---|
 | 任何 MCP 客户端 | 所有组件 | 是（Python 和 JavaScript 客户端） |
 | [verl](https://github.com/volcengine/verl) | 判别器当 `compute_score` 奖励；导出 RL / SFT 数据，拒绝非 train 数据；模型权重作为可进化体 | 还没有（[现场测试](field_tests/README.md)已备好） |
-| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | 护栏 `validate`、不回退 `gate`、Shinka `select` 三个算子；导入归档 | 还没有（[现场测试](field_tests/README.md)和[对照实验](benchmarks/rsihub_parity/README.md)已备好） |
+| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | 护栏 `validate`、不回退 `gate`、Shinka `select` 三个算子；导入归档；反过来，RSIHub 的题库当 OpenRSI 的环境（`RSIHubTaskEnv`、`HarborAgent`、`HarborRewardJudge`） | 还没有（[现场测试](field_tests/README.md)和[对照实验](benchmarks/rsihub_parity/README.md)已备好） |
 | [DSPy](https://github.com/stanfordnlp/dspy) | 判别器当 metric，含 GEPA 反馈 | 只用替身测过 |
 | [LangGraph](https://github.com/langchain-ai/langgraph) | 状态转成轨迹 | 只用替身测过 |
 | vLLM 及任何 OpenAI 兼容接口 | `ChatAgent`、`PromptRewriter` | CPU 上的 transformers 服务测过；vLLM 待测 |
@@ -306,7 +308,7 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 
 OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
 
-- **CI 覆盖：** 299 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 5 个端到端示例。
+- **CI 覆盖：** 316 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 6 个端到端示例。
 - **在真实模型上跑过：** 小模型全流程（CPU）。
 - **还没真实跑过：** GPU 规模的小模型实验、verl 训练、RSIHub 配方。见[实验](#实验)。
 
@@ -314,7 +316,7 @@ OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议
 
 - [ ] 补齐上面的实验表
 - [ ] 把强化学习（通过 verl 做 GRPO）作为循环里的一种权重补丁，不只是 SFT
-- [ ] 用 OpenRSI 自己的运行时，通过 Harbor 跑 Terminal-Bench 2 和 τ³-bench，划分和 RSIHub 一致
+- [ ] 用 OpenRSI 自己的运行时，通过 Harbor 跑 Terminal-Bench 2 和 τ³-bench，划分和 RSIHub 一致（组件和配置已就绪：[examples/rsihub_weights](examples/rsihub_weights/README.md)；还没在真机上跑）
 - [ ] TypeScript SDK
 - [ ] OpenEvolve、Letta、OpenAI Agents SDK 适配器
 - [ ] 协议规范的英文版
@@ -326,6 +328,7 @@ OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议
 | [spec/PROTOCOL.md](spec/PROTOCOL.md) | 协议：组件类型、工具、数据隔离、版本规则 |
 | [spec/tools.json](spec/tools.json)、[spec/schemas/](spec/schemas) | 机器可读的工具定义和数据格式 |
 | [examples/small_model/README.md](examples/small_model/README.md) | 小模型全流程 |
+| [examples/rsihub_weights/README.md](examples/rsihub_weights/README.md) | RSIHub 题库上同时改代码和训权重 |
 | [field_tests/README.md](field_tests/README.md) | 在真实 verl、RSIHub 上跑的测试 |
 | [benchmarks/rsihub_parity/README.md](benchmarks/rsihub_parity/README.md) | 和 RSIHub 拉齐的对照实验 |
 | [benchmarks/native_loop/README.md](benchmarks/native_loop/README.md) | 原生循环 A/B/C 对照实验 |
