@@ -1,10 +1,10 @@
 [project]
-name = "openrsi-dspy"
+name = "anyrsi-dspy"
 version = "0.4.0"
-description = "Use OpenRSI judges as DSPy metrics (including GEPA feedback)"
+description = "Use AnyRSI judges as DSPy metrics (including GEPA feedback)"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.4,<0.5"]
+dependencies = ["anyrsi-sdk>=0.4,<0.5"]
 
 [project.optional-dependencies]
 dspy = ["dspy>=3"]
@@ -14,4 +14,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["openrsi_dspy"]
+packages = ["anyrsi_dspy"]

@@ -11,12 +11,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from openrsi import (Attribution, AttributionTarget, Episode, Evidence, EvolvableInfo, GateRequest, Patch,
+from anyrsi import (Attribution, AttributionTarget, Episode, Evidence, EvolvableInfo, GateRequest, Patch,
                      ProposalRequest, Proposer, Task, Trajectory, Verdict, build_server, connect, load_manifest)
-from openrsi_attribution import CellContrastAttributor, RubricEvidenceAttributor
-from openrsi_gate import HoldoutGate
-from openrsi_proposer import RoutedProposer
-from openrsi_runtime import CellRegistry, Runner, Wiring, load_config
+from anyrsi_attribution import CellContrastAttributor, RubricEvidenceAttributor
+from anyrsi_gate import HoldoutGate
+from anyrsi_proposer import RoutedProposer
+from anyrsi_runtime import CellRegistry, Runner, Wiring, load_config
 
 from cells_env import PLAIN, VARIANT
 
@@ -30,7 +30,7 @@ def ep(task_id: str, cell: str | None, passed: bool, coords: dict | None = None)
     evidence = []
     if cell is not None and coords is not None:
         evidence.append(Evidence.make("env_cell", {"cell": cell, "coords": dict(coords), "fingerprint": "f"},
-                                      f"runtime:cell:{cell}", "openrsi/runtime"))
+                                      f"runtime:cell:{cell}", "anyrsi/runtime"))
     return Episode(task=task, trajectory=traj, evidence=evidence,
                    verdict=Verdict(task_id=task_id, trajectory_id=traj.id, passed=passed, score=float(passed),
                                    judge_ref="j"))
@@ -89,20 +89,20 @@ def test_same_as_base_attributor_without_contrast():
 # ---------------------------------------------------------------- 运行时：环境证据 + 跨格归因
 
 def config(tmp_path, **env_kw):
-    data = {"protocol": "openrsi/0.4", "name": "contrast", "plugins": ["cells_env"], "cells": {},
+    data = {"protocol": "anyrsi/0.4", "name": "contrast", "plugins": ["cells_env"], "cells": {},
             "components": {
                 "env": {"python": "cells_env:CellsEnv", "with": env_kw},
                 "agent": {"python": "secret_ops:RuleAgent"},
                 "proposer": {"python": "secret_ops:RuleInducer"},
-                "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+                "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
                 "evidence": {"same_as": "judge"},
-                "attribution": {"python": "openrsi_attribution:CellContrastAttributor"},
-                "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 3}},
-                "gate": {"python": "openrsi_gate:HoldoutGate", "with": {"max_cell_regressions": 0}},
-                "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
-                "memory": {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}}}
-    (tmp_path / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    return load_config(tmp_path / "openrsi.yaml")
+                "attribution": {"python": "anyrsi_attribution:CellContrastAttributor"},
+                "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 3}},
+                "gate": {"python": "anyrsi_gate:HoldoutGate", "with": {"max_cell_regressions": 0}},
+                "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
+                "memory": {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}}}
+    (tmp_path / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return load_config(tmp_path / "anyrsi.yaml")
 
 
 def test_runtime_records_env_evidence_and_contrast_finds_the_coordinate(tmp_path):

@@ -1,5 +1,5 @@
 {
-  "protocol": "openrsi/0.4",
+  "protocol": "anyrsi/0.4",
   "tools": [
     {
       "name": "rsi_agent_run",
@@ -1235,7 +1235,7 @@
             "type": "string"
           },
           "protocol": {
-            "default": "openrsi/0.4",
+            "default": "anyrsi/0.4",
             "title": "Protocol",
             "type": "string"
           },

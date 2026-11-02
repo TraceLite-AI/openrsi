@@ -1,0 +1,94 @@
+# 本地调通用：假推理服务（mock_llm.py）+ 假训练（fake_train.py）+ 玩具数据，不需要 GPU。
+#   python make_toy_data.py toy_data && anyrsi run anyrsi.mock.yaml
+protocol: anyrsi/0.4
+name: small-model-mock
+plugins:
+- gsm8k_env
+components:
+  env:
+    python: gsm8k_env:GSM8KEnv
+    with:
+      data_dir: toy_data
+      train_per_round: 32
+      holdout: 80
+      final: 80
+  agent:
+    python: anyrsi_llm:ChatAgent
+    with:
+      model: policy
+      max_tokens: 512
+      server:
+        port: 8199
+        startup_timeout: 30
+        log_dir: .anyrsi/server-logs
+        command:
+        - python
+        - mock_llm.py
+        - --model
+        - '{model}'
+        - --port
+        - '{port}'
+  judge:
+    python: anyrsi_judge:EvidenceJudge
+    with:
+      rubric:
+        items:
+        - id: correct
+          check: output_equals
+          required: true
+          params:
+            extract: (?:####|\\boxed\{)\s*\$?(-?[0-9][0-9\.\,]*)
+  evidence:
+    same_as: judge
+  proposer:
+    python: anyrsi_proposer:CompositeProposer
+    with:
+      proposers:
+      - name: prompt
+        python: anyrsi_llm:PromptRewriter
+        with:
+          base_url: http://127.0.0.1:8199/v1
+          model: policy
+      - name: weights
+        python: anyrsi_weights:DistillProposer
+        with:
+          data_dir: .anyrsi/sft
+          min_examples: 8
+  algorithm:
+    python: anyrsi_algorithm:ShinkaAlgorithm
+    with:
+      proposers:
+      - prompt
+      - weights
+      max_generations: 8
+      patience: 4
+  gate:
+    python: anyrsi_gate:HoldoutGate
+    with: {}
+  guard:
+    python: anyrsi_guard:PolicyGuard
+  lineage:
+    python: anyrsi_lineage:LineageStore
+    with:
+      path: .anyrsi/lineage.jsonl
+evolvables:
+  prompt:
+    python: anyrsi_evolvables:PromptEvolvable
+    with:
+      path: .anyrsi/prompt
+  weights:
+    python: anyrsi_weights:WeightsEvolvable
+    with:
+      base_model: base
+      path: .anyrsi/weights
+      trainer:
+      - python
+      - fake_train.py
+      - --model
+      - '{base_model}'
+      - --data
+      - '{data}'
+      - --output
+      - '{output_dir}'
+loop:
+  max_patches: 1

@@ -39,48 +39,48 @@ jobs:
         run: pytest -q
       - name: Spec is up to date
         run: |
-          python -m openrsi.export_spec spec
+          python -m anyrsi.export_spec spec
           git diff --exit-code spec
       - name: End-to-end example (memory)
         working-directory: examples/secret_ops
         run: |
-          openrsi run
-          openrsi best
+          anyrsi run
+          anyrsi best
       - name: End-to-end example (skills + guard)
         working-directory: examples/skill_ops
         run: |
-          openrsi run
-          openrsi log | grep -q "护栏拦截"
+          anyrsi run
+          anyrsi log | grep -q "护栏拦截"
       - name: End-to-end example (judge co-evolution)
         working-directory: examples/judge_coevolution
         run: |
-          openrsi run
-          openrsi best | grep -q '"progress": 3.0'
+          anyrsi run
+          anyrsi best | grep -q '"progress": 3.0'
       - name: End-to-end example (harness evolution + protected paths)
         working-directory: examples/harness_ops
         run: |
-          openrsi run
-          openrsi log | grep -q "protected_path"
-          openrsi best | grep -q '"holdout": 1.0'
+          anyrsi run
+          anyrsi log | grep -q "protected_path"
+          anyrsi best | grep -q '"holdout": 1.0'
       - name: End-to-end example (small model, mock LLM and trainer)
         working-directory: examples/small_model
         run: |
           python make_toy_data.py toy_data
-          openrsi run openrsi.mock.yaml
-          openrsi best openrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
+          anyrsi run anyrsi.mock.yaml
+          anyrsi best anyrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
       - name: End-to-end example (RSIHub task bank, code + weights, fake Harbor)
         working-directory: examples/rsihub_weights
         run: |
           python make_toy_dataset.py toy_tasks
-          openrsi run openrsi.mock.yaml
-          openrsi best openrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
-          openrsi-rsihub split toy_tasks --ratios '{"train": 0.5, "gate": 0.25, "sealed": 0.25}' | python -c "import json,sys; assert json.load(sys.stdin)['counts'] == {'train': 30, 'gate': 15, 'sealed': 15}"
+          anyrsi run anyrsi.mock.yaml
+          anyrsi best anyrsi.mock.yaml | python -c "import json,sys; h=json.load(sys.stdin)['metrics']['holdout']; assert h >= 0.9, h"
+          anyrsi-rsihub split toy_tasks --ratios '{"train": 0.5, "gate": 0.25, "sealed": 0.25}' | python -c "import json,sys; assert json.load(sys.stdin)['counts'] == {'train': 30, 'gate': 15, 'sealed': 15}"
       - name: Adapter CLIs
         run: |
-          openrsi-verl reward-path
-          openrsi-rsihub --help
+          anyrsi-verl reward-path
+          anyrsi-rsihub --help
       - name: Weights CLI
-        run: openrsi-weights --help
+        run: anyrsi-weights --help
 
   trainer:
     # 自带训练器在真实的极小模型上训练（SFT / DPO / KTO / LoRA），需要 CPU 版 torch

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import openrsi_rsihub as rsihub
+import anyrsi_rsihub as rsihub
 
 
 def row(genid, tasks, *, parent=None, h="H", score=None, incomplete=()):

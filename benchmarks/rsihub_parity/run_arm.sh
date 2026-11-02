@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 跑一组对照实验。先跑过 make_recipes.py 和 openrsi-rsihub install。
+# 跑一组对照实验。先跑过 make_recipes.py 和 anyrsi-rsihub install。
 #   bash run_arm.sh /path/to/RSIHub baseline [代数，默认按配方]
 set -euo pipefail
-RSIHUB=$(cd "${1:?用法：run_arm.sh /path/to/RSIHub <baseline|openrsi|shinka> [代数]}" && pwd)
+RSIHUB=$(cd "${1:?用法：run_arm.sh /path/to/RSIHub <baseline|anyrsi|shinka> [代数]}" && pwd)
 ARM=${2:?缺少组名}
 GENS=${3:-}
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 OUT=$HERE/out; mkdir -p "$OUT"
-RECIPE=$RSIHUB/recipes/openrsi_parity_$ARM/evolve.yaml
-WS=${WORKSPACE:-$RSIHUB/runs/openrsi-parity-$ARM}
+RECIPE=$RSIHUB/recipes/anyrsi_parity_$ARM/evolve.yaml
+WS=${WORKSPACE:-$RSIHUB/runs/anyrsi-parity-$ARM}
 ASSET_ROOT=${EVOLVE_ASSET_DIR:-$RSIHUB/.evolve-assets/terminal-bench-2.0}
 DATASET=$ASSET_ROOT/raw/terminal-bench
 ENV_FILE=${ENV_FILE:-$RSIHUB/.env}

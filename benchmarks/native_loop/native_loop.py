@@ -1,4 +1,4 @@
-"""OpenRSI 原生完整循环的 A/B/C 对照实验（spec/drafts/two-loop-evolution.md §8B，P3）。
+"""AnyRSI 原生完整循环的 A/B/C 对照实验（spec/drafts/two-loop-evolution.md §8B，P3）。
 
     A  冻结初始 agent，不做任何改进                     → 能力与成本基线
     B  等搜索预算，每一代都从根版本出发（IndependentAlgorithm）→ 排除"只是多试几次"
@@ -33,13 +33,13 @@ for p in ("examples/secret_ops", "benchmarks/native_loop"):
     if str(ROOT / p) not in sys.path:
         sys.path.insert(0, str(ROOT / p))
 
-from openrsi import Task  # noqa: E402
-from openrsi_runtime import Runner, Wiring, load_config  # noqa: E402
+from anyrsi import Task  # noqa: E402
+from anyrsi_runtime import Runner, Wiring, load_config  # noqa: E402
 from secret_ops import SYMBOLS, SecretOpsEnv  # noqa: E402
 
 SYNTHETIC = "synthetic smoke，非 benchmark"
 EQ = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
-GROUPS = {"A": None, "B": "openrsi_algorithm:IndependentAlgorithm", "C": "openrsi_algorithm:GreedyAlgorithm"}
+GROUPS = {"A": None, "B": "anyrsi_algorithm:IndependentAlgorithm", "C": "anyrsi_algorithm:GreedyAlgorithm"}
 
 
 class BudgetExhausted(RuntimeError):
@@ -88,20 +88,20 @@ def write_config(base: Path, seed: int, algorithm: str | None) -> Path:
         "env": {"python": "native_loop:SealedEnv", "with": {"seed": seed}},
         "agent": {"python": "secret_ops:RuleAgent"},
         "proposer": {"python": "secret_ops:RuleInducer"},
-        "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+        "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
         "evidence": {"same_as": "judge"},
-        "attribution": {"python": "openrsi_attribution:RubricEvidenceAttributor"},
-        "algorithm": {"python": algorithm or "openrsi_algorithm:GreedyAlgorithm",
+        "attribution": {"python": "anyrsi_attribution:RubricEvidenceAttributor"},
+        "algorithm": {"python": algorithm or "anyrsi_algorithm:GreedyAlgorithm",
                       "with": {"max_generations": 10_000, "patience": 10_000, "seed": seed}},
-        "gate": {"python": "openrsi_gate:HoldoutGate", "with": {"min_gain": 0.0}},
-        "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
-        "memory": {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}},
+        "gate": {"python": "anyrsi_gate:HoldoutGate", "with": {"min_gain": 0.0}},
+        "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
+        "memory": {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}},
     }
     base.mkdir(parents=True, exist_ok=True)
-    data = {"protocol": "openrsi/0.4", "name": "native-loop", "plugins": ["native_loop", "secret_ops"],
+    data = {"protocol": "anyrsi/0.4", "name": "native-loop", "plugins": ["native_loop", "secret_ops"],
             "components": comps, "loop": {"retrieve_k": 5, "max_patches": 1}}
-    (base / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    return base / "openrsi.yaml"
+    (base / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return base / "anyrsi.yaml"
 
 
 async def run_group(name: str, base: Path, seed: int, budget: int) -> dict[str, Any]:

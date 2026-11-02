@@ -1,10 +1,10 @@
 [project]
-name = "openrsi-weights"
+name = "anyrsi-weights"
 version = "0.4.1"
 description = "Model weights as an evolvable: checkpoint tree, judge-verified SFT / DPO / KTO data, a built-in trainer and pluggable external trainers"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.4,<0.5"]
+dependencies = ["anyrsi-sdk>=0.4,<0.5"]
 
 [project.optional-dependencies]
 train = ["torch>=2.1", "transformers>=4.40"]
@@ -12,11 +12,11 @@ lora = ["peft>=0.10"]
 parquet = ["pandas>=2", "pyarrow>=14"]
 
 [project.scripts]
-openrsi-weights = "openrsi_weights:main"
+anyrsi-weights = "anyrsi_weights:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["openrsi_weights"]
+packages = ["anyrsi_weights"]

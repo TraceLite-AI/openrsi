@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.4/EnvCell.json",
+  "$id": "https://anyrsi.dev/schemas/0.4/EnvCell.json",
   "additionalProperties": true,
   "description": "环境格：一组环境坐标加一份钉住清单，代表一个可以复现的环境（0.5 草案，见 spec/drafts/environment-cells.md）。\n\ncoords 的键是\"维度编号:子维度名\"（如 E2.1:os），值取自 axes 指定的坐标体系；没写的键表示未声明，不表示基准值。",
   "properties": {

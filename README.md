@@ -1,16 +1,16 @@
-<h1 align="center">OpenRSI</h1>
+<h1 align="center">AnyRSI</h1>
 
 <p align="center">
   <b>A component-based framework and open protocol for agent recursive self-improvement.</b><br>
   Every stage of the self-improvement loop is a standalone MCP server. Use one piece in your own stack,
-  or wire them all together with a single <code>openrsi.yaml</code>.
+  or wire them all together with a single <code>anyrsi.yaml</code>.
 </p>
 
 <p align="center">
-  <a href="https://github.com/TraceLite-AI/openrsi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TraceLite-AI/openrsi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TraceLite-AI/anyrsi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TraceLite-AI/anyrsi/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-blue"></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB">
-  <a href="spec/PROTOCOL.md"><img alt="Protocol openrsi/0.4" src="https://img.shields.io/badge/protocol-openrsi%2F0.4-0F766E"></a>
+  <a href="spec/PROTOCOL.md"><img alt="Protocol anyrsi/0.4" src="https://img.shields.io/badge/protocol-anyrsi%2F0.4-0F766E"></a>
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-orange">
 </p>
 
@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="#news">News</a> ·
-  <a href="#why-openrsi">Why OpenRSI</a> ·
+  <a href="#why-anyrsi">Why AnyRSI</a> ·
   <a href="#how-it-works">How It Works</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#experiments">Experiments</a> ·
@@ -32,21 +32,22 @@
 
 ## News
 
-- **2026-11** · RSIHub task banks (Harbor format) work as an OpenRSI environment, split by the same rule as RSIHub; one loop now evolves both agent code and weights. See [examples/rsihub_weights](examples/rsihub_weights/README.md).
+- **2026-11** · Renamed to AnyRSI (formerly OpenRSI, which clashed with another project). Package names, the CLI and the protocol identifier are now `anyrsi`.
+- **2026-11** · RSIHub task banks (Harbor format) work as an AnyRSI environment, split by the same rule as RSIHub; one loop now evolves both agent code and weights. See [examples/rsihub_weights](examples/rsihub_weights/README.md).
 - **2026-10** · v0.4: six evolution algorithms (GEPA-style Pareto, ShinkaEvolve, AlphaEvolve-style islands, MAP-Elites, archive, greedy), per-task no-regression gating, harness (agent code) and model-weight evolution, and adapters for [verl](https://github.com/volcengine/verl) and [RSIHub](https://github.com/simple-agent-lab/RSIHub).
 - **2026-10** · An end-to-end pipeline that evolves a small model's system prompt and weights together ran on a real model (Qwen2.5-0.5B, CPU). GPU-scale results are [pending](#experiments).
 - **2026-10** · Component-design tests: every algorithm/gate combination, identical lineage across in-process / stdio / HTTP transports, and a JavaScript component dropped into the Python loop.
 
-## Why OpenRSI
+## Why AnyRSI
 
-Most self-improvement systems are monolithic: the evaluator, the search algorithm and the thing being improved are tied to one codebase. OpenRSI splits the loop into components with a published protocol, so they can be swapped, reused and audited independently.
+Most self-improvement systems are monolithic: the evaluator, the search algorithm and the thing being improved are tied to one codebase. AnyRSI splits the loop into components with a published protocol, so they can be swapped, reused and audited independently.
 
 - **Components, not a monolith.** 13 component kinds (environment, agent, evidence, judge, attribution, evolvable, memory, skill, proposer, algorithm, gate, guard, lineage). Each one is an MCP server with a fixed set of tools.
 - **Evolve anything.** Memory, prompts, executable skills, the agent's own code (harness), model weights, and the judge itself, alone or several at once.
 - **Use one piece.** Any MCP client (Claude Code, Cursor, another framework, another language) can call a single component. A gate written in JavaScript from the spec alone passes conformance and runs inside the Python loop.
 - **Safe by construction.** The runtime enforces data isolation. A guard inspects every patch before it applies. A gate admits only real holdout gains, optionally with no per-task regressions. Judge changes are validated against human labels.
 - **Frontier search.** Pareto frontiers (GEPA), novelty screening and adaptive proposer selection (ShinkaEvolve), island models (AlphaEvolve), MAP-Elites and open-ended archives (Darwin Gödel Machine).
-- **Interoperable.** Use the judge as a [verl](https://github.com/volcengine/verl) reward function or a [DSPy](https://github.com/stanfordnlp/dspy) metric, and OpenRSI components as [RSIHub](https://github.com/simple-agent-lab/RSIHub) operators.
+- **Interoperable.** Use the judge as a [verl](https://github.com/volcengine/verl) reward function or a [DSPy](https://github.com/stanfordnlp/dspy) metric, and AnyRSI components as [RSIHub](https://github.com/simple-agent-lab/RSIHub) operators.
 
 ## How It Works
 
@@ -77,29 +78,29 @@ The runtime enforces these rules itself rather than trusting components to follo
 
 | Evolvable | Snapshot | Patch | Package |
 |---|---|---|---|
-| Memory | item set | add / replace / remove items | `openrsi-memory` |
-| Prompt | ordered sections | add / replace / remove sections | `openrsi-evolvables` |
-| Skills | Python functions, run in a sandboxed subprocess | add / replace / remove code | `openrsi-evolvables` |
-| Harness (agent code) | git commit | write / delete / unified diff, within mutable paths | `openrsi-harness` |
-| Model weights | checkpoint | one training run: SFT on judge-verified answers, or DPO / KTO that also learn from wrong answers; built-in trainer (`trainer: builtin`, torch + transformers, optional LoRA) or any external command (verl, LLaMA-Factory, ...) | `openrsi-weights` |
-| Judge rubric | rubric items | add / tighten checks; gated on human-label agreement | `openrsi-judge` |
-| Improver strategy (meta) | notes / parameters the proposer reads | replace; gated on downstream gain | `openrsi-evolvables` |
-| Curriculum (meta) | tag weights for picking train tasks | replace; gated on downstream gain | `openrsi-evolvables` |
+| Memory | item set | add / replace / remove items | `anyrsi-memory` |
+| Prompt | ordered sections | add / replace / remove sections | `anyrsi-evolvables` |
+| Skills | Python functions, run in a sandboxed subprocess | add / replace / remove code | `anyrsi-evolvables` |
+| Harness (agent code) | git commit | write / delete / unified diff, within mutable paths | `anyrsi-harness` |
+| Model weights | checkpoint | one training run: SFT on judge-verified answers, or DPO / KTO that also learn from wrong answers; built-in trainer (`trainer: builtin`, torch + transformers, optional LoRA) or any external command (verl, LLaMA-Factory, ...) | `anyrsi-weights` |
+| Judge rubric | rubric items | add / tighten checks; gated on human-label agreement | `anyrsi-judge` |
+| Improver strategy (meta) | notes / parameters the proposer reads | replace; gated on downstream gain | `anyrsi-evolvables` |
+| Curriculum (meta) | tag weights for picking train tasks | replace; gated on downstream gain | `anyrsi-evolvables` |
 
-Meta evolvables (`loop.meta_every`) are never shown to the agent and never changed in ordinary generations. In a meta generation the runtime runs one ordinary round under the current and under the candidate meta state with the same budget, and keeps the candidate only if the improvement it produces on holdout is larger; the accepted version carries that improvement with it. Judges and attribution methods are upgraded by the outer loop (`runtime/openrsi_runtime/outer.py`), which can generate and validate candidates on its own but never promotes without a named approver. `runtime/openrsi_runtime/nesting.py` wraps a whole inner run as an agent (`LoopAgent` + `GainJudge`), so an outer loop can evolve the inner loop's algorithm, proposer or attribution; the inner env, judge, gate, guard, lineage and budget stay fixed. Gate, guard, sealed tests, human labels and budgets are never evolved.
+Meta evolvables (`loop.meta_every`) are never shown to the agent and never changed in ordinary generations. In a meta generation the runtime runs one ordinary round under the current and under the candidate meta state with the same budget, and keeps the candidate only if the improvement it produces on holdout is larger; the accepted version carries that improvement with it. Judges and attribution methods are upgraded by the outer loop (`runtime/anyrsi_runtime/outer.py`), which can generate and validate candidates on its own but never promotes without a named approver. `runtime/anyrsi_runtime/nesting.py` wraps a whole inner run as an agent (`LoopAgent` + `GainJudge`), so an outer loop can evolve the inner loop's algorithm, proposer or attribution; the inner env, judge, gate, guard, lineage and budget stay fixed. Gate, guard, sealed tests, human labels and budgets are never evolved.
 
 ### Components
 
 | Kind | Official implementation | Package |
 |---|---|---|
-| judge, evidence | `EvidenceJudge` (rubric + evidence, optional LLM checks), `EvolvingJudge`; `GainJudge` scores a nested run | `openrsi-judge`, `openrsi-runtime` |
-| attribution | `RubricEvidenceAttributor`, `CellContrastAttributor` (blames environment coordinates when a task fails in some cells only); counterfactual reruns in the runtime | `openrsi-attribution` |
-| proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `CurriculumProposer` and `StrategyRewriter` (meta layer), `PromptRewriter`, `CodeRewriter` (rewrites agent code), `DistillProposer`, `PreferenceProposer` | `openrsi-proposer`, `openrsi-llm`, `openrsi-verl` |
-| algorithm | 6 algorithms, see below | `openrsi-algorithm` |
-| gate | `HoldoutGate` (gain, significance, paired per-task significance, anchor, cost, per-task and per-cell no-regression) | `openrsi-gate` |
-| guard | `PolicyGuard` (dangerous code, secrets, protected items and paths, eval tampering) | `openrsi-guard` |
-| lineage | `LineageStore` (JSONL, resumable) | `openrsi-lineage` |
-| agent | `ChatAgent` (any OpenAI-compatible endpoint, restarts vLLM when weights change), `HarnessAgent`, `LoopAgent` (a whole inner run) | `openrsi-llm`, `openrsi-harness`, `openrsi-runtime` |
+| judge, evidence | `EvidenceJudge` (rubric + evidence, optional LLM checks), `EvolvingJudge`; `GainJudge` scores a nested run | `anyrsi-judge`, `anyrsi-runtime` |
+| attribution | `RubricEvidenceAttributor`, `CellContrastAttributor` (blames environment coordinates when a task fails in some cells only); counterfactual reruns in the runtime | `anyrsi-attribution` |
+| proposer | `LessonProposer`, `ClaudeProposer`, `RubricAuditor`, `CompositeProposer`, `RoutedProposer` (picks a member by where the attribution points), `CurriculumProposer` and `StrategyRewriter` (meta layer), `PromptRewriter`, `CodeRewriter` (rewrites agent code), `DistillProposer`, `PreferenceProposer` | `anyrsi-proposer`, `anyrsi-llm`, `anyrsi-verl` |
+| algorithm | 6 algorithms, see below | `anyrsi-algorithm` |
+| gate | `HoldoutGate` (gain, significance, paired per-task significance, anchor, cost, per-task and per-cell no-regression) | `anyrsi-gate` |
+| guard | `PolicyGuard` (dangerous code, secrets, protected items and paths, eval tampering) | `anyrsi-guard` |
+| lineage | `LineageStore` (JSONL, resumable) | `anyrsi-lineage` |
+| agent | `ChatAgent` (any OpenAI-compatible endpoint, restarts vLLM when weights change), `HarnessAgent`, `LoopAgent` (a whole inner run) | `anyrsi-llm`, `anyrsi-harness`, `anyrsi-runtime` |
 | evolvable, memory, skill | see the table above | |
 | env | user-provided; examples include GSM8K | |
 
@@ -119,15 +120,15 @@ Meta evolvables (`loop.meta_every`) are never shown to the agent and never chang
 Requires Python 3.10+.
 
 ```bash
-git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
+git clone https://github.com/TraceLite-AI/anyrsi && cd anyrsi
 pip install -e sdk/python -e runtime -e components/judge -e components/memory -e components/attribution \
             -e components/proposer -e components/algorithm -e components/gate -e components/lineage \
             -e components/evolvables -e components/guard -e components/harness -e components/llm -e components/weights \
             -e adapters/verl
 
 cd examples/secret_ops
-openrsi run      # runs until done; rerunning resumes from the lineage
-openrsi log      # show the lineage
+anyrsi run      # runs until done; rerunning resumes from the lineage
+anyrsi log      # show the lineage
 ```
 
 Each of 8 symbols hides an unknown binary operation. The agent looks up rules in memory, and the proposer induces rules from failed train tasks. No model or API key is needed. Output:
@@ -145,9 +146,9 @@ Each of 8 symbols hides an unknown binary operation. The agent looks up rules in
 
 ```bash
 cd examples/small_model
-python make_toy_data.py toy_data && openrsi run openrsi.mock.yaml   # mock model, seconds, no GPU
-openrsi run openrsi.cpu.yaml                                         # Qwen2.5-0.5B on CPU via transformers, ~1 h
-openrsi run openrsi.yaml                                             # Qwen2.5-0.5B on one GPU via vLLM
+python make_toy_data.py toy_data && anyrsi run anyrsi.mock.yaml   # mock model, seconds, no GPU
+anyrsi run anyrsi.cpu.yaml                                         # Qwen2.5-0.5B on CPU via transformers, ~1 h
+anyrsi run anyrsi.yaml                                             # Qwen2.5-0.5B on one GPU via vLLM
 ```
 
 Each generation, ShinkaEvolve's UCB picks one of two proposers: rewrite the system prompt from failed train tasks, or fine-tune on trajectories the judge passed (rejection-sampling self-distillation). When the weights change, `ChatAgent` restarts the inference server on the new checkpoint. See [examples/small_model](examples/small_model/README.md).
@@ -161,7 +162,7 @@ Each generation, ShinkaEvolve's UCB picks one of two proposers: rewrite the syst
 | [`judge_coevolution`](examples/judge_coevolution) | a judge that misses test tampering is fixed, gated on human labels, then the agent stops cheating |
 | [`harness_ops`](examples/harness_ops) | evolving the agent's own code in a git repo; an edit to `eval/` is blocked |
 | [`small_model`](examples/small_model) | real LLM; system prompt and weights evolve together |
-| [`rsihub_weights`](examples/rsihub_weights) | an RSIHub task bank (Harbor) inside the OpenRSI loop; agent code and weights evolve together |
+| [`rsihub_weights`](examples/rsihub_weights) | an RSIHub task bank (Harbor) inside the AnyRSI loop; agent code and weights evolve together |
 | [`judge_standalone.py`](examples/judge_standalone.py) | using the judge alone, in-process and over MCP |
 
 ## Use a Single Component
@@ -169,7 +170,7 @@ Each generation, ShinkaEvolve's UCB picks one of two proposers: rewrite the syst
 In Python:
 
 ```python
-from openrsi_judge import EvidenceJudge
+from anyrsi_judge import EvidenceJudge
 
 judge = EvidenceJudge({"items": [{"id": "tests_pass", "check": "tests_pass", "required": True},
                                  {"id": "no_test_edits", "check": "no_protected_edits", "required": True}]},
@@ -180,15 +181,15 @@ verdict = judge.evaluate(task, trajectory, judge.collect(task, trajectory))
 As an MCP server for any client:
 
 ```bash
-openrsi-judge --rubric rubric.yaml --protect 'tests/**'
-openrsi-serve openrsi_gate:HoldoutGate --with '{"min_gain": 0.01}'                       # any component class
-openrsi-serve my_pkg:MyJudge --transport streamable-http --port 8765
+anyrsi-judge --rubric rubric.yaml --protect 'tests/**'
+anyrsi-serve anyrsi_gate:HoldoutGate --with '{"min_gain": 0.01}'                       # any component class
+anyrsi-serve my_pkg:MyJudge --transport streamable-http --port 8765
 ```
 
 Write your own component by subclassing an SDK base class, then run the conformance suite:
 
 ```python
-from openrsi import Gate, GateDecision, serve
+from anyrsi import Gate, GateDecision, serve
 
 class MyGate(Gate):
     name, version = "me/my-gate", "0.1.0"
@@ -200,28 +201,28 @@ serve(MyGate())
 ```
 
 ```bash
-openrsi-conformance -- python my_gate.py
+anyrsi-conformance -- python my_gate.py
 ```
 
 Other languages need no SDK: implement the tools in [`spec/tools.json`](spec/tools.json). [`tests/xlang/gate.mjs`](tests/xlang/gate.mjs) is a gate written in JavaScript from the spec alone.
 
-Any slot in `openrsi.yaml` can be in-process (`python:`), a subprocess (`command:`), or remote (`url:`):
+Any slot in `anyrsi.yaml` can be in-process (`python:`), a subprocess (`command:`), or remote (`url:`):
 
 ```yaml
-protocol: openrsi/0.4
+protocol: anyrsi/0.4
 components:
   env:       {python: "my_components:MyEnv"}
-  judge:     {python: "openrsi_judge:EvidenceJudge", with: {rubric: rubric.yaml}}
+  judge:     {python: "anyrsi_judge:EvidenceJudge", with: {rubric: rubric.yaml}}
   evidence:  {same_as: judge}
-  memory:    {command: [openrsi-memory, --path, .openrsi/memory]}
-  algorithm: {python: "openrsi_algorithm:ShinkaAlgorithm", with: {proposers: [prompt, weights]}}
-  gate:      {python: "openrsi_gate:HoldoutGate", with: {max_task_regressions: 0}}
+  memory:    {command: [anyrsi-memory, --path, .anyrsi/memory]}
+  algorithm: {python: "anyrsi_algorithm:ShinkaAlgorithm", with: {proposers: [prompt, weights]}}
+  gate:      {python: "anyrsi_gate:HoldoutGate", with: {max_task_regressions: 0}}
   lineage:   {url: "https://lineage.internal/mcp"}
 evolvables:
-  prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
+  prompt:    {python: "anyrsi_evolvables:PromptEvolvable"}
 ```
 
-Environment cells (draft for 0.5, opt-in): an env that implements `rsi_env_cells` declares cells (environment coordinates plus pinned versions; see [the draft](spec/drafts/environment-cells.md)). Add a `cells:` section to run each task once per cell. The runtime keys per-task scores as `<task_id>@<cell_id>`, stops if a cell's fingerprint changes or a task's `env_ref` is wrong, and records the cells in the lineage. Without `cells:` a run behaves exactly as in 0.4. Each episode also gets an `env_cell` evidence record (cell, coordinates, fingerprint) written by the runtime, which `CellContrastAttributor` uses to compare the same task across cells. The runtime checks declarations only; it does not make the agent actually run in that environment. For that, add `cells.binding` (strict mode): before every task the runtime prepares the cell, runs pre-registered probes in a subprocess and compares them with the declared coordinates, and the agent must report the plan it used (`HarnessAgent` does). With `records: {path}` the raw tasks, trajectories, evidence and receipts are stored content-addressed and append-only, verdicts and attributions as derived records, and resuming with a different run manifest is refused. `runtime/openrsi_runtime/outer.py` upgrades a judge or an attribution method only after a frozen validation plan passes on independent labels and someone approves; off by default.
+Environment cells (draft for 0.5, opt-in): an env that implements `rsi_env_cells` declares cells (environment coordinates plus pinned versions; see [the draft](spec/drafts/environment-cells.md)). Add a `cells:` section to run each task once per cell. The runtime keys per-task scores as `<task_id>@<cell_id>`, stops if a cell's fingerprint changes or a task's `env_ref` is wrong, and records the cells in the lineage. Without `cells:` a run behaves exactly as in 0.4. Each episode also gets an `env_cell` evidence record (cell, coordinates, fingerprint) written by the runtime, which `CellContrastAttributor` uses to compare the same task across cells. The runtime checks declarations only; it does not make the agent actually run in that environment. For that, add `cells.binding` (strict mode): before every task the runtime prepares the cell, runs pre-registered probes in a subprocess and compares them with the declared coordinates, and the agent must report the plan it used (`HarnessAgent` does). With `records: {path}` the raw tasks, trajectories, evidence and receipts are stored content-addressed and append-only, verdicts and attributions as derived records, and resuming with a different run manifest is refused. `runtime/anyrsi_runtime/outer.py` upgrades a judge or an attribution method only after a frozen validation plan passes on independent labels and someone approves; off by default.
 
 ```yaml
 cells:
@@ -231,11 +232,11 @@ cells:
 
 ## Integrations
 
-| Framework | What OpenRSI provides | Tested against the real framework |
+| Framework | What AnyRSI provides | Tested against the real framework |
 |---|---|---|
 | Any MCP client | every component | yes (Python and JavaScript clients) |
 | [verl](https://github.com/volcengine/verl) | judge as `compute_score` reward; RL/SFT data export that refuses non-train data; model weights as an evolvable | not yet ([field tests](field_tests/README.md) ready) |
-| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | guard `validate`, no-regression `gate`, Shinka `select` operators; archive import; the other way round, RSIHub task banks as an OpenRSI environment (`RSIHubTaskEnv`, `HarborAgent`, `HarborRewardJudge`) | not yet ([field tests](field_tests/README.md), [parity benchmark](benchmarks/rsihub_parity/README.md) ready) |
+| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | guard `validate`, no-regression `gate`, Shinka `select` operators; archive import; the other way round, RSIHub task banks as an AnyRSI environment (`RSIHubTaskEnv`, `HarborAgent`, `HarborRewardJudge`) | not yet ([field tests](field_tests/README.md), [parity benchmark](benchmarks/rsihub_parity/README.md) ready) |
 | [DSPy](https://github.com/stanfordnlp/dspy) | judge as a metric, including GEPA feedback | with stubs only |
 | [LangGraph](https://github.com/langchain-ai/langgraph) | state to trajectory conversion | with stubs only |
 | vLLM / any OpenAI-compatible API | `ChatAgent` and `PromptRewriter` | transformers server on CPU; vLLM pending |
@@ -246,7 +247,7 @@ Results marked *pending* need GPUs or paid APIs. The scripts are in the reposito
 
 ### 1. Small model: system prompt + weights on GSM8K
 
-[`examples/small_model/openrsi.yaml`](examples/small_model/openrsi.yaml), Qwen2.5-0.5B-Instruct, 64 train tasks per generation, 200 holdout tasks, 8 generations.
+[`examples/small_model/anyrsi.yaml`](examples/small_model/anyrsi.yaml), Qwen2.5-0.5B-Instruct, 64 train tasks per generation, 200 holdout tasks, 8 generations.
 
 <!-- RESULTS:small-model-gpu -->
 | Setting | Root holdout | Best holdout | Accepted (prompt / weights) | Final split | Wall-clock |
@@ -266,7 +267,7 @@ A small run on CPU (12 train / 15 holdout tasks, 3 generations) completed end to
 |---|---|---|---|---|---|
 | RSIHub published | 58.0% → 68.0% | 56.2% → 69.7% | — | — | — |
 | baseline (our run) | *pending* | *pending* | *pending* | *pending* | *pending* |
-| + OpenRSI guard and no-regression gate | *pending* | *pending* | *pending* | *pending* | *pending* |
+| + AnyRSI guard and no-regression gate | *pending* | *pending* | *pending* | *pending* | *pending* |
 
 ### 3. verl
 
@@ -275,8 +276,8 @@ A small run on CPU (12 train / 15 holdout tasks, 3 generations) completed end to
 <!-- RESULTS:verl -->
 | Test | Result |
 |---|---|
-| V1: OpenRSI reward vs verl's built-in GSM8K reward, per-sample agreement | *pending* |
-| V3: GRPO, Qwen2.5-0.5B, validation score before → after, OpenRSI reward vs built-in | *pending* |
+| V1: AnyRSI reward vs verl's built-in GSM8K reward, per-sample agreement | *pending* |
+| V3: GRPO, Qwen2.5-0.5B, validation score before → after, AnyRSI reward vs built-in | *pending* |
 | V4: two chained SFT runs through `WeightsEvolvable`, then rollback | *pending* |
 
 ### 4. Native loop A/B/C (synthetic smoke, not a benchmark)
@@ -306,7 +307,7 @@ A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with ev
 
 ## Project Status
 
-OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
+AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
 - **Tested in CI:** 316 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
@@ -316,7 +317,7 @@ OpenRSI is alpha software (protocol `openrsi/0.4`). Protocol versions so far hav
 
 - [ ] Fill in the experiment tables above
 - [ ] Reinforcement learning (GRPO via verl) as a weights patch inside the loop, not only SFT
-- [ ] Run OpenRSI's own runtime on Terminal-Bench 2 and τ³-bench via Harbor, with the same splits as RSIHub (components and config ready: [examples/rsihub_weights](examples/rsihub_weights/README.md); not yet run on real hardware)
+- [ ] Run AnyRSI's own runtime on Terminal-Bench 2 and τ³-bench via Harbor, with the same splits as RSIHub (components and config ready: [examples/rsihub_weights](examples/rsihub_weights/README.md); not yet run on real hardware)
 - [ ] TypeScript SDK
 - [ ] Adapters for OpenEvolve, Letta, OpenAI Agents SDK
 - [ ] English translation of the protocol specification
@@ -340,8 +341,8 @@ The protocol specification and in-repo guides are currently written in Chinese. 
 
 ```
 spec/               protocol, JSON Schemas and tool definitions (generated)
-sdk/python/         openrsi-sdk: data types, component base classes, MCP server/client, conformance suite, openrsi-serve
-runtime/            openrsi-runtime: wires components from openrsi.yaml, runs and resumes the loop
+sdk/python/         anyrsi-sdk: data types, component base classes, MCP server/client, conformance suite, anyrsi-serve
+runtime/            anyrsi-runtime: wires components from anyrsi.yaml, runs and resumes the loop
 components/         official components: judge, memory, evolvables, harness, llm, attribution,
                     proposer, algorithm, gate, guard, lineage
 adapters/           verl, RSIHub, DSPy, LangGraph
@@ -358,7 +359,7 @@ pip install -e sdk/python -e runtime -e components/* -e adapters/* pytest ruff
 npm ci --prefix tests/xlang          # optional, for the cross-language tests
 pytest
 ruff check .
-python -m openrsi.export_spec spec   # after changing sdk/python/openrsi/types.py or protocol.py
+python -m anyrsi.export_spec spec   # after changing sdk/python/anyrsi/types.py or protocol.py
 ```
 
 New or changed components need an updated `rsi-component.yaml` manifest. Reviews start from the three questions in [REVIEW.md](REVIEW.md).
@@ -366,17 +367,17 @@ New or changed components need an updated `rsi-component.yaml` manifest. Reviews
 ## Citation
 
 ```bibtex
-@software{openrsi2026,
-  title  = {OpenRSI: A Component-Based Framework and Open Protocol for Agent Recursive Self-Improvement},
-  author = {{OpenRSI contributors}},
+@software{anyrsi2026,
+  title  = {AnyRSI: A Component-Based Framework and Open Protocol for Agent Recursive Self-Improvement},
+  author = {{AnyRSI contributors}},
   year   = {2026},
-  url    = {https://github.com/TraceLite-AI/openrsi}
+  url    = {https://github.com/TraceLite-AI/anyrsi}
 }
 ```
 
 ## Acknowledgements
 
-OpenRSI builds on the [Model Context Protocol](https://modelcontextprotocol.io) and draws on ideas from GEPA, ShinkaEvolve, AlphaEvolve, Darwin Gödel Machine, MAP-Elites, Self-Harness and AHE. It integrates with verl, RSIHub, DSPy and LangGraph.
+AnyRSI builds on the [Model Context Protocol](https://modelcontextprotocol.io) and draws on ideas from GEPA, ShinkaEvolve, AlphaEvolve, Darwin Gödel Machine, MAP-Elites, Self-Harness and AHE. It integrates with verl, RSIHub, DSPy and LangGraph.
 
 ## License
 

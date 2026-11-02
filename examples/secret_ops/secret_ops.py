@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import random
 
-from openrsi import Agent, Environment, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
+from anyrsi import Agent, Environment, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
 
 OPS = {
     "add": lambda a, b: a + b, "sub": lambda a, b: a - b, "mul": lambda a, b: a * b,

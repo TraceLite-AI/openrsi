@@ -1,4 +1,4 @@
-"""RSIHub 的题库进 OpenRSI 的循环：划分、出题、调 Harbor、按验证奖励打分、改代码的提案器，以及改代码 + 训权重的全流程。
+"""RSIHub 的题库进 AnyRSI 的循环：划分、出题、调 Harbor、按验证奖励打分、改代码的提案器，以及改代码 + 训权重的全流程。
 
 Harbor 用 examples/rsihub_weights/fake_harbor.py 代替（同样的参数和结果目录布局），不需要 Docker。
 """
@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from openrsi import Episode, EvolvableInfo, Item, ProposalRequest, Step, Task, Trajectory, Verdict
-from openrsi_rsihub import (PARITY_SPLIT, HarborAgent, HarborRewardJudge, RSIHubTaskEnv, assign_splits,
+from anyrsi import Episode, EvolvableInfo, Item, ProposalRequest, Step, Task, Trajectory, Verdict
+from anyrsi_rsihub import (PARITY_SPLIT, HarborAgent, HarborRewardJudge, RSIHubTaskEnv, assign_splits,
                             discover_task_names)
-from openrsi_rsihub.harbor import atif_steps, find_trial, read_reward, task_digest
+from anyrsi_rsihub.harbor import atif_steps, find_trial, read_reward, task_digest
 
 ROOT = Path(__file__).resolve().parents[1]
 EX = ROOT / "examples" / "rsihub_weights"
@@ -252,7 +252,7 @@ def code_request(files: dict[str, str], surfaces=("agent/**",), passed=False, tt
 
 
 def test_code_rewriter_writes_editable_files(monkeypatch):
-    import openrsi_llm
+    import anyrsi_llm
 
     seen = {}
 
@@ -265,9 +265,9 @@ def test_code_rewriter_writes_editable_files(monkeypatch):
             {"path": "agent/same.py", "content": "same\n"},           # 没变
             {"path": "agent/extra.py", "content": "x = 1\n"}]}) + "\n```"}
 
-    monkeypatch.setattr(openrsi_llm, "chat", fake_chat)
+    monkeypatch.setattr(anyrsi_llm, "chat", fake_chat)
     req = code_request({"agent/main.py": "print('old')\n", "agent/same.py": "same\n", "agent/big.py": "x" * 30000})
-    [patch] = openrsi_llm.CodeRewriter("http://x/v1").propose(req)
+    [patch] = anyrsi_llm.CodeRewriter("http://x/v1").propose(req)
     assert patch.target == "harness" and patch.ops == [{"op": "write", "path": "agent/main.py", "content": "print('new')\n"},
                                                        {"op": "write", "path": "agent/extra.py", "content": "x = 1\n"}]
     assert "add a tool" in patch.rationale and "1 train failures" in patch.rationale
@@ -277,12 +277,12 @@ def test_code_rewriter_writes_editable_files(monkeypatch):
 
 
 def test_code_rewriter_refuses_leaks_and_bad_replies(monkeypatch):
-    import openrsi_llm
+    import anyrsi_llm
 
     reply = {}
-    monkeypatch.setattr(openrsi_llm, "chat", lambda *a, **k: {"text": reply["text"]})
+    monkeypatch.setattr(anyrsi_llm, "chat", lambda *a, **k: {"text": reply["text"]})
     files = {"agent/main.py": "old\n"}
-    rewriter = openrsi_llm.CodeRewriter("http://x/v1")
+    rewriter = anyrsi_llm.CodeRewriter("http://x/v1")
     reply["text"] = json.dumps({"files": [{"path": "agent/main.py",
                                            "content": "if task == 'Compute the product of: 3, 9, 7, 2, 5, 8, 4': ..."}]})
     assert rewriter.propose(code_request(files)) == []  # 把题目原文写进代码 = 背答案
@@ -296,9 +296,9 @@ def test_code_rewriter_refuses_leaks_and_bad_replies(monkeypatch):
     assert len(rewriter.propose(code_request(files))) == 1
 
     def down(*a, **k):
-        raise openrsi_llm.ComponentError("down")
+        raise anyrsi_llm.ComponentError("down")
 
-    monkeypatch.setattr(openrsi_llm, "chat", down)
+    monkeypatch.setattr(anyrsi_llm, "chat", down)
     assert rewriter.propose(code_request(files)) == []
 
 
@@ -309,10 +309,10 @@ def test_code_rewriter_refuses_leaks_and_bad_replies(monkeypatch):
     ("adapters/rsihub/rsi-component.task-env.yaml", lambda d: RSIHubTaskEnv(str(d))),
     ("adapters/rsihub/rsi-component.harbor-agent.yaml", lambda d: HarborAgent(agent_args=["--agent", "oracle"])),
     ("adapters/rsihub/rsi-component.reward-judge.yaml", lambda d: HarborRewardJudge()),
-    ("components/llm/rsi-component.code-rewriter.yaml", lambda d: __import__("openrsi_llm").CodeRewriter("http://x/v1")),
+    ("components/llm/rsi-component.code-rewriter.yaml", lambda d: __import__("anyrsi_llm").CodeRewriter("http://x/v1")),
 ])
 def test_manifests_match(manifest, factory, tmp_path):
-    from openrsi import build_server, connect, load_manifest
+    from anyrsi import build_server, connect, load_manifest
 
     ds = make_dataset(tmp_path / "ds", n=3)
 
@@ -330,15 +330,15 @@ def test_manifests_match(manifest, factory, tmp_path):
 
 
 def test_code_and_weights_evolve_in_one_loop(tmp_path):
-    from openrsi_runtime import Runner, Wiring, load_config
+    from anyrsi_runtime import Runner, Wiring, load_config
 
     work = tmp_path / "rsihub_weights"
-    shutil.copytree(EX, work, ignore=shutil.ignore_patterns(".openrsi", "__pycache__", "toy_tasks"))
+    shutil.copytree(EX, work, ignore=shutil.ignore_patterns(".anyrsi", "__pycache__", "toy_tasks"))
     subprocess.run([sys.executable, "make_toy_dataset.py", "toy_tasks"], cwd=work, check=True, capture_output=True)
     port = _free_port()
-    text = (work / "openrsi.mock.yaml").read_text().replace("8197", str(port))
-    (work / "openrsi.mock.yaml").write_text(text)
-    cfg = load_config(work / "openrsi.mock.yaml")
+    text = (work / "anyrsi.mock.yaml").read_text().replace("8197", str(port))
+    (work / "anyrsi.mock.yaml").write_text(text)
+    cfg = load_config(work / "anyrsi.mock.yaml")
 
     async def go():
         async with Wiring(cfg) as w:
@@ -363,7 +363,7 @@ def test_code_and_weights_evolve_in_one_loop(tmp_path):
     assert best.snapshots["weights"] != "ckpt_root" and best.snapshots["harness"] != log[0].snapshots["harness"]
     weights = next(e for e in accepted if e.patch and e.patch.target == "weights")
     assert "wrong answers used" in weights.patch.rationale  # 错题也进了训练数据
-    rows = [json.loads(x) for f in (work / ".openrsi" / "kto").glob("*.jsonl") for x in f.read_text().splitlines()]
+    rows = [json.loads(x) for f in (work / ".anyrsi" / "kto").glob("*.jsonl") for x in f.read_text().splitlines()]
     assert {r["label"] for r in rows} == {True, False}
     holdout_ids = set(RSIHubTaskEnv(str(work / "toy_tasks"), split={"train": 0.5, "gate": 0.25, "sealed": 0.25}).splits["gate"])
     used = {m["content"].strip() for r in rows for m in r["messages"] if m["role"] == "user"}

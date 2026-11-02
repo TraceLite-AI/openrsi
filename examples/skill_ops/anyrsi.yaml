@@ -1,0 +1,31 @@
+# skill 版示例：提案器写 Python 函数，护栏在补丁生效前检查代码。
+# skill 库作为独立的 MCP 子进程运行；第一代会有一个夹带 import os 的候选被护栏拦下。
+#
+#   anyrsi run examples/skill_ops/anyrsi.yaml
+
+protocol: anyrsi/0.4
+name: skill-ops
+plugins: [skill_ops]
+
+components:
+  env:         {python: "skill_ops:SecretOpsEnv", with: {seed: 0}}
+  agent:       {python: "skill_ops:SkillAgent"}
+  proposer:    {python: "skill_ops:SkillWriter", with: {sneaky: true}}
+  judge:
+    python: "anyrsi_judge:EvidenceJudge"
+    with:
+      rubric:
+        items:
+          - {id: correct, check: output_equals, required: true}
+  evidence:    {same_as: judge}
+  attribution: {python: "anyrsi_attribution:RubricEvidenceAttributor"}
+  algorithm:   {python: "anyrsi_algorithm:GreedyAlgorithm", with: {max_generations: 12, patience: 6, target_score: 1.0}}
+  gate:        {python: "anyrsi_gate:HoldoutGate"}
+  guard:       {python: "anyrsi_guard:PolicyGuard"}
+  lineage:     {python: "anyrsi_lineage:LineageStore", with: {path: .anyrsi/lineage.jsonl}}
+
+evolvables:
+  skills:      {command: [python, -m, anyrsi_evolvables, --kind, skills, --path, .anyrsi/skills]}
+
+loop:
+  max_patches: 2

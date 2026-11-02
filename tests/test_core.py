@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from openrsi import Evidence, Step, Trajectory, Verdict, content_hash, from_messages
-from openrsi.protocol import kinds_from_tools, required_tools
+from anyrsi import Evidence, Step, Trajectory, Verdict, content_hash, from_messages
+from anyrsi.protocol import kinds_from_tools, required_tools
 
 
 def test_evidence_hash_and_tamper():

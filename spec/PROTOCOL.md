@@ -1,6 +1,6 @@
-# OpenRSI Protocol 0.4（草案）
+# AnyRSI Protocol 0.4（草案）
 
-OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层用 [MCP](https://modelcontextprotocol.io)：一个组件就是一个 MCP server，暴露本文规定名字和参数的工具。本协议只规定 MCP 之上的语义。
+AnyRSI 定义 agent 自我改进链条上可替换组件的接口。传输层用 [MCP](https://modelcontextprotocol.io)：一个组件就是一个 MCP server，暴露本文规定名字和参数的工具。本协议只规定 MCP 之上的语义。
 
 机器可读的部分由参考实现生成，以它们为准：
 
@@ -118,12 +118,12 @@ OpenRSI 定义 agent 自我改进链条上可替换组件的接口。传输层�
 每个组件应当附带 `rsi-component.yaml`，声明的类型和工具必须与组件实际暴露的一致：
 
 ```yaml
-protocol: openrsi/0.4
-name: openrsi/holdout-gate
+protocol: anyrsi/0.4
+name: anyrsi/holdout-gate
 version: 0.4.0
 kinds: [gate]
 implements: [rsi_component_info, rsi_gate_check]
-runtime: {transport: stdio, command: [openrsi-gate]}
+runtime: {transport: stdio, command: [anyrsi-gate]}
 ```
 
 ## 12. 一致性测试
@@ -131,30 +131,30 @@ runtime: {transport: stdio, command: [openrsi-gate]}
 参考实现提供与语言无关的一致性测试，通过 MCP 检查任意组件：
 
 ```bash
-openrsi-conformance -- <启动组件的命令>
-openrsi-conformance --url http://host/mcp
-openrsi-conformance --sample-task task.json -- <命令>   # 领域相关的 agent / 提案器
+anyrsi-conformance -- <启动组件的命令>
+anyrsi-conformance --url http://host/mcp
+anyrsi-conformance --sample-task task.json -- <命令>   # 领域相关的 agent / 提案器
 ```
 
-通过全部检查的组件可以标注"OpenRSI 0.4 兼容"。evolvable、algorithm、lineage 的检查会写入数据，应当对临时实例运行。
+通过全部检查的组件可以标注"AnyRSI 0.4 兼容"。evolvable、algorithm、lineage 的检查会写入数据，应当对临时实例运行。
 
-## 13. 编排文件 openrsi.yaml
+## 13. 编排文件 anyrsi.yaml
 
 编排文件不属于组件协议，是参考运行时的约定，列在这里方便其他实现兼容：
 
 ```yaml
-protocol: openrsi/0.4
+protocol: anyrsi/0.4
 name: my-experiment
 plugins: [my_components]
 components:
   env:      {python: "my_components:MyEnv", with: {seed: 0}}   # 进程内
-  memory:   {command: [openrsi-memory, --path, .openrsi/memory]} # 子进程 MCP
+  memory:   {command: [anyrsi-memory, --path, .anyrsi/memory]} # 子进程 MCP
   judge:    {url: "https://judge.example.com/mcp"}              # 远程 MCP
   evidence: {same_as: judge}                                    # 同一组件担任两个位置
-  guard:    {command: [openrsi-guard]}
+  guard:    {command: [anyrsi-guard]}
 evolvables:                                                     # memory 之外参与进化的对象
-  skills:   {command: [openrsi-evolvables, --kind, skills, --path, .openrsi/skills]}
-  prompt:   {python: "openrsi_evolvables:PromptEvolvable"}
+  skills:   {command: [anyrsi-evolvables, --kind, skills, --path, .anyrsi/skills]}
+  prompt:   {python: "anyrsi_evolvables:PromptEvolvable"}
 loop: {generations: 20, retrieve_k: 5, max_patches: 1}
 ```
 

@@ -8,16 +8,16 @@ from pathlib import Path
 import pytest
 import yaml
 
-from openrsi import Item, Task
-from openrsi_harness import HarnessAgent
-from openrsi_runtime import CellError, Runner, Wiring, load_config
-from openrsi_runtime.bindings import PROBES, BindingPlan, EnvVarBinding
-from openrsi_runtime.records import RecordError, RecordStore
+from anyrsi import Item, Task
+from anyrsi_harness import HarnessAgent
+from anyrsi_runtime import CellError, Runner, Wiring, load_config
+from anyrsi_runtime.bindings import PROBES, BindingPlan, EnvVarBinding
+from anyrsi_runtime.records import RecordError, RecordStore
 
 from cells_env import SHANGHAI, UTC, BindingAwareAgent
 
 EQ = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
-BINDING = {"python": "openrsi_runtime.bindings:EnvVarBinding",
+BINDING = {"python": "anyrsi_runtime.bindings:EnvVarBinding",
            "with": {"cells": {"utc": {"env": {"TZ": "UTC"}}, "shanghai": {"env": {"TZ": "Asia/Shanghai"}},
                               "cp1252": {"env": {"LC_ALL": "C", "LANG": "C"}}},
                     "probes": {"E4.1:时区": "env.TZ", "E4.1:默认编码": "python.preferred_encoding"}}}
@@ -25,25 +25,25 @@ BINDING = {"python": "openrsi_runtime.bindings:EnvVarBinding",
 
 def config(base: Path, *, binding=True, records=True, agent="cells_env:BindingAwareAgent", env_kw=None, gate=None,
            cells=None):
-    data = {"protocol": "openrsi/0.4", "name": "p2", "plugins": ["cells_env"],
+    data = {"protocol": "anyrsi/0.4", "name": "p2", "plugins": ["cells_env"],
             "cells": {**(cells or {}), **({"binding": BINDING} if binding else {})},
             "components": {
                 "env": {"python": "cells_env:TZCellsEnv", "with": env_kw or {}},
                 "agent": {"python": agent},
                 "proposer": {"python": "secret_ops:RuleInducer"},
-                "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+                "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
                 "evidence": {"same_as": "judge"},
-                "attribution": {"python": "openrsi_attribution:CellContrastAttributor"},
-                "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 6}},
-                "gate": {"python": "openrsi_gate:HoldoutGate", "with": gate or {}},
-                "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
-                "memory": {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}},
+                "attribution": {"python": "anyrsi_attribution:CellContrastAttributor"},
+                "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 6}},
+                "gate": {"python": "anyrsi_gate:HoldoutGate", "with": gate or {}},
+                "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
+                "memory": {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}},
             "loop": {"holdout_limit": 6, "train_limit": 6}}
     if records:
         data["records"] = {"path": "state/records"}
     base.mkdir(parents=True, exist_ok=True)
-    (base / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    return load_config(base / "openrsi.yaml")
+    (base / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return load_config(base / "anyrsi.yaml")
 
 
 def run(cfg, generations=1, logs=None):
@@ -84,7 +84,7 @@ def test_bound_run_records_receipts_and_hands_agent_the_plan(tmp_path):
         async with Wiring(config(tmp_path / "ep", records=False)) as w:
             r = Runner(w, w.config.loop)
             await r._load_targets()
-            from openrsi_runtime import CellRegistry
+            from anyrsi_runtime import CellRegistry
             r.registry = await CellRegistry.open(w.env, w.config.cells)
             r.binding = EnvVarBinding(**BINDING["with"])
             genome = {t: (await tgt.facade.snapshot()).id for t, tgt in r.targets.items()}
@@ -181,11 +181,11 @@ def test_resume_with_changed_manifest_only_warns_without_records(tmp_path):
 
 
 def test_manifest_ignores_credentials_and_transport(tmp_path):
-    from openrsi_runtime.records import sanitized_config
+    from anyrsi_runtime.records import sanitized_config
     a = sanitized_config(config(tmp_path / "a"))
     cfg_b = config(tmp_path / "b")
     cfg_b.components["gate"] = cfg_b.components["gate"].model_copy(
-        update={"python": None, "command": ["openrsi-gate"], "env": {"API_KEY": "secret"}, "with_": {}})
+        update={"python": None, "command": ["anyrsi-gate"], "env": {"API_KEY": "secret"}, "with_": {}})
     b = sanitized_config(cfg_b)
     assert "secret" not in json.dumps(b) and b["components"]["gate"]["env"] == ["API_KEY"]
     assert a["components"]["judge"] == b["components"]["judge"]

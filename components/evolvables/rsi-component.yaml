@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/skills
+protocol: anyrsi/0.4
+name: anyrsi/skills
 version: 0.4.0
 description: skill 库。条目是 Python 函数（data.code），在独立子进程里执行，有 CPU、内存和超时限制。
 kinds: [evolvable, skill]
@@ -15,5 +15,5 @@ implements:
 capabilities: {sandbox: subprocess, snapshot_tree: true}
 runtime:
   transport: stdio
-  command: [openrsi-evolvables, --kind, skills, --path, ./skills-store]
+  command: [anyrsi-evolvables, --kind, skills, --path, ./skills-store]
 evolvable_surfaces: [skills]

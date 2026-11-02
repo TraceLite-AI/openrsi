@@ -8,14 +8,14 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from openrsi import Agent, Environment, Proposer, build_server
-from openrsi.conformance import check
-from openrsi_runtime import IsolationError, Runner, RunConfig, Wiring, load_config
+from anyrsi import Agent, Environment, Proposer, build_server
+from anyrsi.conformance import check
+from anyrsi_runtime import IsolationError, Runner, RunConfig, Wiring, load_config
 
 import secret_ops
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = ROOT / "examples" / "secret_ops" / "openrsi.yaml"
+EXAMPLE = ROOT / "examples" / "secret_ops" / "anyrsi.yaml"
 
 
 def config(tmp_path, memory_command=False, **overrides):
@@ -23,14 +23,14 @@ def config(tmp_path, memory_command=False, **overrides):
     data = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     if memory_command:
         pythonpath = os.pathsep.join(str(ROOT / p) for p in ("sdk/python", "components/memory"))
-        data["components"]["memory"] = {"command": [sys.executable, "-m", "openrsi_memory", "--path", "state/memory"],
+        data["components"]["memory"] = {"command": [sys.executable, "-m", "anyrsi_memory", "--path", "state/memory"],
                                         "env": {"PYTHONPATH": pythonpath}}
     else:
-        data["components"]["memory"] = {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
+        data["components"]["memory"] = {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
     data["components"]["lineage"]["with"]["path"] = "state/lineage.jsonl"
     for slot, spec in overrides.items():
         data["components"][slot] = spec
-    path = tmp_path / "openrsi.yaml"
+    path = tmp_path / "anyrsi.yaml"
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     return load_config(path)
 
@@ -129,15 +129,15 @@ def test_mixed_local_and_mcp_subprocess(tmp_path):
 
 
 def test_wrong_component_kind_is_reported(tmp_path):
-    cfg = config(tmp_path, gate={"python": "openrsi_lineage:LineageStore"})
+    cfg = config(tmp_path, gate={"python": "anyrsi_lineage:LineageStore"})
     with pytest.raises(ValueError, match="gate 位置需要 gate"):
         run(cfg, generations=1)
 
 
 def test_cli_run_and_log(tmp_path, capsys):
-    from openrsi_runtime.cli import main
+    from anyrsi_runtime.cli import main
     cfg = config(tmp_path)
-    path = str(cfg.base_dir / "openrsi.yaml")
+    path = str(cfg.base_dir / "anyrsi.yaml")
     assert main(["run", path, "--generations", "2"]) == 0
     assert main(["log", path]) == 0
     out = capsys.readouterr().out

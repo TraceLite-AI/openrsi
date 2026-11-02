@@ -13,7 +13,7 @@ import json
 import random
 from pathlib import Path
 
-from openrsi import Environment, Task
+from anyrsi import Environment, Task
 
 VERL_SUFFIX = 'Let\'s think step by step and output the final answer after "####".'
 

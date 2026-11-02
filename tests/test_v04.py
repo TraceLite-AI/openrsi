@@ -11,17 +11,17 @@ from pathlib import Path
 import pytest
 import yaml
 
-from openrsi import (Episode, Patch, ProposalRequest, Proposer, Task, TellRequest, Trajectory, Verdict,
+from anyrsi import (Episode, Patch, ProposalRequest, Proposer, Task, TellRequest, Trajectory, Verdict,
                      build_server, connect, load_manifest)
-from openrsi.conformance import check
-from openrsi_algorithm import (ArchiveAlgorithm, GreedyAlgorithm, IslandAlgorithm, MapElitesAlgorithm,
+from anyrsi.conformance import check
+from anyrsi_algorithm import (ArchiveAlgorithm, GreedyAlgorithm, IslandAlgorithm, MapElitesAlgorithm,
                                ParetoAlgorithm, ShinkaAlgorithm)
-from openrsi_gate import HoldoutGate
-from openrsi_guard import PolicyGuard
-from openrsi_harness import HarnessAgent, HarnessEvolvable
-from openrsi_judge import EvidenceJudge
-from openrsi_runtime import Runner, Wiring, load_config
-from openrsi.types import GateRequest
+from anyrsi_gate import HoldoutGate
+from anyrsi_guard import PolicyGuard
+from anyrsi_harness import HarnessAgent, HarnessEvolvable
+from anyrsi_judge import EvidenceJudge
+from anyrsi_runtime import Runner, Wiring, load_config
+from anyrsi.types import GateRequest
 
 ROOT = Path(__file__).resolve().parents[1]
 EQ = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
@@ -164,7 +164,7 @@ def test_gate_no_regression():
 
 
 def test_gate_paired_significance():
-    from openrsi_gate import paired_z
+    from anyrsi_gate import paired_z
     # 10 道题，候选修好 6 道、改坏 0 道：McNemar z = 6 / √6 ≈ 2.45
     base = {f"t{i}": 0.0 for i in range(6)} | {f"t{i}": 1.0 for i in range(6, 10)}
     cand = {f"t{i}": 1.0 for i in range(10)}
@@ -211,12 +211,12 @@ class DupProposer(Proposer):
 
 
 def secret_config(tmp_path, **components):
-    data = yaml.safe_load((ROOT / "examples/secret_ops/openrsi.yaml").read_text(encoding="utf-8"))
-    data["components"]["memory"] = {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
+    data = yaml.safe_load((ROOT / "examples/secret_ops/anyrsi.yaml").read_text(encoding="utf-8"))
+    data["components"]["memory"] = {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
     data["components"]["lineage"]["with"]["path"] = "state/lineage.jsonl"
     data["components"].update(components)
     data["loop"]["max_patches"] = 2
-    path = tmp_path / "openrsi.yaml"
+    path = tmp_path / "anyrsi.yaml"
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     return load_config(path)
 
@@ -232,7 +232,7 @@ def run(cfg, generations=None):
 
 def test_runtime_screens_duplicates_and_records_task_scores(tmp_path):
     cfg = secret_config(tmp_path, proposer={"python": "test_v04:DupProposer"},
-                        algorithm={"python": "openrsi_algorithm:ShinkaAlgorithm",
+                        algorithm={"python": "anyrsi_algorithm:ShinkaAlgorithm",
                                    "with": {"proposers": ["only"], "max_generations": 2, "patience": 5}})
     reports, log = run(cfg)
     first = reports[0]
@@ -245,9 +245,9 @@ def test_runtime_screens_duplicates_and_records_task_scores(tmp_path):
 
 
 def test_runtime_pareto_with_no_regression_gate(tmp_path):
-    cfg = secret_config(tmp_path, algorithm={"python": "openrsi_algorithm:ParetoAlgorithm",
+    cfg = secret_config(tmp_path, algorithm={"python": "anyrsi_algorithm:ParetoAlgorithm",
                                              "with": {"max_generations": 12, "patience": 6, "target_score": 1.0}},
-                        gate={"python": "openrsi_gate:HoldoutGate", "with": {"max_task_regressions": 0}})
+                        gate={"python": "anyrsi_gate:HoldoutGate", "with": {"max_task_regressions": 0}})
     _, log = run(cfg)
     accepted = [e for e in log if e.status == "accepted"]
     assert accepted and max(e.metrics["holdout"] for e in accepted) == 1.0
@@ -359,13 +359,13 @@ def test_guard_file_ops():
 def test_harness_example_blocks_eval_tampering_and_solves(tmp_path):
     src = ROOT / "examples/harness_ops"
     dst = tmp_path / "harness_ops"
-    shutil.copytree(src, dst, ignore=shutil.ignore_patterns(".openrsi", "__pycache__"))
-    cfg = load_config(dst / "openrsi.yaml")
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns(".anyrsi", "__pycache__"))
+    cfg = load_config(dst / "anyrsi.yaml")
     reports, log = run(cfg)
     blocked = [e for e in log if e.id.startswith("blocked_")]
     assert len(blocked) == 1 and "protected_path" in blocked[0].decision.reason
     assert max(e.metrics.get("holdout", 0.0) for e in log) == 1.0
-    repo = dst / ".openrsi" / "harness"
+    repo = dst / ".anyrsi" / "harness"
     assert (repo / "eval" / "README.md").exists() and not (repo / "eval" / "score.py").exists()
     commits = subprocess.run(["git", "-C", str(repo), "log", "--all", "--oneline"], capture_output=True,
                              text=True).stdout.splitlines()
@@ -374,9 +374,9 @@ def test_harness_example_blocks_eval_tampering_and_solves(tmp_path):
 
 # ---------------------------------------------------------------- C. verl
 
-from openrsi_verl import (DataLeakError, DistillProposer, WeightsEvolvable, episodes_to_sft_rows,  # noqa: E402
+from anyrsi_verl import (DataLeakError, DistillProposer, WeightsEvolvable, episodes_to_sft_rows,  # noqa: E402
                           make_compute_score, reference_from, tasks_to_rl_rows, write_rows)
-from openrsi_verl import reward as verl_reward  # noqa: E402
+from anyrsi_verl import reward as verl_reward  # noqa: E402
 
 
 def episode(task_id, split, output, expected, passed):
@@ -398,13 +398,13 @@ def test_verl_reward_function_uses_judge():
 
 def test_verl_module_level_reward_reads_env(tmp_path, monkeypatch):
     spec = tmp_path / "judge.yaml"
-    spec.write_text(yaml.safe_dump({"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}}))
+    spec.write_text(yaml.safe_dump({"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}}))
     monkeypatch.setattr(verl_reward, "_CACHED", None)
-    monkeypatch.setenv("OPENRSI_JUDGE", str(spec))
+    monkeypatch.setenv("ANYRSI_JUDGE", str(spec))
     assert verl_reward.compute_score("ops", "7", "7") == 1.0
     monkeypatch.setattr(verl_reward, "_CACHED", None)
-    monkeypatch.delenv("OPENRSI_JUDGE")
-    with pytest.raises(RuntimeError, match="OPENRSI_JUDGE"):
+    monkeypatch.delenv("ANYRSI_JUDGE")
+    with pytest.raises(RuntimeError, match="ANYRSI_JUDGE"):
         verl_reward.compute_score("ops", "7", "7")
 
 
@@ -504,7 +504,7 @@ def test_distill_proposer_trains_on_verified_trajectories(tmp_path):
 
 # ---------------------------------------------------------------- D. RSIHub
 
-import openrsi_rsihub as rsihub  # noqa: E402
+import anyrsi_rsihub as rsihub  # noqa: E402
 
 
 def row(genid, score, tasks, parent=None, valid=True, h="H"):
@@ -618,17 +618,17 @@ def test_rsihub_install_operator_scripts(tmp_path):
     (root / "library" / "gate").mkdir(parents=True)
     written = rsihub.install(root)
     assert sorted(p.relative_to(root).as_posix() for p in written) == [
-        "library/gate/openrsi_no_regression.py", "library/select/openrsi_shinka.py",
-        "library/validate/openrsi_guard.py"]
+        "library/gate/anyrsi_no_regression.py", "library/select/anyrsi_shinka.py",
+        "library/validate/anyrsi_guard.py"]
     text = written[0].read_text()
-    assert "__OPENRSI_PATHS__" not in text and "_OPENRSI_PATHS: list[str] = [" in text
+    assert "__ANYRSI_PATHS__" not in text and "_ANYRSI_PATHS: list[str] = [" in text
     for p in written:  # 脚本语法正确，并且按 RSIHub 约定在 __main__ 里调用 sdk.main
         compile(p.read_text(), str(p), "exec")
         assert "sdk.main(" in p.read_text() and "config_schema=CONFIG" in p.read_text()
     with pytest.raises(FileExistsError):
         rsihub.install(root)
     rsihub.install(root, overwrite=True, embed_paths=False)
-    assert "__OPENRSI_PATHS__" in written[0].read_text()
+    assert "__ANYRSI_PATHS__" in written[0].read_text()
 
 
 def test_rsihub_operator_classes_against_stub_interfaces(tmp_path, monkeypatch):
@@ -668,19 +668,19 @@ def test_rsihub_operator_classes_against_stub_interfaces(tmp_path, monkeypatch):
         return ns
 
     ctx = types.SimpleNamespace(config={}, run_dir=tmp_path / "run", rng=random.Random(0), fan_out=2)
-    gate = load("gate", "openrsi_no_regression")["OpenRSINoRegressionGate"]()
+    gate = load("gate", "anyrsi_no_regression")["AnyRSINoRegressionGate"]()
     res = gate.decide(row(1, 1.0, {"a": 1.0}, 0), row(0, 0.0, {"a": 0.0}), ctx)
     assert res.decision == "accept"
 
-    sel = load("select", "openrsi_shinka")["OpenRSIShinkaSelect"]()
+    sel = load("select", "anyrsi_shinka")["AnyRSIShinkaSelect"]()
     archive = types.SimpleNamespace(valid_parents=lambda: [row(0, 0.2, {}), row(1, 0.8, {}, 0)],
                                     rows=lambda: [row(0, 0.2, {}), row(1, 0.8, {}, 0)])
     assert len(sel.pick(archive, ctx).parents) == 2
 
     repo = git_checkout(tmp_path)
     (repo / "operators" / "a.py").write_text("X = 9\n")
-    val = load("validate", "openrsi_guard")["OpenRSIGuardValidate"]()
+    val = load("validate", "anyrsi_guard")["AnyRSIGuardValidate"]()
     out = val.validate(repo, ctx)
-    assert not out.accept and out.artifacts == ["validate/openrsi_guard.json"]
-    assert json.loads((ctx.run_dir / "validate" / "openrsi_guard.json").read_text())["findings"]
+    assert not out.accept and out.artifacts == ["validate/anyrsi_guard.json"]
+    assert json.loads((ctx.run_dir / "validate" / "anyrsi_guard.json").read_text())["findings"]
 

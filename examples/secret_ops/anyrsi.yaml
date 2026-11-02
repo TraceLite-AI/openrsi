@@ -1,0 +1,32 @@
+# 秘密运算符示例：自定义的环境、执行体、提案器 + 官方的判别器、memory、归因、算法、准入、谱系。
+# memory 作为独立的 MCP 子进程运行，其余在进程内；换成 command 或 url 就能把任何一个拆出去。
+#
+#   anyrsi run examples/secret_ops/anyrsi.yaml
+#   anyrsi log examples/secret_ops/anyrsi.yaml
+
+protocol: anyrsi/0.4
+name: secret-ops
+plugins: [secret_ops]
+
+components:
+  env:         {python: "secret_ops:SecretOpsEnv", with: {seed: 0}}
+  agent:       {python: "secret_ops:RuleAgent"}
+  proposer:    {python: "secret_ops:RuleInducer"}
+
+  judge:
+    python: "anyrsi_judge:EvidenceJudge"
+    with:
+      rubric:
+        items:
+          - {id: correct, check: output_equals, required: true}
+  evidence:    {same_as: judge}
+
+  memory:      {command: [python, -m, anyrsi_memory, --path, .anyrsi/memory]}
+  attribution: {python: "anyrsi_attribution:RubricEvidenceAttributor"}
+  algorithm:   {python: "anyrsi_algorithm:GreedyAlgorithm", with: {max_generations: 12, patience: 6, target_score: 1.0}}
+  gate:        {python: "anyrsi_gate:HoldoutGate", with: {min_gain: 0.0}}
+  lineage:     {python: "anyrsi_lineage:LineageStore", with: {path: .anyrsi/lineage.jsonl}}
+
+loop:
+  retrieve_k: 5
+  max_patches: 1

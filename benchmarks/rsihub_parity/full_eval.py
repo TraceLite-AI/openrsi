@@ -48,7 +48,7 @@ def export_target(ws: Path, genid: str, dest: Path) -> str:
                     t.extract(m, dest, filter="data")
                 else:
                     t.extract(m, dest)
-    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=openrsi", "-c", "user.email=openrsi@localhost",
+    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=anyrsi", "-c", "user.email=anyrsi@localhost",
                                                  "commit", "-qm", f"export gen/{genid} from {ws.name}"]):
         sh(["git", "-C", str(dest), *args])
     return sh(["git", "-C", str(dest), "rev-parse", "HEAD"]).strip()
@@ -70,8 +70,8 @@ def main() -> None:
         raise SystemExit(f"{repo} 已存在")
     sha = export_target(ws, genid, repo)
 
-    arm = ws.name.removeprefix("openrsi-parity-")
-    source = rsihub / "recipes" / f"openrsi_parity_{arm}" / "evolve.yaml"
+    arm = ws.name.removeprefix("anyrsi-parity-")
+    source = rsihub / "recipes" / f"anyrsi_parity_{arm}" / "evolve.yaml"
     recipe = yaml.safe_load((source if source.exists() else ws / "evolve.yaml").read_text())
     recipe["experiment"].update({"id": name, "max_generations": 0})
     recipe["target"].update({"seed": repo.as_uri(), "revision": sha})

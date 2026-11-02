@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "secret_ops"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skill_ops"))
 
-from openrsi import Patch, ProposalRequest, Proposer  # noqa: E402
-from secret_ops import OPS, SecretOpsEnv  # noqa: E402,F401  SecretOpsEnv 供 openrsi.yaml 引用
+from anyrsi import Patch, ProposalRequest, Proposer  # noqa: E402
+from secret_ops import OPS, SecretOpsEnv  # noqa: E402,F401  SecretOpsEnv 供 anyrsi.yaml 引用
 from skill_ops import EXPR  # noqa: E402
 
 STRATEGY = "agent/strategy.py"

@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/rubric-evidence-attribution
+protocol: anyrsi/0.4
+name: anyrsi/rubric-evidence-attribution
 version: 0.4.0
 description: 沿着判决引用的证据把失败追到轨迹步骤，把成败记到用过的 memory 条目上。不需要重跑 agent。
 kinds: [attribution]
@@ -9,4 +9,4 @@ implements:
 capabilities: {}
 runtime:
   transport: stdio
-  command: [openrsi-attribution]
+  command: [anyrsi-attribution]

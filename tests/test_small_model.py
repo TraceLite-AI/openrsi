@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from openrsi import Episode, Item, Patch, ProposalRequest, Step, Task, Trajectory, Verdict
-from openrsi_judge import EvidenceJudge
-from openrsi_llm import ChatAgent, PromptRewriter
-from openrsi_proposer import CompositeProposer
-from openrsi_runtime import Runner, Wiring, load_config
-from openrsi_verl import episode_messages
+from anyrsi import Episode, Item, Patch, ProposalRequest, Step, Task, Trajectory, Verdict
+from anyrsi_judge import EvidenceJudge
+from anyrsi_llm import ChatAgent, PromptRewriter
+from anyrsi_proposer import CompositeProposer
+from anyrsi_runtime import Runner, Wiring, load_config
+from anyrsi_verl import episode_messages
 
 ROOT = Path(__file__).resolve().parents[1]
 EX = ROOT / "examples" / "small_model"
@@ -37,13 +37,13 @@ def test_judge_extracts_answer():
 
 
 def test_composite_accepts_any_proposer_class(tmp_path):
-    p = CompositeProposer([{"name": "weights", "python": "openrsi_verl:DistillProposer",
+    p = CompositeProposer([{"name": "weights", "python": "anyrsi_verl:DistillProposer",
                             "with": {"data_dir": str(tmp_path), "min_examples": 1}}, "lesson"])
     assert set(p.members) == {"weights", "lesson"}
     with pytest.raises(ValueError, match="未知"):
         CompositeProposer(["nope"])
     with pytest.raises(ValueError, match="重复"):
-        CompositeProposer([{"name": "a", "python": "openrsi_proposer:LessonProposer"}] * 2)
+        CompositeProposer([{"name": "a", "python": "anyrsi_proposer:LessonProposer"}] * 2)
 
 
 def test_episode_messages_uses_agent_conversation():
@@ -89,7 +89,7 @@ def test_prompt_rewriter_patch(tmp_path):
     proc = subprocess.Popen([sys.executable, str(EX / "mock_llm.py"), "--model", "x", "--port", str(port)])
     try:
         _wait(port)
-        from openrsi_evolvables import PromptEvolvable
+        from anyrsi_evolvables import PromptEvolvable
 
         prompt = PromptEvolvable()
         info = prompt.describe()
@@ -110,13 +110,13 @@ def test_prompt_rewriter_patch(tmp_path):
 
 def test_full_pipeline_with_mock_model(tmp_path):
     work = tmp_path / "small_model"
-    shutil.copytree(EX, work, ignore=shutil.ignore_patterns(".openrsi", "__pycache__", "toy_data"))
+    shutil.copytree(EX, work, ignore=shutil.ignore_patterns(".anyrsi", "__pycache__", "toy_data"))
     subprocess.run([sys.executable, "make_toy_data.py", "toy_data"], cwd=work, check=True, capture_output=True)
-    cfg_text = (work / "openrsi.mock.yaml").read_text().replace("port: 8199", f"port: {_free_port()}")
+    cfg_text = (work / "anyrsi.mock.yaml").read_text().replace("port: 8199", f"port: {_free_port()}")
     port = int(cfg_text.split("port: ")[1].split()[0])
     cfg_text = cfg_text.replace("127.0.0.1:8199", f"127.0.0.1:{port}")
-    (work / "openrsi.mock.yaml").write_text(cfg_text)
-    cfg = load_config(work / "openrsi.mock.yaml")
+    (work / "anyrsi.mock.yaml").write_text(cfg_text)
+    cfg = load_config(work / "anyrsi.mock.yaml")
 
     async def go():
         async with Wiring(cfg) as w:
@@ -133,8 +133,8 @@ def test_full_pipeline_with_mock_model(tmp_path):
     assert root.metrics["holdout"] == 0.0  # 起点：答案格式不对，判别器一题都抽不到
     best = max(accepted, key=lambda e: e.metrics["holdout"])
     assert set(best.snapshots) == {"prompt", "weights"} and best.snapshots["weights"] != "ckpt_root"
-    assert len(list((work / ".openrsi" / "server-logs").glob("server-*.log"))) >= 2  # 换过权重，重启过服务
-    sft = next((work / ".openrsi" / "sft").glob("*.jsonl"))
+    assert len(list((work / ".anyrsi" / "server-logs").glob("server-*.log"))) >= 2  # 换过权重，重启过服务
+    sft = next((work / ".anyrsi" / "sft").glob("*.jsonl"))
     first = json.loads(sft.read_text().splitlines()[0])
     assert [m["role"] for m in first["messages"]] == ["system", "user", "assistant"]
     assert "####" in first["messages"][0]["content"]  # 训练数据带着进化后的系统提示
@@ -166,7 +166,7 @@ def _wait(port: int) -> None:
     ("rsi-component.rewriter.yaml", lambda: PromptRewriter(base_url="http://127.0.0.1:9/v1")),
 ])
 def test_llm_manifests_match(manifest, component):
-    from openrsi import build_server, connect, load_manifest
+    from anyrsi import build_server, connect, load_manifest
 
     async def served():
         async with connect(build_server(component())) as c:
@@ -181,8 +181,8 @@ def test_llm_manifests_match(manifest, component):
 def test_jsonl_with_unicode_line_separators(tmp_path):
     """GSM8K 和 LLM 输出里会有 U+2028 这类字符；str.splitlines() 会在它们那里断行，读 JSONL 不能用它。"""
     from gsm8k_env import GSM8KEnv
-    from openrsi import LineageEntry
-    from openrsi_lineage import LineageStore
+    from anyrsi import LineageEntry
+    from anyrsi_lineage import LineageStore
 
     q = "line one\u2028line two\u2029end"
     for name in ("train", "test"):
@@ -199,8 +199,8 @@ def test_jsonl_with_unicode_line_separators(tmp_path):
 
 
 def test_prompt_initial_and_copy_filter(tmp_path):
-    from openrsi_evolvables import PromptEvolvable
-    from openrsi_llm import _copies
+    from anyrsi_evolvables import PromptEvolvable
+    from anyrsi_llm import _copies
 
     p = PromptEvolvable(path=tmp_path / "p", initial=[{"id": "instructions", "text": "Answer after ####."}])
     assert p.render() == "Answer after ####." and p.snapshot().id != "snap_root"

@@ -18,9 +18,9 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import test_composition as tc  # noqa: E402
 
-from openrsi import GateRequest, Task, Trajectory, connect  # noqa: E402
-from openrsi_gate import HoldoutGate  # noqa: E402
-from openrsi_judge import EvidenceJudge  # noqa: E402
+from anyrsi import GateRequest, Task, Trajectory, connect  # noqa: E402
+from anyrsi_gate import HoldoutGate  # noqa: E402
+from anyrsi_judge import EvidenceJudge  # noqa: E402
 
 
 def stats(samples: list[float]) -> dict:
@@ -83,14 +83,14 @@ def main() -> None:
     ap.add_argument("--calls", type=int, default=300)
     args = ap.parse_args()
     env = {**os.environ, "PYTHONPATH": tc.PYTHONPATH}
-    launch = [sys.executable, "-m", "openrsi.launch"]
-    stdio = {"gate": [*launch, "openrsi_gate:HoldoutGate"],
-             "judge": [*launch, "openrsi_judge:EvidenceJudge", "--with", json.dumps({"rubric": tc.EQ})], "env": env}
+    launch = [sys.executable, "-m", "anyrsi.launch"]
+    stdio = {"gate": [*launch, "anyrsi_gate:HoldoutGate"],
+             "judge": [*launch, "anyrsi_judge:EvidenceJudge", "--with", json.dumps({"rubric": tc.EQ})], "env": env}
     base = Path(tempfile.mkdtemp())
     procs = []
     try:
-        gp, gurl = tc.start_http("openrsi_gate:HoldoutGate", {}, base)
-        jp, jurl = tc.start_http("openrsi_judge:EvidenceJudge", {"rubric": tc.EQ}, base)
+        gp, gurl = tc.start_http("anyrsi_gate:HoldoutGate", {}, base)
+        jp, jurl = tc.start_http("anyrsi_judge:EvidenceJudge", {"rubric": tc.EQ}, base)
         procs = [gp, jp]
         result = {
             "python": sys.version.split()[0], "calls": args.calls,

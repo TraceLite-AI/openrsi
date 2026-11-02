@@ -17,7 +17,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from openrsi import Agent, AnchorExample, Environment, Item, Step, Task, Trajectory
+from anyrsi import Agent, AnchorExample, Environment, Item, Step, Task, Trajectory
 
 
 def _task(split: str, i: int) -> Task:

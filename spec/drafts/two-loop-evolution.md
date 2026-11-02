@@ -1,13 +1,13 @@
 # 草案：双层进化、受控环境绑定与独立验证
 
-状态：设计稿。实施进度：P0–P4 已在参考实现落地（P2 `runtime/openrsi_runtime/bindings.py`、`records.py`；P3 `benchmarks/native_loop`；P4 `runtime/openrsi_runtime/outer.py`）。P5 的适配器严格模式已实现，真实 RSIHub 运行尚未进行。此后又实现了：元层可进化体（improver、curriculum，按同预算下游提升准入，`loop.meta_every`）、外循环自动生成候选（`OuterLoop.auto_round`，仍需人批准）、循环即 agent（`runtime/openrsi_runtime/nesting.py`）。
+状态：设计稿。实施进度：P0–P4 已在参考实现落地（P2 `runtime/anyrsi_runtime/bindings.py`、`records.py`；P3 `benchmarks/native_loop`；P4 `runtime/anyrsi_runtime/outer.py`）。P5 的适配器严格模式已实现，真实 RSIHub 运行尚未进行。此后又实现了：元层可进化体（improver、curriculum，按同预算下游提升准入，`loop.meta_every`）、外循环自动生成候选（`OuterLoop.auto_round`，仍需人批准）、循环即 agent（`runtime/anyrsi_runtime/nesting.py`）。
 代码核对基线：`9a23c1b08b172fcbe32acea6526eaa6b428b90b9`（2026-10-30 main）。
 环境定义、坐标、EnvCell 和工具兼容规则沿用 [environment-cells.md](environment-cells.md)，不另建一套。
 本文中的接口名是拟议契约，除“当前实现”明确列出的能力外，不表示已经可用。
 
 ## 1. 目标与边界
 
-OpenRSI 应能改进 agent，也能研究怎样改进“产生任务、评估、解释失败”的过程。
+AnyRSI 应能改进 agent，也能研究怎样改进“产生任务、评估、解释失败”的过程。
 两者必须分层：一次受控实验内固定比较条件，跨实验周期才允许提升外围组件版本。
 先打通有证据的内循环，再逐项开放外循环，不要求第一天让所有组件都自进化。
 
@@ -23,8 +23,8 @@ weights 仅复用既有适配能力；本设计不要求新增训练后端或真
 
 ## 2. 当前实现与缺口
 
-- `runtime/openrsi_runtime/loop.py` 已实现 ask → train → attribution → propose → screen → guard → apply → holdout → gate → lineage → tell。
-- `ProposalRequest.attributions` 已传给提案器；`components/llm/openrsi_llm/__init__.py` 中 PromptRewriter 目前只读失败题及 rubric 失败说明，不消费 attributions。
+- `runtime/anyrsi_runtime/loop.py` 已实现 ask → train → attribution → propose → screen → guard → apply → holdout → gate → lineage → tell。
+- `ProposalRequest.attributions` 已传给提案器；`components/llm/anyrsi_llm/__init__.py` 中 PromptRewriter 目前只读失败题及 rubric 失败说明，不消费 attributions。
 - `EvolvingJudge` 已把 rubric 存成可补丁/快照/回滚的条目；runtime 用 `judge_every` 交替修改 agent 和 judge，并以 anchor 一致率准入 judge。
 - 当前 `judge_epoch` / `progress = 2 * epoch + holdout` 是搜索排序机制，不能当跨 judge 版本的能力提升证据。
 - `RunConfig` 尚无 `cells`；`score()` 的逐题字典按 task id 建键，多格同题会覆盖。
@@ -173,16 +173,16 @@ PromotionRecord: proposal_id, validation_hash, approver, old_ref, new_ref,
 ### A. RSIHub 外部组件替换
 
 沿用 `benchmarks/rsihub_parity/` 和 `adapters/rsihub/`，先核对真实上游版本与安装。
-对照 RSIHub 原版与只替换指定 OpenRSI 组件的插件版；逐项替换并保留消融。
+对照 RSIHub 原版与只替换指定 AnyRSI 组件的插件版；逐项替换并保留消融。
 模型、任务、种子、执行环境、评测器、总调用/token/时间预算一致，替换清单与版本入档。
 受控对照的两组必须有相同可修改边界，固定 validate/gate；保留 Hyperagents 算子自进化的原版 parity 另列实验，不能混称固定边界实验。
 严格模式显式锁定允许回退数、gate/guard 配置，不沿用未核对的默认值；父子完整逐题向量及任务 manifest 哈希必须一致。
 逐题数据缺失或不匹配直接判验证失败，禁止适配器静默退回只比总分；文件护栏启用必需文件/受保护路径及编译检查。
 用真实 SDK/适配器调用做负向探针（漏题、篡改 gate、改保护文件、缺文件、编译失败），不能只验证脚本入口或返回码。
-此线回答组件替换效果，不证明原生 OpenRSI 的完整循环有效。
+此线回答组件替换效果，不证明原生 AnyRSI 的完整循环有效。
 接口替身和 mock 只能证明契约；未跑真实 RSIHub 必须标记未验证。
 
-### B. OpenRSI 原生完整循环
+### B. AnyRSI 原生完整循环
 
 使用真实 Runner，保留 ask/train/attribution/propose/screen/guard/apply/holdout/gate/lineage/tell 事件。
 
@@ -204,11 +204,11 @@ A 不必烧完搜索预算；明确报告各组实际消耗，并给予相同最
 
 | 阶段 | 文件触点 | 完成条件 |
 |---|---|---|
-| P0 归因接入 | `components/llm/openrsi_llm/__init__.py`、新增 `tests/test_llm_attribution.py`、runtime 测试 | 归因实际出现在 train 提案载荷；空归因兼容；泄漏及未知引用测试 |
-| P1 环境格协议 | `sdk/python/openrsi/{types,protocol,components,client,conformance}.py`、`runtime/openrsi_runtime/{config,wiring,loop}.py` | 格发现、过滤、指纹、tuple 分数、旧插件兼容贯通三种传输 |
-| P2 受控绑定/记录 | 新增 `runtime/openrsi_runtime/{bindings,records}.py`，接入 harness、lineage | 两格 fixture 真正执行于不同绑定；receipt 可验；漂移停止；raw 不可覆盖 |
+| P0 归因接入 | `components/llm/anyrsi_llm/__init__.py`、新增 `tests/test_llm_attribution.py`、runtime 测试 | 归因实际出现在 train 提案载荷；空归因兼容；泄漏及未知引用测试 |
+| P1 环境格协议 | `sdk/python/anyrsi/{types,protocol,components,client,conformance}.py`、`runtime/anyrsi_runtime/{config,wiring,loop}.py` | 格发现、过滤、指纹、tuple 分数、旧插件兼容贯通三种传输 |
+| P2 受控绑定/记录 | 新增 `runtime/anyrsi_runtime/{bindings,records}.py`，接入 harness、lineage | 两格 fixture 真正执行于不同绑定；receipt 可验；漂移停止；raw 不可覆盖 |
 | P3 原生实验 | 新增 `benchmarks/native_loop/`，扩展 runtime 集成测试 | A/B/C、等预算 B/C、sealed 隔离、恢复一致与审计产物齐全 |
-| P4 外围验证 | 新增 `runtime/openrsi_runtime/outer.py` 及版本化模型、judge 测试 | 单目标 proposal/validate/promote/reject/rollback；独立资格验证；默认关闭 |
+| P4 外围验证 | 新增 `runtime/anyrsi_runtime/outer.py` 及版本化模型、judge 测试 | 单目标 proposal/validate/promote/reject/rollback；独立资格验证；默认关闭 |
 | P5 外部实验 | `benchmarks/rsihub_parity/`、`adapters/rsihub/`、现场测试文档 | 原版/插件版真实运行或准确标记阻塞，不把 synthetic 当结果 |
 
 新文件名是建议，允许按现有结构拆分；语义契约和测试不可省略。
@@ -237,6 +237,6 @@ P0 尽量不改 wire schema。P1 的环境格以拟议 0.5 可选能力发布，
 外循环先作为 runtime 实验扩展，独立 schema_version；未来新增工具需单独协议审查。
 
 实现者按 `CLAUDE.md` 执行 `pytest`、`ruff check .`。
-修改 SDK types/protocol 后执行 `python -m openrsi.export_spec spec` 并核对生成文件无漂移。
+修改 SDK types/protocol 后执行 `python -m anyrsi.export_spec spec` 并核对生成文件无漂移。
 每个阶段更新相关组件清单、REVIEW.md；修改 README 时中英文同步。
 提交报告区分已通过、失败和未运行；真实模型/框架实验未跑，不得写成已兼容或已提升。

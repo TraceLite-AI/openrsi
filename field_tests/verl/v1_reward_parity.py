@@ -1,4 +1,4 @@
-"""V1（CPU）：OpenRSI 判别器奖励和 verl 自带 gsm8k 奖励逐条对比，并用 verl 自己的加载函数加载我们的奖励。
+"""V1（CPU）：AnyRSI 判别器奖励和 verl 自带 gsm8k 奖励逐条对比，并用 verl 自己的加载函数加载我们的奖励。
 
 用法：python field_tests/verl/v1_reward_parity.py --data ~/data/gsm8k/test.parquet [--n 500]
 数据用 verl 仓库的 examples/data_preprocess/gsm8k.py 生成。

@@ -1,10 +1,10 @@
-"""R2（不花钱）：拿一个已经跑过的 RSIHub workspace，用 OpenRSI 的逻辑离线重放。
+"""R2（不花钱）：拿一个已经跑过的 RSIHub workspace，用 AnyRSI 的逻辑离线重放。
 
 - 逐题分数：多少行能算出逐题分数，任务集哈希是否一致
-- 准入：对每个有父代的候选，OpenRSI 的不回退准入怎么判，和 RSIHub 当时的判定对比
+- 准入：对每个有父代的候选，AnyRSI 的不回退准入怎么判，和 RSIHub 当时的判定对比
 - 护栏：把每个候选相对父代的改动放进临时 worktree，用 PolicyGuard 检查；再人为改一下评估器，确认会被拦
 - 选择：Shinka 选父代的分布
-- 谱系：archive.jsonl 导入成 OpenRSI 谱系
+- 谱系：archive.jsonl 导入成 AnyRSI 谱系
 
 用法：python field_tests/rsihub/r2_replay.py /path/to/RSIHub/runs/hill_climb-demo
 """
@@ -16,8 +16,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from openrsi_lineage import LineageStore
-from openrsi_rsihub import gate_decide, guard_checkout, import_archive, shinka_pick, task_scores
+from anyrsi_lineage import LineageStore
+from anyrsi_rsihub import gate_decide, guard_checkout, import_archive, shinka_pick, task_scores
 
 OUT = Path(__file__).resolve().parent.parent / "out" / "rsihub"
 
@@ -75,9 +75,9 @@ def main() -> None:
         theirs = r.get("verdict") == "keep" or r.get("valid_parent") is True
         agree[(ours, theirs)] += 1
         gate_rows.append({"genid": r["genid"], "parent": r["parent"], "score": r.get("score"),
-                          "parent_score": parent.get("score"), "rsihub": r.get("verdict"), "openrsi": ours,
+                          "parent_score": parent.get("score"), "rsihub": r.get("verdict"), "anyrsi": ours,
                           "reason": why})
-    report["gate"] = {"pairs": {f"openrsi={a},rsihub={b}": n for (a, b), n in agree.items()}, "rows": gate_rows}
+    report["gate"] = {"pairs": {f"anyrsi={a},rsihub={b}": n for (a, b), n in agree.items()}, "rows": gate_rows}
 
     # 护栏
     guard_rows = []
@@ -102,9 +102,9 @@ def main() -> None:
             target = next((f for f in sorted(ev.rglob("*")) if f.is_file()), None) if ev.is_dir() else None
             if target is None:
                 ev.mkdir(exist_ok=True)
-                target = ev / "openrsi_probe.py"
+                target = ev / "anyrsi_probe.py"
             with open(target, "a", encoding="utf-8") as f:
-                f.write("\n# openrsi tamper probe: always pass\n")
+                f.write("\n# anyrsi tamper probe: always pass\n")
             ok, reason, _ = guard_checkout(wt)
             report["tamper_probe"] = {"file": str(target.relative_to(wt)), "blocked": not ok, "reason": reason}
         finally:

@@ -3,6 +3,6 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$ROOT"
-tar czf openrsi-field-report.tgz --exclude='out/local/venv' --exclude='*.parquet' --exclude='*.safetensors' \
+tar czf anyrsi-field-report.tgz --exclude='out/local/venv' --exclude='*.parquet' --exclude='*.safetensors' \
   --exclude='*.bin' --exclude='*.pt' --exclude='out/verl/v4/weights/checkpoints/*/*' out
-echo "$ROOT/openrsi-field-report.tgz（$(du -h openrsi-field-report.tgz | cut -f1)）"
+echo "$ROOT/anyrsi-field-report.tgz（$(du -h anyrsi-field-report.tgz | cut -f1)）"

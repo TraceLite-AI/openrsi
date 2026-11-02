@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from openrsi import Episode, ProposalRequest, Task, Trajectory, Verdict
-from openrsi_verl import DistillProposer, WeightsEvolvable
+from anyrsi import Episode, ProposalRequest, Task, Trajectory, Verdict
+from anyrsi_verl import DistillProposer, WeightsEvolvable
 
 OUT = Path(__file__).resolve().parent.parent / "out" / "verl" / "v4"
 
@@ -27,7 +27,7 @@ def default_trainer(gpus: int) -> list[str]:
             "data.multiturn.enable=true", "data.multiturn.messages_key=messages",
             "data.micro_batch_size_per_gpu=4", "data.max_length=1024",
             "model.partial_pretrain={base_model}",
-            "trainer.default_local_dir={output_dir}", "trainer.project_name=openrsi-field",
+            "trainer.default_local_dir={output_dir}", "trainer.project_name=anyrsi-field",
             "trainer.experiment_name=v4", "trainer.total_epochs=1", 'trainer.logger=["console"]']
 
 

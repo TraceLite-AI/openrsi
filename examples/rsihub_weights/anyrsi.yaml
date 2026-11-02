@@ -1,0 +1,76 @@
+# 真实配置（模板，还没有在真机上跑过）：RSIHub 的 Terminal-Bench 2 题库，同一个循环里既改 agent 代码、又用 verl 训权重。
+# 准备步骤和已知的不确定之处见 README.md。路径里的 /path/to/... 要换成你自己的。
+#
+#   anyrsi run examples/rsihub_weights/anyrsi.yaml
+#
+# 每代 Shinka 在两个提案器里选一个：
+#   code     CodeRewriter：强模型（API）读错题和 mini-swe-agent 的可改源码，改代码 / 提示配置
+#   weights  DistillProposer：答对的 train 轨迹拿去 verl SFT（拒绝采样式自我蒸馏）
+#            想用错题：换成 PreferenceProposer（method: kto 或 dpo）+ trainer: builtin（单卡，自带训练器），
+#            因为 verl 没有 DPO / KTO 的训练入口
+protocol: anyrsi/0.4
+name: rsihub-tb2-code-and-weights
+
+components:
+  env:
+    python: "anyrsi_rsihub:RSIHubTaskEnv"
+    with:
+      dataset: /path/to/RSIHub/.evolve-assets/terminal-bench-2.0/raw/terminal-bench
+      seed: 0                # 和 RSIHub 对齐实验一样：89 题 → train 50 / gate 19 / sealed 20
+      train_per_round: 10    # 每代练 10 道（按代轮换），控制花费
+  agent:
+    python: "anyrsi_rsihub:HarborAgent"
+    with:
+      repo: .anyrsi/harness   # 被进化的 mini-swe-agent 源码
+      # 在 RSIHub 的环境里跑 harbor（它的 CandidateMiniSweAgent 会从 EVOLVE_CANDIDATE_SOURCE 装候选代码）
+      command: [uv, run, --project, /path/to/RSIHub, --frozen, harbor, run, -p, "{dataset}", --include-task-name, "{task}",
+                --job-name, "{job}", --jobs-dir, "{jobs_dir}", --n-attempts, "1", -n, "1", -y, -q]
+      agent_args: [--agent-import-path, "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent",
+                   --model, openai/policy]
+      # 容器里访问宿主机上的 vLLM 要用 host.docker.internal（Linux 上 Docker 需要 --add-host 或 host-gateway）
+      extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_BASE_URL=http://host.docker.internal:8100/v1",
+                   --ae, "OPENAI_API_KEY=local"]
+      env: [DOCKER_HOST]
+      timeout: 3600
+      server:   # 被训练的模型由 vLLM 提供；权重换了就重启
+        port: 8100
+        log_dir: .anyrsi/vllm-logs
+        command: [python, -m, vllm.entrypoints.openai.api_server, --model, "{model}", --served-model-name, policy,
+                  --host, 0.0.0.0, --port, "{port}", --gpu-memory-utilization, "0.5", --max-model-len, "32768",
+                  --enable-auto-tool-choice, --tool-call-parser, hermes]
+  judge: {python: "anyrsi_rsihub:HarborRewardJudge"}
+  proposer:
+    python: "anyrsi_proposer:CompositeProposer"
+    with:
+      proposers:
+        - name: code
+          python: "anyrsi_llm:CodeRewriter"
+          with: {base_url: "https://api.openai.com/v1", model: gpt-5.4, api_key_env: OPENAI_API_KEY, max_files: 2}
+        - name: weights
+          python: "anyrsi_weights:DistillProposer"
+          with: {data_dir: .anyrsi/sft, min_examples: 8}
+  algorithm: {python: "anyrsi_algorithm:ShinkaAlgorithm", with: {proposers: [code, weights], max_generations: 10, patience: 4}}
+  gate:      {python: "anyrsi_gate:HoldoutGate", with: {max_task_regressions: 2}}
+  guard:     {python: "anyrsi_guard:PolicyGuard"}
+  lineage:   {python: "anyrsi_lineage:LineageStore", with: {path: .anyrsi/lineage.jsonl}}
+
+evolvables:
+  harness:
+    python: "anyrsi_harness:HarnessEvolvable"
+    with:
+      repo: .anyrsi/harness
+      template: /path/to/mini-swe-agent    # git clone https://github.com/SWE-agent/mini-swe-agent && git checkout 388da74
+      mutable: ["src/minisweagent/config/mini.yaml", "src/minisweagent/agents/default.py"]
+  weights:
+    python: "anyrsi_weights:WeightsEvolvable"
+    with:
+      base_model: Qwen/Qwen3-32B
+      path: .anyrsi/weights
+      model_glob: "global_step_*/huggingface"
+      trainer: [torchrun, --nproc_per_node=8, -m, verl.trainer.fsdp_sft_trainer,
+                "data.train_files={data}", "data.val_files={data}", data.multiturn.enable=true,
+                data.multiturn.messages_key=messages, "model.partial_pretrain={base_model}",
+                "trainer.default_local_dir={output_dir}", trainer.total_epochs=1, trainer.logger=console]
+
+loop:
+  max_patches: 1

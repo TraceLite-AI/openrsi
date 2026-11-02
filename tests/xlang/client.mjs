@@ -4,7 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const [command, ...args] = process.argv.slice(2);
 const transport = new StdioClientTransport({ command, args, env: { ...process.env } });
-const client = new Client({ name: "openrsi-xlang-client", version: "0.1.0" });
+const client = new Client({ name: "anyrsi-xlang-client", version: "0.1.0" });
 await client.connect(transport);
 
 const call = async (name, args) => {

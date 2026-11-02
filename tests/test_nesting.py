@@ -1,13 +1,13 @@
-"""循环即 agent（runtime/openrsi_runtime/nesting.py）：外层把内层的一整轮运行当作一次做题。"""
+"""循环即 agent（runtime/anyrsi_runtime/nesting.py）：外层把内层的一整轮运行当作一次做题。"""
 import asyncio
 from pathlib import Path
 
 import pytest
 import yaml
 
-from openrsi import Item, Task
-from openrsi_runtime import Runner, Wiring, load_config
-from openrsi_runtime.nesting import GainJudge, LoopAgent
+from anyrsi import Item, Task
+from anyrsi_runtime import Runner, Wiring, load_config
+from anyrsi_runtime.nesting import GainJudge, LoopAgent
 
 from nested_ops import INDEPENDENT
 
@@ -15,17 +15,17 @@ EQ = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
 
 
 def inner_template(base: Path) -> Path:
-    data = {"protocol": "openrsi/0.4", "name": "inner", "plugins": ["secret_ops"],
+    data = {"protocol": "anyrsi/0.4", "name": "inner", "plugins": ["secret_ops"],
             "components": {
                 "env": {"python": "secret_ops:SecretOpsEnv", "with": {"seed": 0}},
                 "agent": {"python": "secret_ops:RuleAgent"}, "proposer": {"python": "secret_ops:RuleInducer"},
-                "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+                "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
                 "evidence": {"same_as": "judge"},
-                "attribution": {"python": "openrsi_attribution:RubricEvidenceAttributor"},
+                "attribution": {"python": "anyrsi_attribution:RubricEvidenceAttributor"},
                 "algorithm": INDEPENDENT,
-                "gate": {"python": "openrsi_gate:HoldoutGate"},
-                "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
-                "memory": {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}}}
+                "gate": {"python": "anyrsi_gate:HoldoutGate"},
+                "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
+                "memory": {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}}}
     base.mkdir(parents=True, exist_ok=True)
     (base / "inner.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     return base / "inner.yaml"
@@ -38,17 +38,17 @@ def algo_item(value):
 
 def test_outer_loop_improves_how_the_inner_loop_improves(tmp_path):
     template = inner_template(tmp_path / "tpl")
-    data = {"protocol": "openrsi/0.4", "name": "outer", "plugins": ["nested_ops"],
+    data = {"protocol": "anyrsi/0.4", "name": "outer", "plugins": ["nested_ops"],
             "components": {
                 "env": {"python": "nested_ops:InnerSeedsEnv"},
-                "agent": {"python": "openrsi_runtime.nesting:LoopAgent",
+                "agent": {"python": "anyrsi_runtime.nesting:LoopAgent",
                           "with": {"template": str(template), "generations": 4, "workdir": "state/nested"}},
-                "judge": {"python": "openrsi_runtime.nesting:GainJudge"},
+                "judge": {"python": "anyrsi_runtime.nesting:GainJudge"},
                 "proposer": {"python": "nested_ops:InnerConfigProposer"},
-                "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 1}},
-                "gate": {"python": "openrsi_gate:HoldoutGate"},
-                "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}}},
-            "evolvables": {"inner_config": {"python": "openrsi_evolvables:PromptEvolvable", "with": {
+                "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 1}},
+                "gate": {"python": "anyrsi_gate:HoldoutGate"},
+                "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}}},
+            "evolvables": {"inner_config": {"python": "anyrsi_evolvables:PromptEvolvable", "with": {
                 "target": "inner_config", "path": "state/inner_config",
                 "initial": [{"id": "algorithm", "kind": "loop_config", "text": "inner algorithm: independent",
                              "data": {"path": "components.algorithm", "value": INDEPENDENT}}]}}}}

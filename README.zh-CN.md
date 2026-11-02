@@ -1,16 +1,16 @@
-<h1 align="center">OpenRSI</h1>
+<h1 align="center">AnyRSI</h1>
 
 <p align="center">
   <b>组件式的 agent 递归自我改进（RSI）框架与开放协议。</b><br>
   自我改进循环的每个环节都是一个独立的 MCP server：可以只拿其中一个接进你自己的系统，
-  也可以用一份 <code>openrsi.yaml</code> 把它们接成完整的循环。
+  也可以用一份 <code>anyrsi.yaml</code> 把它们接成完整的循环。
 </p>
 
 <p align="center">
-  <a href="https://github.com/TraceLite-AI/openrsi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TraceLite-AI/openrsi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TraceLite-AI/anyrsi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TraceLite-AI/anyrsi/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-blue"></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB">
-  <a href="spec/PROTOCOL.md"><img alt="Protocol openrsi/0.4" src="https://img.shields.io/badge/protocol-openrsi%2F0.4-0F766E"></a>
+  <a href="spec/PROTOCOL.md"><img alt="Protocol anyrsi/0.4" src="https://img.shields.io/badge/protocol-anyrsi%2F0.4-0F766E"></a>
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-orange">
 </p>
 
@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="#新闻">新闻</a> ·
-  <a href="#为什么是-openrsi">为什么是 OpenRSI</a> ·
+  <a href="#为什么是-anyrsi">为什么是 AnyRSI</a> ·
   <a href="#工作原理">工作原理</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#实验">实验</a> ·
@@ -32,14 +32,15 @@
 
 ## 新闻
 
-- **2026-11** · RSIHub 的题库（Harbor 格式）可以直接当 OpenRSI 的环境，划分规则和 RSIHub 一致；同一个循环里既改 agent 代码、又训权重。见 [examples/rsihub_weights](examples/rsihub_weights/README.md)。
+- **2026-11** · 项目改名为 AnyRSI（原名 OpenRSI，和别的项目重名）。包名、命令行、协议标识都随之改为 `anyrsi`。
+- **2026-11** · RSIHub 的题库（Harbor 格式）可以直接当 AnyRSI 的环境，划分规则和 RSIHub 一致；同一个循环里既改 agent 代码、又训权重。见 [examples/rsihub_weights](examples/rsihub_weights/README.md)。
 - **2026-10** · v0.4：6 种进化算法（GEPA 式 Pareto、ShinkaEvolve、AlphaEvolve 式岛屿、MAP-Elites、档案、贪心）、逐题不回退准入、harness（agent 代码）和模型权重进化，以及 [verl](https://github.com/volcengine/verl)、[RSIHub](https://github.com/simple-agent-lab/RSIHub) 适配器。
 - **2026-10** · 小模型同时进化系统提示和权重的全流程，在真实模型上跑通（Qwen2.5-0.5B，CPU）。GPU 规模的结果[待补](#实验)。
 - **2026-10** · 组件化设计的测试：所有算法 × 准入组合；进程内、stdio、HTTP 三种传输方式得到的谱系完全一致；JavaScript 写的组件能直接接进 Python 循环。
 
-## 为什么是 OpenRSI
+## 为什么是 AnyRSI
 
-大多数自我改进系统是一体的：评估器、搜索算法和被改进的对象绑在同一套代码里。OpenRSI 把循环拆成组件，用公开的协议连接，每个组件都能单独替换、复用和审计。
+大多数自我改进系统是一体的：评估器、搜索算法和被改进的对象绑在同一套代码里。AnyRSI 把循环拆成组件，用公开的协议连接，每个组件都能单独替换、复用和审计。
 
 - **组件化，而不是一整块。** 协议定义 13 类组件：环境、执行体、取证、判别、归因、可进化体、memory、skill、提案、算法、准入、护栏、谱系。每个组件都是一个 MCP server，暴露固定的一组工具。
 - **什么都能进化。** memory、prompt、可执行的 skill、agent 自己的代码（harness）、模型权重，以及判别器本身。可以单独进化一个，也可以同时进化多个。
@@ -77,29 +78,29 @@ flowchart LR
 
 | 可进化体 | 快照 | 补丁 | 包 |
 |---|---|---|---|
-| memory | 条目集合 | 增、改、删条目 | `openrsi-memory` |
-| prompt | 有序段落 | 增、改、删段落 | `openrsi-evolvables` |
-| skill | Python 函数，在受限子进程里执行 | 增、改、删代码 | `openrsi-evolvables` |
-| harness（agent 代码） | git 提交 | 写入、删除文件或统一 diff，限定在可改范围内 | `openrsi-harness` |
-| 模型权重 | checkpoint | 一次训练：用判别器判对的回答做 SFT，或用 DPO / KTO 让判错的回答也派上用场；自带训练器（`trainer: builtin`，torch + transformers，可选 LoRA）或任何外部命令（verl、LLaMA-Factory 等） | `openrsi-weights` |
-| 判别器 rubric | rubric 条目 | 增加或收紧检查项，按人工标注一致率准入 | `openrsi-judge` |
-| 提案器策略（元层） | 提案器读取的说明或参数 | 替换；按下游提升准入 | `openrsi-evolvables` |
-| 课程（元层） | 挑练习题用的标签权重 | 替换；按下游提升准入 | `openrsi-evolvables` |
+| memory | 条目集合 | 增、改、删条目 | `anyrsi-memory` |
+| prompt | 有序段落 | 增、改、删段落 | `anyrsi-evolvables` |
+| skill | Python 函数，在受限子进程里执行 | 增、改、删代码 | `anyrsi-evolvables` |
+| harness（agent 代码） | git 提交 | 写入、删除文件或统一 diff，限定在可改范围内 | `anyrsi-harness` |
+| 模型权重 | checkpoint | 一次训练：用判别器判对的回答做 SFT，或用 DPO / KTO 让判错的回答也派上用场；自带训练器（`trainer: builtin`，torch + transformers，可选 LoRA）或任何外部命令（verl、LLaMA-Factory 等） | `anyrsi-weights` |
+| 判别器 rubric | rubric 条目 | 增加或收紧检查项，按人工标注一致率准入 | `anyrsi-judge` |
+| 提案器策略（元层） | 提案器读取的说明或参数 | 替换；按下游提升准入 | `anyrsi-evolvables` |
+| 课程（元层） | 挑练习题用的标签权重 | 替换；按下游提升准入 | `anyrsi-evolvables` |
 
-元层可进化体（`loop.meta_every`）不交给 agent，普通代也不改它们。元层代里，运行时在同样的预算下，分别用当前和候选的元层状态各跑一轮普通改进，只有候选带来的考试提升更大才接受，并且连同它产出的那个改进一起进谱系。判别器和归因方法由外循环升级（`runtime/openrsi_runtime/outer.py`）：它能自己生成候选并验证，但没有批准人就不升级。`runtime/openrsi_runtime/nesting.py` 把一整轮内层运行包装成 agent（`LoopAgent` + `GainJudge`），外层就能进化内层的算法、提案器或归因方法；内层的环境、判别器、准入、护栏、谱系和预算保持不动。准入、护栏、封存考试、人工标签和预算永远不进化。
+元层可进化体（`loop.meta_every`）不交给 agent，普通代也不改它们。元层代里，运行时在同样的预算下，分别用当前和候选的元层状态各跑一轮普通改进，只有候选带来的考试提升更大才接受，并且连同它产出的那个改进一起进谱系。判别器和归因方法由外循环升级（`runtime/anyrsi_runtime/outer.py`）：它能自己生成候选并验证，但没有批准人就不升级。`runtime/anyrsi_runtime/nesting.py` 把一整轮内层运行包装成 agent（`LoopAgent` + `GainJudge`），外层就能进化内层的算法、提案器或归因方法；内层的环境、判别器、准入、护栏、谱系和预算保持不动。准入、护栏、封存考试、人工标签和预算永远不进化。
 
 ### 组件
 
 | 类型 | 官方实现 | 包 |
 |---|---|---|
-| 判别、取证 | `EvidenceJudge`（rubric + 证据，可选 LLM 检查项）、`EvolvingJudge`；`GainJudge` 给嵌套运行打分 | `openrsi-judge`、`openrsi-runtime` |
-| 归因 | `RubricEvidenceAttributor`、`CellContrastAttributor`（同一道题只在部分格失败时，归到环境坐标）；运行时支持反事实重跑 | `openrsi-attribution` |
-| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`CurriculumProposer` 和 `StrategyRewriter`（元层）、`PromptRewriter`、`CodeRewriter`（改 agent 代码）、`DistillProposer`、`PreferenceProposer` | `openrsi-proposer`、`openrsi-llm`、`openrsi-verl` |
-| 算法 | 6 种，见下表 | `openrsi-algorithm` |
-| 准入 | `HoldoutGate`（提升幅度、显著性、逐题配对检验、anchor、成本、逐题不回退、逐格不回退） | `openrsi-gate` |
-| 护栏 | `PolicyGuard`（危险代码、密钥、受保护条目和路径、篡改评估） | `openrsi-guard` |
-| 谱系 | `LineageStore`（JSONL，可续跑） | `openrsi-lineage` |
-| 执行体 | `ChatAgent`（任何 OpenAI 兼容接口，换权重时重启 vLLM）、`HarnessAgent`、`LoopAgent`（一整轮内层运行） | `openrsi-llm`、`openrsi-harness`、`openrsi-runtime` |
+| 判别、取证 | `EvidenceJudge`（rubric + 证据，可选 LLM 检查项）、`EvolvingJudge`；`GainJudge` 给嵌套运行打分 | `anyrsi-judge`、`anyrsi-runtime` |
+| 归因 | `RubricEvidenceAttributor`、`CellContrastAttributor`（同一道题只在部分格失败时，归到环境坐标）；运行时支持反事实重跑 | `anyrsi-attribution` |
+| 提案 | `LessonProposer`、`ClaudeProposer`、`RubricAuditor`、`CompositeProposer`、`RoutedProposer`（按归因指向选成员）、`CurriculumProposer` 和 `StrategyRewriter`（元层）、`PromptRewriter`、`CodeRewriter`（改 agent 代码）、`DistillProposer`、`PreferenceProposer` | `anyrsi-proposer`、`anyrsi-llm`、`anyrsi-verl` |
+| 算法 | 6 种，见下表 | `anyrsi-algorithm` |
+| 准入 | `HoldoutGate`（提升幅度、显著性、逐题配对检验、anchor、成本、逐题不回退、逐格不回退） | `anyrsi-gate` |
+| 护栏 | `PolicyGuard`（危险代码、密钥、受保护条目和路径、篡改评估） | `anyrsi-guard` |
+| 谱系 | `LineageStore`（JSONL，可续跑） | `anyrsi-lineage` |
+| 执行体 | `ChatAgent`（任何 OpenAI 兼容接口，换权重时重启 vLLM）、`HarnessAgent`、`LoopAgent`（一整轮内层运行） | `anyrsi-llm`、`anyrsi-harness`、`anyrsi-runtime` |
 | 可进化体、memory、skill | 见上表 | |
 | 环境 | 由用户提供；示例里有 GSM8K | |
 
@@ -119,15 +120,15 @@ flowchart LR
 需要 Python 3.10+。
 
 ```bash
-git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
+git clone https://github.com/TraceLite-AI/anyrsi && cd anyrsi
 pip install -e sdk/python -e runtime -e components/judge -e components/memory -e components/attribution \
             -e components/proposer -e components/algorithm -e components/gate -e components/lineage \
             -e components/evolvables -e components/guard -e components/harness -e components/llm -e components/weights \
             -e adapters/verl
 
 cd examples/secret_ops
-openrsi run      # 跑到停为止；中断后再运行会从谱系接着跑
-openrsi log      # 查看谱系
+anyrsi run      # 跑到停为止；中断后再运行会从谱系接着跑
+anyrsi log      # 查看谱系
 ```
 
 8 个符号，每个背后是一个未知的二元运算。执行体从 memory 里找规则，提案器从答错的 train 题里归纳规则。不需要模型，也不需要 API key。输出：
@@ -145,9 +146,9 @@ openrsi log      # 查看谱系
 
 ```bash
 cd examples/small_model
-python make_toy_data.py toy_data && openrsi run openrsi.mock.yaml   # 假模型，几秒，不需要 GPU
-openrsi run openrsi.cpu.yaml                                         # Qwen2.5-0.5B，CPU 上用 transformers，约 1 小时
-openrsi run openrsi.yaml                                             # Qwen2.5-0.5B，1 张 GPU 上用 vLLM
+python make_toy_data.py toy_data && anyrsi run anyrsi.mock.yaml   # 假模型，几秒，不需要 GPU
+anyrsi run anyrsi.cpu.yaml                                         # Qwen2.5-0.5B，CPU 上用 transformers，约 1 小时
+anyrsi run anyrsi.yaml                                             # Qwen2.5-0.5B，1 张 GPU 上用 vLLM
 ```
 
 每一代由 ShinkaEvolve 的 UCB 在两个提案器里选一个：根据答错的 train 题改写系统提示；或者用判别器判为通过的轨迹做 SFT（拒绝采样式自我蒸馏）。权重变了，`ChatAgent` 会用新 checkpoint 重启推理服务。详见 [examples/small_model](examples/small_model/README.md)。
@@ -161,7 +162,7 @@ openrsi run openrsi.yaml                                             # Qwen2.5-0
 | [`judge_coevolution`](examples/judge_coevolution) | 漏判改测试的判别器被修好（按人工标注准入），随后执行体不再作弊 |
 | [`harness_ops`](examples/harness_ops) | 在 git 仓库里进化 agent 自己的代码；改 `eval/` 的补丁被拦下 |
 | [`small_model`](examples/small_model) | 真实 LLM，系统提示和权重一起进化 |
-| [`rsihub_weights`](examples/rsihub_weights) | RSIHub 的题库（Harbor）进 OpenRSI 的循环，agent 代码和权重一起进化 |
+| [`rsihub_weights`](examples/rsihub_weights) | RSIHub 的题库（Harbor）进 AnyRSI 的循环，agent 代码和权重一起进化 |
 | [`judge_standalone.py`](examples/judge_standalone.py) | 单独使用判别器，进程内和走 MCP 两种方式 |
 
 ## 只用其中一个组件
@@ -169,7 +170,7 @@ openrsi run openrsi.yaml                                             # Qwen2.5-0
 在 Python 里：
 
 ```python
-from openrsi_judge import EvidenceJudge
+from anyrsi_judge import EvidenceJudge
 
 judge = EvidenceJudge({"items": [{"id": "tests_pass", "check": "tests_pass", "required": True},
                                  {"id": "no_test_edits", "check": "no_protected_edits", "required": True}]},
@@ -180,15 +181,15 @@ verdict = judge.evaluate(task, trajectory, judge.collect(task, trajectory))
 作为 MCP server 给任何客户端用：
 
 ```bash
-openrsi-judge --rubric rubric.yaml --protect 'tests/**'
-openrsi-serve openrsi_gate:HoldoutGate --with '{"min_gain": 0.01}'                       # 任意组件类
-openrsi-serve my_pkg:MyJudge --transport streamable-http --port 8765
+anyrsi-judge --rubric rubric.yaml --protect 'tests/**'
+anyrsi-serve anyrsi_gate:HoldoutGate --with '{"min_gain": 0.01}'                       # 任意组件类
+anyrsi-serve my_pkg:MyJudge --transport streamable-http --port 8765
 ```
 
 写自己的组件：继承 SDK 的基类，然后跑一致性测试：
 
 ```python
-from openrsi import Gate, GateDecision, serve
+from anyrsi import Gate, GateDecision, serve
 
 class MyGate(Gate):
     name, version = "me/my-gate", "0.1.0"
@@ -200,28 +201,28 @@ serve(MyGate())
 ```
 
 ```bash
-openrsi-conformance -- python my_gate.py
+anyrsi-conformance -- python my_gate.py
 ```
 
 其他语言不需要 SDK，实现 [`spec/tools.json`](spec/tools.json) 里的工具就行。[`tests/xlang/gate.mjs`](tests/xlang/gate.mjs) 是只照着协议用 JavaScript 写的准入组件。
 
-`openrsi.yaml` 里每个位置都可以是进程内（`python:`）、子进程（`command:`）或远程（`url:`）：
+`anyrsi.yaml` 里每个位置都可以是进程内（`python:`）、子进程（`command:`）或远程（`url:`）：
 
 ```yaml
-protocol: openrsi/0.4
+protocol: anyrsi/0.4
 components:
   env:       {python: "my_components:MyEnv"}
-  judge:     {python: "openrsi_judge:EvidenceJudge", with: {rubric: rubric.yaml}}
+  judge:     {python: "anyrsi_judge:EvidenceJudge", with: {rubric: rubric.yaml}}
   evidence:  {same_as: judge}
-  memory:    {command: [openrsi-memory, --path, .openrsi/memory]}
-  algorithm: {python: "openrsi_algorithm:ShinkaAlgorithm", with: {proposers: [prompt, weights]}}
-  gate:      {python: "openrsi_gate:HoldoutGate", with: {max_task_regressions: 0}}
+  memory:    {command: [anyrsi-memory, --path, .anyrsi/memory]}
+  algorithm: {python: "anyrsi_algorithm:ShinkaAlgorithm", with: {proposers: [prompt, weights]}}
+  gate:      {python: "anyrsi_gate:HoldoutGate", with: {max_task_regressions: 0}}
   lineage:   {url: "https://lineage.internal/mcp"}
 evolvables:
-  prompt:    {python: "openrsi_evolvables:PromptEvolvable"}
+  prompt:    {python: "anyrsi_evolvables:PromptEvolvable"}
 ```
 
-环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时还会给每个 episode 记一条 `env_cell` 证据（格、坐标、指纹），`CellContrastAttributor` 据此对比同一道题在不同格里的结果。运行时只核对声明，不保证 agent 真的在那个环境里执行。要确认这一点，加上 `cells.binding`（严格模式）：每道题执行前运行时准备好这个格，在子进程里跑预先登记的探测，和声明的坐标核对，agent 还必须回报它用的方案（`HarnessAgent` 会这么做）。加上 `records: {path}` 后，原始的题目、轨迹、证据和执行回执按内容寻址、只追加地存档，判决和归因作为派生记录另存，续跑时运行清单不一致就拒绝。`runtime/openrsi_runtime/outer.py` 负责外围组件（判别器、归因方法）的升级：冻结的验证计划在独立标签上通过、并且有人批准，才会升级；默认关闭。
+环境格（0.5 草案，需要显式启用）：实现了 `rsi_env_cells` 的 env 声明自己的环境格，即环境坐标加钉住的版本，见[草案](spec/drafts/environment-cells.md)。加上 `cells:` 一节，每道题在每个格里各跑一次。运行时把逐题分数的键写成 `<task_id>@<cell_id>`，格的指纹变了或题目的 `env_ref` 不对就停止，并把用到的格记进谱系。不写 `cells:` 时和 0.4 完全一样。运行时还会给每个 episode 记一条 `env_cell` 证据（格、坐标、指纹），`CellContrastAttributor` 据此对比同一道题在不同格里的结果。运行时只核对声明，不保证 agent 真的在那个环境里执行。要确认这一点，加上 `cells.binding`（严格模式）：每道题执行前运行时准备好这个格，在子进程里跑预先登记的探测，和声明的坐标核对，agent 还必须回报它用的方案（`HarnessAgent` 会这么做）。加上 `records: {path}` 后，原始的题目、轨迹、证据和执行回执按内容寻址、只追加地存档，判决和归因作为派生记录另存，续跑时运行清单不一致就拒绝。`runtime/anyrsi_runtime/outer.py` 负责外围组件（判别器、归因方法）的升级：冻结的验证计划在独立标签上通过、并且有人批准，才会升级；默认关闭。
 
 ```yaml
 cells:
@@ -231,11 +232,11 @@ cells:
 
 ## 框架集成
 
-| 框架 | OpenRSI 提供什么 | 是否用真实框架测过 |
+| 框架 | AnyRSI 提供什么 | 是否用真实框架测过 |
 |---|---|---|
 | 任何 MCP 客户端 | 所有组件 | 是（Python 和 JavaScript 客户端） |
 | [verl](https://github.com/volcengine/verl) | 判别器当 `compute_score` 奖励；导出 RL / SFT 数据，拒绝非 train 数据；模型权重作为可进化体 | 还没有（[现场测试](field_tests/README.md)已备好） |
-| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | 护栏 `validate`、不回退 `gate`、Shinka `select` 三个算子；导入归档；反过来，RSIHub 的题库当 OpenRSI 的环境（`RSIHubTaskEnv`、`HarborAgent`、`HarborRewardJudge`） | 还没有（[现场测试](field_tests/README.md)和[对照实验](benchmarks/rsihub_parity/README.md)已备好） |
+| [RSIHub](https://github.com/simple-agent-lab/RSIHub) | 护栏 `validate`、不回退 `gate`、Shinka `select` 三个算子；导入归档；反过来，RSIHub 的题库当 AnyRSI 的环境（`RSIHubTaskEnv`、`HarborAgent`、`HarborRewardJudge`） | 还没有（[现场测试](field_tests/README.md)和[对照实验](benchmarks/rsihub_parity/README.md)已备好） |
 | [DSPy](https://github.com/stanfordnlp/dspy) | 判别器当 metric，含 GEPA 反馈 | 只用替身测过 |
 | [LangGraph](https://github.com/langchain-ai/langgraph) | 状态转成轨迹 | 只用替身测过 |
 | vLLM 及任何 OpenAI 兼容接口 | `ChatAgent`、`PromptRewriter` | CPU 上的 transformers 服务测过；vLLM 待测 |
@@ -246,7 +247,7 @@ cells:
 
 ### 1. 小模型：在 GSM8K 上同时进化系统提示和权重
 
-[`examples/small_model/openrsi.yaml`](examples/small_model/openrsi.yaml)：Qwen2.5-0.5B-Instruct，每代 64 道 train、200 道 holdout，8 代。
+[`examples/small_model/anyrsi.yaml`](examples/small_model/anyrsi.yaml)：Qwen2.5-0.5B-Instruct，每代 64 道 train、200 道 holdout，8 代。
 
 <!-- RESULTS:small-model-gpu -->
 | 设置 | 起点 holdout | 最佳 holdout | 接受数（prompt / 权重） | final 集 | 耗时 |
@@ -266,7 +267,7 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 |---|---|---|---|---|---|
 | RSIHub 公布 | 58.0% → 68.0% | 56.2% → 69.7% | — | — | — |
 | baseline（我们跑） | 待补 | 待补 | 待补 | 待补 | 待补 |
-| + OpenRSI 护栏和不回退准入 | 待补 | 待补 | 待补 | 待补 | 待补 |
+| + AnyRSI 护栏和不回退准入 | 待补 | 待补 | 待补 | 待补 | 待补 |
 
 ### 3. verl
 
@@ -275,8 +276,8 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 <!-- RESULTS:verl -->
 | 测试 | 结果 |
 |---|---|
-| V1：OpenRSI 奖励和 verl 自带 GSM8K 奖励逐条对比的一致率 | 待补 |
-| V3：GRPO，Qwen2.5-0.5B，验证分训练前 → 训练后，OpenRSI 奖励对比自带奖励 | 待补 |
+| V1：AnyRSI 奖励和 verl 自带 GSM8K 奖励逐条对比的一致率 | 待补 |
+| V3：GRPO，Qwen2.5-0.5B，验证分训练前 → 训练后，AnyRSI 奖励对比自带奖励 | 待补 |
 | V4：通过 `WeightsEvolvable` 连续两次 SFT，再回滚 | 待补 |
 
 ### 4. 原生循环 A/B/C（合成冒烟实验，不是 benchmark）
@@ -306,7 +307,7 @@ CPU 上的小规模运行（12 道 train、15 道 holdout、3 代）已经跑完
 
 ## 项目状态
 
-OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
+AnyRSI 处于 alpha 阶段（协议 `anyrsi/0.4`）。到目前为止，协议的每个版本都只增加字段和工具，旧版本的组件不用改就能用。
 
 - **CI 覆盖：** 316 个测试，Python 3.10～3.13。包括协议一致性、数据隔离、所有算法 × 准入组合、传输方式等价、跨语言组件、崩溃与续跑，以及 6 个端到端示例。
 - **在真实模型上跑过：** 小模型全流程（CPU）。
@@ -316,7 +317,7 @@ OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议
 
 - [ ] 补齐上面的实验表
 - [ ] 把强化学习（通过 verl 做 GRPO）作为循环里的一种权重补丁，不只是 SFT
-- [ ] 用 OpenRSI 自己的运行时，通过 Harbor 跑 Terminal-Bench 2 和 τ³-bench，划分和 RSIHub 一致（组件和配置已就绪：[examples/rsihub_weights](examples/rsihub_weights/README.md)；还没在真机上跑）
+- [ ] 用 AnyRSI 自己的运行时，通过 Harbor 跑 Terminal-Bench 2 和 τ³-bench，划分和 RSIHub 一致（组件和配置已就绪：[examples/rsihub_weights](examples/rsihub_weights/README.md)；还没在真机上跑）
 - [ ] TypeScript SDK
 - [ ] OpenEvolve、Letta、OpenAI Agents SDK 适配器
 - [ ] 协议规范的英文版
@@ -338,8 +339,8 @@ OpenRSI 处于 alpha 阶段（协议 `openrsi/0.4`）。到目前为止，协议
 
 ```
 spec/               协议、JSON Schema 和工具定义（自动生成）
-sdk/python/         openrsi-sdk：数据格式、组件基类、MCP 服务端和客户端、一致性测试、openrsi-serve
-runtime/            openrsi-runtime：按 openrsi.yaml 接通组件，运行和续跑循环
+sdk/python/         anyrsi-sdk：数据格式、组件基类、MCP 服务端和客户端、一致性测试、anyrsi-serve
+runtime/            anyrsi-runtime：按 anyrsi.yaml 接通组件，运行和续跑循环
 components/         官方组件：judge、memory、evolvables、harness、llm、attribution、
                     proposer、algorithm、gate、guard、lineage
 adapters/           verl、RSIHub、DSPy、LangGraph
@@ -356,7 +357,7 @@ pip install -e sdk/python -e runtime -e components/* -e adapters/* pytest ruff
 npm ci --prefix tests/xlang          # 可选，跨语言测试需要
 pytest
 ruff check .
-python -m openrsi.export_spec spec   # 改了 sdk/python/openrsi/types.py 或 protocol.py 之后
+python -m anyrsi.export_spec spec   # 改了 sdk/python/anyrsi/types.py 或 protocol.py 之后
 ```
 
 新增或修改组件时，同步更新它的 `rsi-component.yaml`。审查从 [REVIEW.md](REVIEW.md) 里的三个问题出发。
@@ -364,17 +365,17 @@ python -m openrsi.export_spec spec   # 改了 sdk/python/openrsi/types.py 或 pr
 ## 引用
 
 ```bibtex
-@software{openrsi2026,
-  title  = {OpenRSI: A Component-Based Framework and Open Protocol for Agent Recursive Self-Improvement},
-  author = {{OpenRSI contributors}},
+@software{anyrsi2026,
+  title  = {AnyRSI: A Component-Based Framework and Open Protocol for Agent Recursive Self-Improvement},
+  author = {{AnyRSI contributors}},
   year   = {2026},
-  url    = {https://github.com/TraceLite-AI/openrsi}
+  url    = {https://github.com/TraceLite-AI/anyrsi}
 }
 ```
 
 ## 致谢
 
-OpenRSI 基于 [Model Context Protocol](https://modelcontextprotocol.io)，借鉴了 GEPA、ShinkaEvolve、AlphaEvolve、Darwin Gödel Machine、MAP-Elites、Self-Harness 和 AHE 的思路，并与 verl、RSIHub、DSPy、LangGraph 集成。
+AnyRSI 基于 [Model Context Protocol](https://modelcontextprotocol.io)，借鉴了 GEPA、ShinkaEvolve、AlphaEvolve、Darwin Gödel Machine、MAP-Elites、Self-Harness 和 AHE 的思路，并与 verl、RSIHub、DSPy、LangGraph 集成。
 
 ## 许可证
 

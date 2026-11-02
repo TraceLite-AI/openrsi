@@ -79,7 +79,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out, safe_serialization=True)
     tok.save_pretrained(out)
-    (out / "openrsi_train.json").write_text(json.dumps({"base": args.model, "examples": len(examples),
+    (out / "anyrsi_train.json").write_text(json.dumps({"base": args.model, "examples": len(examples),
                                                         "epochs": args.epochs, "lr": args.lr}))
 
 

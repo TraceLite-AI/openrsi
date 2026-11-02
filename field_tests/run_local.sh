@@ -22,23 +22,23 @@ step L0-1 "安装全部包" pip install -q -e sdk/python -e runtime -e component
   -e adapters/verl -e adapters/rsihub pytest ruff pandas pyarrow
 step L0-2 "单元测试" pytest -q -p no:cacheprovider
 step L0-3 "lint" ruff check .
-step L0-4 "spec 是最新的" bash -c 'python -m openrsi.export_spec spec && git diff --exit-code spec'
+step L0-4 "spec 是最新的" bash -c 'python -m anyrsi.export_spec spec && git diff --exit-code spec'
 for ex in secret_ops skill_ops judge_coevolution harness_ops; do
-  rm -rf "examples/$ex/.openrsi"
-  step "L0-5-$ex" "示例 $ex" bash -c "cd examples/$ex && openrsi run && openrsi best"
-  rm -rf "examples/$ex/.openrsi"
+  rm -rf "examples/$ex/.anyrsi"
+  step "L0-5-$ex" "示例 $ex" bash -c "cd examples/$ex && anyrsi run && anyrsi best"
+  rm -rf "examples/$ex/.anyrsi"
 done
 grep -q "护栏拦截" "$OUT/L0-5-skill_ops.log" || { echo "FAIL L0-5-skill_ops 没看到护栏拦截"; fail=$((fail+1)); }
 grep -q '"progress": 3.0' "$OUT/L0-5-judge_coevolution.log" || { echo "FAIL L0-5-judge_coevolution progress 不是 3.0"; fail=$((fail+1)); }
 grep -q '"holdout": 1.0' "$OUT/L0-5-harness_ops.log" || { echo "FAIL L0-5-harness_ops holdout 没到 1.0"; fail=$((fail+1)); }
 # 每个组件作为独立 MCP 子进程，用一致性测试检查（和其他语言的客户端看到的一样）
 TMP=$(mktemp -d)
-for cmd in "openrsi-gate" "openrsi-guard" "openrsi-lineage" "openrsi-algorithm --kind shinka" \
-           "openrsi-algorithm --kind pareto" "openrsi-memory --path $TMP/mem" \
-           "openrsi-evolvables --kind skills --path $TMP/skills" "openrsi-harness --repo $TMP/harness" \
-           "openrsi-verl weights --base-model m --path $TMP/w --dry-run"; do
+for cmd in "anyrsi-gate" "anyrsi-guard" "anyrsi-lineage" "anyrsi-algorithm --kind shinka" \
+           "anyrsi-algorithm --kind pareto" "anyrsi-memory --path $TMP/mem" \
+           "anyrsi-evolvables --kind skills --path $TMP/skills" "anyrsi-harness --repo $TMP/harness" \
+           "anyrsi-verl weights --base-model m --path $TMP/w --dry-run"; do
   n=$((${n:-0}+1))
-  step "L0-6-$n" "一致性测试：$cmd" openrsi-conformance -- $cmd
+  step "L0-6-$n" "一致性测试：$cmd" anyrsi-conformance -- $cmd
 done
 rm -rf "$TMP"
 echo "合计：$pass 通过，$fail 失败"

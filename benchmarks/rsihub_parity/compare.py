@@ -1,6 +1,6 @@
 """汇总对照实验：每组的训练分、全量分、接受了几代、护栏拦了几次、逐题回退、花费，并附上 RSIHub 公布的数字。
 
-用法：python compare.py /path/to/RSIHub [--arms baseline,openrsi]
+用法：python compare.py /path/to/RSIHub [--arms baseline,anyrsi]
 输出 out/compare.md 和 out/compare.json。
 """
 import argparse
@@ -22,7 +22,7 @@ def num(x):
 
 
 def task_scores(row: dict) -> dict:
-    from openrsi_rsihub import task_scores as ts
+    from anyrsi_rsihub import task_scores as ts
 
     return ts(row)
 
@@ -51,7 +51,7 @@ def full_score(name: str) -> tuple[float | None, int]:
 
 
 def arm_summary(rsihub: Path, arm: str) -> dict:
-    ws = rsihub / "runs" / f"openrsi-parity-{arm}"
+    ws = rsihub / "runs" / f"anyrsi-parity-{arm}"
     rs = rows(ws)
     if not rs:
         return {"arm": arm, "workspace": str(ws), "error": "没有 archive.jsonl"}
@@ -65,7 +65,7 @@ def arm_summary(rsihub: Path, arm: str) -> dict:
             continue
         run = ws / "runs" / f"gen-{r['genid']}"
         validate = {}
-        for f in (run / "validate" / "result.json", run / "validate" / "openrsi_guard.json"):
+        for f in (run / "validate" / "result.json", run / "validate" / "anyrsi_guard.json"):
             if f.exists():
                 validate = json.loads(f.read_text())
                 break
@@ -80,10 +80,10 @@ def arm_summary(rsihub: Path, arm: str) -> dict:
                      "tasks_regressed_vs_parent": regress, "cost": num(r.get("cost"))})
     anchors = [e for r in rs for e in (r.get("evals") or []) if isinstance(e, dict) and e.get("kind") == "anchor"]
     rep = report_fields(rsihub, ws)
-    seed_full, n_seed = full_score(f"openrsi-parity-{arm}-full-gen0")
+    seed_full, n_seed = full_score(f"anyrsi-parity-{arm}-full-gen0")
     if seed_full is None:  # 各组的原始 agent 相同，只评一次（默认在 baseline 组）
-        seed_full, n_seed = full_score("openrsi-parity-baseline-full-gen0")
-    best_full, n_best = full_score(f"openrsi-parity-{arm}-full-gen{best['genid']}") if best else (None, 0)
+        seed_full, n_seed = full_score("anyrsi-parity-baseline-full-gen0")
+    best_full, n_best = full_score(f"anyrsi-parity-{arm}-full-gen{best['genid']}") if best else (None, 0)
     return {
         "arm": arm, "workspace": str(ws), "generations": len(gens),
         "seed_train": num(seed.get("score")), "best_genid": best["genid"] if best else None,
@@ -99,7 +99,7 @@ def arm_summary(rsihub: Path, arm: str) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("rsihub")
-    ap.add_argument("--arms", default="baseline,openrsi")
+    ap.add_argument("--arms", default="baseline,anyrsi")
     args = ap.parse_args()
     rsihub = Path(args.rsihub).resolve()
     ref = json.loads((HERE / "reference.json").read_text())["terminal-bench-2"]["MiniSWE"]["Hyperagents"]
