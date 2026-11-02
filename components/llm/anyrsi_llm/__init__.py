@@ -24,7 +24,7 @@ from typing import Any
 
 from anyrsi import Agent, Attribution, ComponentError, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
 
-__version__ = "0.4.3"
+__version__ = "0.4.4"
 
 
 def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float = 0.0,
@@ -248,6 +248,21 @@ def _copies(text: str, problem: str, span: int = 60) -> bool:
     return any(problem[i:i + span] in flat for i in range(0, len(problem) - span + 1, span // 2))
 
 
+def direction_note(request: ProposalRequest) -> str:
+    """有方向模式（loop.directed）给的方向和步长，写成提案器请求末尾的一段；没有就是空串，请求和以前一样。"""
+    hints = request.hints or {}
+    d = hints.get("direction")
+    if not isinstance(d, dict) or not d.get("id"):
+        return ""
+    text = (f"\n\nThis change must follow one direction: {d.get('text') or d['id']}. "
+            "Change only what serves this direction; do not touch unrelated parts.")
+    if hints.get("edit"):
+        text += " Write a different variant from the obvious one."
+    if hints.get("step") is not None:
+        text += f" Size of the change: {hints['step']} (keep the edit within this size)."
+    return text
+
+
 def strategy_notes(request: ProposalRequest) -> str:
     """元层（improver）给提案器的策略说明，来自运行时的 hints["improver"]；没有就是空串，请求和以前一样。"""
     texts = [str(d.get("text", "")).strip() for items in (request.hints.get("improver") or {}).values()
@@ -342,7 +357,7 @@ class PromptRewriter(Proposer):
             examples.append(text)
         header = f"{ATTRIBUTION_HEADER}\n\n" if notes else ""
         user = (f"Current system prompt:\n{current or '(empty)'}\n\n{header}Failures:\n\n"
-                + "\n\n---\n\n".join(examples))
+                + "\n\n---\n\n".join(examples) + direction_note(request))
         try:
             out = chat(self.base_url, self.model, [{"role": "system", "content": REWRITE_SYSTEM + strategy_notes(request)},
                                                    {"role": "user", "content": user}],
@@ -464,7 +479,8 @@ class CodeRewriter(Proposer):
         header = f"{ATTRIBUTION_HEADER}\n\n" if notes else ""
         listing = "\n\n".join(f"=== {p} ===\n{t}" for p, t in sorted(files.items()))
         user = (f"Editable path patterns: {', '.join(target.surfaces) or '(any)'}\nAt most {self.max_files} files.\n\n"
-                f"Current files:\n\n{listing}\n\n{header}Failures:\n\n" + "\n\n---\n\n".join(examples))
+                f"Current files:\n\n{listing}\n\n{header}Failures:\n\n" + "\n\n---\n\n".join(examples)
+                + direction_note(request))
         try:
             out = chat(self.base_url, self.model, [{"role": "system", "content": CODE_SYSTEM + strategy_notes(request)},
                                                    {"role": "user", "content": user}],
@@ -502,4 +518,4 @@ class CodeRewriter(Proposer):
 
 
 __all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context",
-           "chat", "render_prompt", "strategy_notes", "task_text"]
+           "chat", "direction_note", "render_prompt", "strategy_notes", "task_text"]
