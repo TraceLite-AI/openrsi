@@ -313,3 +313,26 @@ def test_direction_probe_common_random_numbers_find_the_right_direction():
     assert strong["P(平均优势最高=最好)"] > 0.55
     assert strong["P(平均优势最高=最好)"] > weak["P(平均优势最高=最好)"] + 0.08
     assert 0.2 < strong["P(随机=最好)"] < 0.5
+
+
+def test_rubric_probe_biased_rubric_prefers_the_harmful_direction():
+    """有偏 rubric 下 s11 在 rubric 上看起来是好方向（真实却有害），组内比较会偏向它；无偏时不会。"""
+    import rubric_probe as rp
+
+    biased, fair = rp.World(rubric=rp.BIASED_R), rp.World()
+    tg_b, rg_b = biased.gains(toy.START, draws=200)
+    tg_f, rg_f = fair.gains(toy.START, draws=200)
+    assert tg_b["s11"] < 0 < rg_b["s11"] and rg_f["s11"] < 0
+    pick_b = rp.identify(biased, toy.START, tg_b, mode="graded", N=60, m=3, crn=True, trials=60, include="s11")
+    pick_f = rp.identify(fair, toy.START, tg_f, mode="graded", N=60, m=3, crn=True, trials=60, include="s11")
+    assert pick_b["组内比较选中 s11 的比例"] > 0.3 > 0.1 > pick_f["组内比较选中 s11 的比例"]
+
+
+def test_rubric_probe_graded_rubric_beats_pass_fail():
+    import rubric_probe as rp
+
+    w = rp.World()
+    tg, _ = w.gains(toy.START, draws=200)
+    binary = rp.identify(w, toy.START, tg, mode="binary", N=30, m=3, crn=True, trials=120)
+    graded = rp.identify(w, toy.START, tg, mode="graded", N=30, m=3, crn=True, trials=120)
+    assert graded["组内比较命中"] > binary["组内比较命中"] + 0.05
