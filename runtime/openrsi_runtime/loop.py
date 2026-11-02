@@ -199,7 +199,11 @@ class Runner:
     def env_cells(self) -> dict[str, str]:
         return dict(self.registry.fingerprints) if self.registry else {}
 
-    async def episode(self, task: Task, genome: Genome, exclude: set[str] | None = None) -> Episode:
+    async def train_episodes(self, tasks: list[Task], genome: Genome) -> list[Episode]:
+        """练习题按 loop.train_samples 各答若干次；第 2 次起轨迹 id 加 #s<i>，归因和配对不会混。"""
+        return [await self.episode(t, genome, sample=i) for t in tasks for i in range(self.cfg.train_samples)]
+
+    async def episode(self, task: Task, genome: Genome, exclude: set[str] | None = None, sample: int = 0) -> Episode:
         visible = for_agent(task)
         coords = self.registry.coords_for_agent(task) if self.registry else None
         if coords is not None:
@@ -218,6 +222,8 @@ class Runner:
                             f"严格模式下不能把题交给它（题 {task.id}@{task.env_ref}）")
         if self.registry and task.env_ref and not traj.id.endswith(f"@{task.env_ref}"):
             traj.id = f"{traj.id}@{task.env_ref}"  # 同一道题在不同格里的轨迹要能区分（归因按轨迹 id 对号）
+        if sample:
+            traj.id = f"{traj.id}#s{sample}"
         if not traj.used_items:  # agent 没报告就当作给它的都用上了
             traj.used_items = [i.id for i in context]
         evidence = await self.w.evidence.collect(task, traj) if self.w.evidence else []
@@ -458,7 +464,7 @@ class Runner:
         await self.checkout(parent_genome)
         train = await self._train_tasks(gen, parent_genome)
         _check_split(train, "train")
-        episodes = [await self.episode(t, parent_genome) for t in train]
+        episodes = await self.train_episodes(train, parent_genome)
         report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
                                   train_score=fmean(e.verdict.score for e in episodes) if episodes else 0.0)
 
@@ -509,7 +515,7 @@ class Runner:
         await self.checkout(genome)
         train = await self._train_tasks(gen, genome)
         _check_split(train, "train")
-        episodes = [await self.episode(t, genome) for t in train]
+        episodes = await self.train_episodes(train, genome)
         attributions = await w.attribution.explain(episodes) if w.attribution and episodes else []
         states = {t: await tgt.facade.export(genome[t]) for t, tgt in self.targets.items()}
         solver = self._solver_targets()
@@ -551,7 +557,7 @@ class Runner:
         await self.checkout(pg)
         train = await self._train_tasks(gen, pg)
         _check_split(train, "train")
-        episodes = [await self.episode(t, pg) for t in train]
+        episodes = await self.train_episodes(train, pg)
         report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
                                   train_score=fmean(e.verdict.score for e in episodes) if episodes else 0.0,
                                   note=f"元层进化代：{meta}")

@@ -3,7 +3,7 @@
 用一个开源小模型（默认 Qwen2.5-0.5B-Instruct）做 GSM8K，同一轮进化里同时改两样东西：
 
 - **系统提示**：被进化的小模型自己读答错的 train 题，改写系统提示（`openrsi_llm:PromptRewriter`）
-- **模型权重**：把判别器判为通过的 train 轨迹拿去 SFT（`openrsi_verl:DistillProposer` + `train_sft.py`），也就是拒绝采样式的自我蒸馏
+- **模型权重**：把判别器判为通过的 train 轨迹拿去 SFT（`openrsi_weights:DistillProposer` + `train_sft.py`），也就是拒绝采样式的自我蒸馏
 
 每一代由 ShinkaEvolve 的 UCB 在这两个提案器里选一个。候选要在 holdout 上真的变好才被接受。
 权重变了，执行体 `ChatAgent` 会用新的 checkpoint 重启推理服务。
@@ -34,7 +34,7 @@
 ```bash
 pip install -e sdk/python -e runtime -e components/judge -e components/proposer -e components/algorithm \
             -e components/gate -e components/lineage -e components/evolvables -e components/guard \
-            -e components/llm -e adapters/verl
+            -e components/llm -e components/weights -e adapters/verl
 pip install vllm torch transformers
 
 # 数据：用 verl 的预处理脚本，或者不装 verl 时用 prepare_gsm8k.py
@@ -54,7 +54,8 @@ openrsi log openrsi.yaml
 - `base_model`：换成别的开源模型，比如 Qwen2.5-1.5B-Instruct
 - `PromptRewriter` 的 `base_url` / `model`：改写系统提示可以换成更强的模型（任何 OpenAI 兼容接口），被进化的仍是小模型
 - `holdout`：题越多准入越可靠，评估越慢；`gate` 的 `significance_z` 要求提升超过噪声
-- 训练命令：`train_sft.py` 是单卡最小实现；换成 verl 的 SFT 入口见 `adapters/verl` 和 `field_tests/verl/v4_weights_sft.py`
+- 训练命令：`train_sft.py` 是单卡最小实现；也可以写 `trainer: builtin` 用 `openrsi-weights` 自带的训练器（SFT / DPO / KTO，可选 LoRA），或换成 verl 的 SFT 入口（见 `adapters/verl` 和 `field_tests/verl/v4_weights_sft.py`）
+- 让判错的题也用上：提案器换成 `openrsi_weights:PreferenceProposer`（`method: dpo` 或 `kto`），并设 `loop.train_samples`（每道练习题答几次）和 agent 的采样温度，DPO 才有同一道题的对错配对
 
 ### 跑完发回什么
 

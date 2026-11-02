@@ -50,7 +50,7 @@ components:
           base_url: http://127.0.0.1:8100/v1
           model: policy
       - name: weights
-        python: openrsi_verl:DistillProposer
+        python: openrsi_weights:DistillProposer
         with:
           data_dir: .openrsi/sft
           min_examples: 3
@@ -81,7 +81,7 @@ evolvables:
         text: Solve the math problem step by step. On the last line, write the final
           answer as '#### <number>'.
   weights:
-    python: openrsi_verl:WeightsEvolvable
+    python: openrsi_weights:WeightsEvolvable
     with:
       base_model: Qwen/Qwen2.5-0.5B-Instruct
       path: .openrsi/weights
