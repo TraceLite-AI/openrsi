@@ -1,7 +1,7 @@
 """元层进化测试用的提案器和 agent（基于 secret_ops 示例）。"""
 from __future__ import annotations
 
-from openrsi import Item, Patch
+from anyrsi import Item, Patch
 
 from secret_ops import RuleAgent, RuleInducer
 

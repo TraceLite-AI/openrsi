@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/rsihub-task-env
+protocol: anyrsi/0.4
+name: anyrsi/rsihub-task-env
 version: 0.4.2
 description: RSIHub 的题库（Harbor 数据集）当环境。按 RSIHub splits._assign 的规则划分 train / gate / sealed，映射成 train / holdout / final；题目带内容哈希。
 kinds: [env]
@@ -9,4 +9,4 @@ implements:
 capabilities: {harbor_dataset: true, rsihub_split: true}
 runtime:
   transport: stdio
-  command: [openrsi-serve, "openrsi_rsihub:RSIHubTaskEnv", --with, '{"dataset": "/path/to/harbor/dataset"}']
+  command: [anyrsi-serve, "anyrsi_rsihub:RSIHubTaskEnv", --with, '{"dataset": "/path/to/harbor/dataset"}']

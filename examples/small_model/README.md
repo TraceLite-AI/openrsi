@@ -2,8 +2,8 @@
 
 用一个开源小模型（默认 Qwen2.5-0.5B-Instruct）做 GSM8K，同一轮进化里同时改两样东西：
 
-- **系统提示**：被进化的小模型自己读答错的 train 题，改写系统提示（`openrsi_llm:PromptRewriter`）
-- **模型权重**：把判别器判为通过的 train 轨迹拿去 SFT（`openrsi_weights:DistillProposer` + `train_sft.py`），也就是拒绝采样式的自我蒸馏
+- **系统提示**：被进化的小模型自己读答错的 train 题，改写系统提示（`anyrsi_llm:PromptRewriter`）
+- **模型权重**：把判别器判为通过的 train 轨迹拿去 SFT（`anyrsi_weights:DistillProposer` + `train_sft.py`），也就是拒绝采样式的自我蒸馏
 
 每一代由 ShinkaEvolve 的 UCB 在这两个提案器里选一个。候选要在 holdout 上真的变好才被接受。
 权重变了，执行体 `ChatAgent` 会用新的 checkpoint 重启推理服务。
@@ -25,9 +25,9 @@
 
 | 配置 | 推理 | 训练 | 用途 | 时间 |
 |---|---|---|---|---|
-| `openrsi.mock.yaml` | 假服务 `mock_llm.py` | 假训练 `fake_train.py` | 检查流程，CI 里跑 | 几秒 |
-| `openrsi.cpu.yaml` | `hf_server.py`（transformers） | `train_sft.py` | 没有 GPU 时用真实小模型走一遍 | 4 核 CPU 约 1 小时 |
-| `openrsi.yaml` | vLLM | `train_sft.py` | 正式跑 | 1 张 GPU 约 1～2 小时 |
+| `anyrsi.mock.yaml` | 假服务 `mock_llm.py` | 假训练 `fake_train.py` | 检查流程，CI 里跑 | 几秒 |
+| `anyrsi.cpu.yaml` | `hf_server.py`（transformers） | `train_sft.py` | 没有 GPU 时用真实小模型走一遍 | 4 核 CPU 约 1 小时 |
+| `anyrsi.yaml` | vLLM | `train_sft.py` | 正式跑 | 1 张 GPU 约 1～2 小时 |
 
 ### 在 GPU 上跑
 
@@ -39,11 +39,11 @@ pip install vllm torch transformers
 
 # 数据：用 verl 的预处理脚本，或者不装 verl 时用 prepare_gsm8k.py
 python <verl 仓库>/examples/data_preprocess/gsm8k.py --local_dir ~/data/gsm8k
-#   或：python examples/small_model/prepare_gsm8k.py ~/data/gsm8k 再把 openrsi.yaml 里的 data_dir 改过去
+#   或：python examples/small_model/prepare_gsm8k.py ~/data/gsm8k 再把 anyrsi.yaml 里的 data_dir 改过去
 
 cd examples/small_model
-openrsi run openrsi.yaml
-openrsi log openrsi.yaml
+anyrsi run anyrsi.yaml
+anyrsi log anyrsi.yaml
 ```
 
 单卡上推理服务和训练同时占显存：vLLM 设了 `--gpu-memory-utilization 0.3`，0.5B 全参训练还需要 8GB 左右。
@@ -54,17 +54,17 @@ openrsi log openrsi.yaml
 - `base_model`：换成别的开源模型，比如 Qwen2.5-1.5B-Instruct
 - `PromptRewriter` 的 `base_url` / `model`：改写系统提示可以换成更强的模型（任何 OpenAI 兼容接口），被进化的仍是小模型
 - `holdout`：题越多准入越可靠，评估越慢；`gate` 的 `significance_z` 要求提升超过噪声
-- 训练命令：`train_sft.py` 是单卡最小实现；也可以写 `trainer: builtin` 用 `openrsi-weights` 自带的训练器（SFT / DPO / KTO，可选 LoRA），或换成 verl 的 SFT 入口（见 `adapters/verl` 和 `field_tests/verl/v4_weights_sft.py`）
-- 让判错的题也用上：提案器换成 `openrsi_weights:PreferenceProposer`（`method: dpo` 或 `kto`），并设 `loop.train_samples`（每道练习题答几次）和 agent 的采样温度，DPO 才有同一道题的对错配对
+- 训练命令：`train_sft.py` 是单卡最小实现；也可以写 `trainer: builtin` 用 `anyrsi-weights` 自带的训练器（SFT / DPO / KTO，可选 LoRA），或换成 verl 的 SFT 入口（见 `adapters/verl` 和 `field_tests/verl/v4_weights_sft.py`）
+- 让判错的题也用上：提案器换成 `anyrsi_weights:PreferenceProposer`（`method: dpo` 或 `kto`），并设 `loop.train_samples`（每道练习题答几次）和 agent 的采样温度，DPO 才有同一道题的对错配对
 
 ### 跑完发回什么
 
-`.openrsi/lineage.jsonl`（谱系）、`openrsi log openrsi.yaml` 的输出、`.openrsi/vllm-logs/`（推理服务日志）、
-`.openrsi/weights/checkpoints/*.log`（训练日志）、`.openrsi/sft/` 里任意一个文件的前几行。
+`.anyrsi/lineage.jsonl`（谱系）、`anyrsi log anyrsi.yaml` 的输出、`.anyrsi/vllm-logs/`（推理服务日志）、
+`.anyrsi/weights/checkpoints/*.log`（训练日志）、`.anyrsi/sft/` 里任意一个文件的前几行。
 
 ## 在 CPU 上实际跑过的结果
 
-在开发环境（4 核 CPU，无 GPU）用 `openrsi.cpu.yaml` 跑过 Qwen2.5-0.5B-Instruct，每代 12 道 train、15 道 holdout、3 代，约 1 小时：
+在开发环境（4 核 CPU，无 GPU）用 `anyrsi.cpu.yaml` 跑过 Qwen2.5-0.5B-Instruct，每代 12 道 train、15 道 holdout、3 代，约 1 小时：
 
 | 代 | 提案器 | 结果 |
 |---|---|---|

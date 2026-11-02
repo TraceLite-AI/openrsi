@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from openrsi import EvolvableInfo, Episode, ProposalRequest, Task, Trajectory, Verdict
-from openrsi_runtime import Runner, Wiring, load_config
-from openrsi_weights import (DataLeakError, PreferenceProposer, episodes_to_dpo_rows, episodes_to_kto_rows,
+from anyrsi import EvolvableInfo, Episode, ProposalRequest, Task, Trajectory, Verdict
+from anyrsi_runtime import Runner, Wiring, load_config
+from anyrsi_weights import (DataLeakError, PreferenceProposer, episodes_to_dpo_rows, episodes_to_kto_rows,
                              episodes_to_sft_rows, read_rows)
 
 EQ = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
@@ -62,22 +62,22 @@ def test_preference_proposer(tmp_path):
 
 
 def test_wrong_answers_reach_weights_training_through_the_loop(tmp_path):
-    data = {"protocol": "openrsi/0.4", "name": "w", "plugins": ["weights_ops", "secret_ops"],
+    data = {"protocol": "anyrsi/0.4", "name": "w", "plugins": ["weights_ops", "secret_ops"],
             "components": {
                 "env": {"python": "secret_ops:SecretOpsEnv", "with": {"seed": 0}},
                 "agent": {"python": "weights_ops:NoisyRuleAgent", "with": {"error_rate": 0.5}},
-                "proposer": {"python": "openrsi_weights:PreferenceProposer",
+                "proposer": {"python": "anyrsi_weights:PreferenceProposer",
                              "with": {"data_dir": "state/pref", "method": "dpo", "min_examples": 1}},
-                "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+                "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
                 "evidence": {"same_as": "judge"},
-                "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 1}},
-                "gate": {"python": "openrsi_gate:HoldoutGate"},
-                "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}}},
-            "evolvables": {"weights": {"python": "openrsi_weights:WeightsEvolvable",
+                "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 1}},
+                "gate": {"python": "anyrsi_gate:HoldoutGate"},
+                "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}}},
+            "evolvables": {"weights": {"python": "anyrsi_weights:WeightsEvolvable",
                                        "with": {"base_model": "tiny", "path": "state/weights", "dry_run": True}}},
             "loop": {"train_samples": 4, "holdout_limit": 8}}
-    (tmp_path / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    cfg = load_config(tmp_path / "openrsi.yaml")
+    (tmp_path / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    cfg = load_config(tmp_path / "anyrsi.yaml")
 
     async def go():
         async with Wiring(cfg) as w:
@@ -100,7 +100,7 @@ def test_wrong_answers_reach_weights_training_through_the_loop(tmp_path):
 
 
 def test_builtin_trainer_command(tmp_path):
-    from openrsi_weights import BUILTIN, WeightsEvolvable
+    from anyrsi_weights import BUILTIN, WeightsEvolvable
 
     w = WeightsEvolvable("m", tmp_path, trainer="builtin")
-    assert w.trainer == BUILTIN and "openrsi_weights.train" in w.trainer
+    assert w.trainer == BUILTIN and "anyrsi_weights.train" in w.trainer

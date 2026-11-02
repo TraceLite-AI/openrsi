@@ -1,0 +1,168 @@
+"""模型权重作为可进化体：每个快照是一个 checkpoint，补丁是一次训练。回滚就是切换当前 checkpoint，旧的不删。
+
+补丁格式：[{"op": "train", "method": "sft" | "dpo" | "kto" | ..., "data": "rows.jsonl", "config": {...}}]
+method 为 "noop" 时不训练，只登记一个指向父模型的快照（一致性测试用）。
+
+训练由谁做（trainer）：
+  - "builtin"：自带训练器 python -m anyrsi_weights.train（torch + transformers；SFT / DPO / KTO，可选 LoRA）
+  - 命令模板（字符串列表）：任何外部框架，比如 verl、LLaMA-Factory。模板里可以用 {base_model}（父快照的模型路径）、
+    {data}、{output_dir}、{method}、{config_json}
+AnyRSI 自己管的是：数据从哪来（只用 train、只用判别器判过的）、checkpoint 树和回滚、训完怎么评价；训练引擎可以替换。
+
+agent 怎么用：运行时把当前 checkpoint 作为一条 kind="weights" 的条目放进 agent 的上下文，text 是模型路径。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+from anyrsi import ComponentError, Diff, Evolvable, EvolvableInfo, Item, Patch, Snapshot, StaleSnapshotError
+from anyrsi.types import canonical_json, content_hash, now_iso
+
+BUILTIN = [sys.executable, "-m", "anyrsi_weights.train", "--method", "{method}", "--model", "{base_model}",
+           "--data", "{data}", "--output", "{output_dir}", "--config", "{config_json}"]
+
+
+def _natural_key(p: Path) -> list:
+    """global_step_10 排在 global_step_9 后面。"""
+    import re
+
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(p))]
+
+
+class WeightsEvolvable(Evolvable):
+    """with:
+    base_model  初始模型路径或名字（根快照）
+    path        checkpoint 登记和输出目录
+    trainer     "builtin"（自带训练器）或训练命令模板（字符串列表）；不给时只能用 dry_run
+    dry_run     True 时不调用训练命令，只建一个标记目录（本地调通流程用）
+    timeout     单次训练的超时（秒）
+    model_glob  训练输出里模型所在的子路径（glob），比如 "global_step_*/huggingface"；匹配多个时取步数最大的。
+                不给就把整个输出目录当作模型。verl 的 SFT / PPO 会把 checkpoint 放在 global_step_N 子目录里
+    """
+
+    name = "anyrsi/weights"
+    version = "0.4.1"
+
+    def __init__(self, base_model: str, path: str | Path, target: str = "weights", trainer: list[str] | str | None = None,
+                 dry_run: bool = False, timeout: float = 24 * 3600, model_glob: str | None = None):
+        self.model_glob = model_glob
+        self.cwd = Path.cwd()  # 训练命令里的相对路径以构造时的目录为准
+        self.base_model = base_model
+        self.path = Path(path).resolve()
+        self.target = target
+        self.trainer = list(BUILTIN) if trainer == "builtin" or trainer == ["builtin"] else list(trainer or [])
+        self.dry_run = dry_run
+        self.timeout = timeout
+        self.path.mkdir(parents=True, exist_ok=True)
+        self.registry_file = self.path / "checkpoints.json"
+        if self.registry_file.exists():
+            data = json.loads(self.registry_file.read_text(encoding="utf-8"))
+            self.ckpts: dict[str, dict[str, Any]] = data["checkpoints"]
+            self.head: str = data["head"]
+        else:
+            self.ckpts = {"ckpt_root": {"model_path": base_model, "parent": None, "op": None, "created_at": now_iso()}}
+            self.head = "ckpt_root"
+            self._save()
+
+    def _save(self) -> None:
+        self.registry_file.write_text(json.dumps({"head": self.head, "checkpoints": self.ckpts}, ensure_ascii=False,
+                                                 indent=2), encoding="utf-8")
+
+    def _snap(self, cid: str) -> Snapshot:
+        c = self.ckpts[cid]
+        return Snapshot(id=cid, target=self.target, parent_ids=[c["parent"]] if c["parent"] else [],
+                        content_hash=content_hash({"model": c["model_path"], "op": c["op"]}),
+                        created_at=c["created_at"], message=(c["op"] or {}).get("method"))
+
+    def describe(self) -> EvolvableInfo:
+        return EvolvableInfo(target=self.target, type="weights", head=self.head, surfaces=["weights"],
+                             size=len(self.ckpts), example_ops=[{"op": "train", "method": "noop", "data": "",
+                                                                 "config": {}}])
+
+    def snapshot(self) -> Snapshot:
+        return self._snap(self.head)
+
+    def apply(self, patch: Patch) -> Snapshot:
+        if patch.target != self.target:
+            raise ValueError(f"补丁目标是 {patch.target}，本组件是 {self.target}")
+        if patch.base_snapshot and patch.base_snapshot != self.head:
+            raise StaleSnapshotError(f"补丁基于 {patch.base_snapshot}，当前是 {self.head}")
+        if len(patch.ops) != 1 or patch.ops[0].get("op") != "train":
+            raise ComponentError('权重补丁必须是且只能是一个 {"op": "train", ...}')
+        op = {"method": "sft", "data": "", "config": {}, **patch.ops[0]}
+        parent = self.head
+        cid = "ckpt_" + hashlib.sha256(f"{parent}|{canonical_json(op)}".encode()).hexdigest()[:12]
+        if cid not in self.ckpts:
+            base = self.ckpts[parent]["model_path"]
+            if op["method"] == "noop":
+                model_path = base
+            else:
+                model_path = str(self._train(op, base, self.path / "checkpoints" / cid))
+            self.ckpts[cid] = {"model_path": model_path, "parent": parent, "op": op, "created_at": now_iso()}
+        self.head = cid
+        self._save()
+        return self._snap(cid)
+
+    def _train(self, op: dict[str, Any], base_model: str, out: Path) -> Path:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if self.dry_run:
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "DRY_RUN.json").write_text(json.dumps({"base_model": base_model, "op": op}, ensure_ascii=False))
+            return out
+        if not self.trainer:
+            raise ComponentError("没有配置 trainer 命令；本地调试可以用 dry_run: true")
+        fields = {"base_model": base_model, "data": op["data"], "output_dir": str(out), "method": op["method"],
+                  "config_json": json.dumps(op.get("config") or {}, ensure_ascii=False)}
+        argv = [part.format(**fields) for part in self.trainer]
+        if argv and argv[0] in ("python", "python3"):  # 和当前运行时用同一个解释器
+            argv[0] = sys.executable
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=self.timeout, cwd=self.cwd)
+        except subprocess.TimeoutExpired as e:
+            raise ComponentError(f"训练超时（{self.timeout}s）") from e
+        (out.parent / f"{out.name}.log").write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr, encoding="utf-8")
+        if proc.returncode != 0:
+            tail = (proc.stderr.strip().splitlines() or [f"退出码 {proc.returncode}"])[-1]
+            raise ComponentError(f"训练失败：{tail}")
+        if not out.exists():
+            raise ComponentError(f"训练命令成功退出，但没有生成 {out}")
+        if self.model_glob:
+            found = sorted(out.glob(self.model_glob), key=_natural_key)
+            if not found:
+                listing = ", ".join(sorted(p.name for p in out.iterdir())[:10]) or "空目录"
+                raise ComponentError(f"训练输出里没有匹配 {self.model_glob} 的模型（{out} 下有：{listing}）")
+            return found[-1]
+        return out
+
+    def rollback(self, snapshot_id: str) -> Snapshot:
+        if snapshot_id not in self.ckpts:
+            raise KeyError(f"没有快照 {snapshot_id}")
+        self.head = snapshot_id
+        self._save()
+        return self._snap(snapshot_id)
+
+    def _chain(self, cid: str) -> list[str]:
+        out = []
+        while cid:
+            out.append(cid)
+            cid = self.ckpts[cid]["parent"]
+        return out
+
+    def diff(self, from_id: str, to_id: str) -> Diff:
+        a, b = self._chain(from_id), self._chain(to_id)
+        if from_id in b:  # to 是 from 的后代：列出中间的训练
+            steps = b[: b.index(from_id)][::-1]
+            return Diff(from_id=from_id, to_id=to_id, ops=[self.ckpts[c]["op"] for c in steps])
+        return Diff(from_id=from_id, to_id=to_id, ops=[{"op": "replace_model", "from": self.ckpts[a[0]]["model_path"],
+                                                         "to": self.ckpts[b[0]]["model_path"]}])
+
+    def export(self, snapshot_id: str | None = None) -> list[dict[str, Any]]:
+        cid = snapshot_id or self.head
+        c = self.ckpts[cid]
+        return [Item(id="model", kind="weights", text=c["model_path"],
+                     data={"checkpoint": cid, "parent": c["parent"], "op": c["op"]}).model_dump(mode="json")]

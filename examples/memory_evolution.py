@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import random
 
-from openrsi import Item, Patch, Step, Task, Trajectory
-from openrsi_judge import EvidenceJudge, Rubric
-from openrsi_memory import MemoryEvolvable
+from anyrsi import Item, Patch, Step, Task, Trajectory
+from anyrsi_judge import EvidenceJudge, Rubric
+from anyrsi_memory import MemoryEvolvable
 
 OPS = {
     "add": lambda a, b: a + b, "sub": lambda a, b: a - b, "mul": lambda a, b: a * b,

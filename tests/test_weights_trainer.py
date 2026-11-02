@@ -1,4 +1,4 @@
-"""自带训练器（openrsi_weights.train）在真实的极小模型上训练：SFT、DPO、KTO、LoRA 合并、经 WeightsEvolvable 调用。
+"""自带训练器（anyrsi_weights.train）在真实的极小模型上训练：SFT、DPO、KTO、LoRA 合并、经 WeightsEvolvable 调用。
 
 需要 torch 和 transformers（LoRA 那条还要 peft），缺了就跳过。CI 里有一个单独的 job 装了 CPU 版的 torch。
 模型是随机初始化的 2 层 GPT-2，加一个现场训练的小 BPE 分词器，不用下载任何东西。
@@ -10,9 +10,9 @@ import pytest
 torch = pytest.importorskip("torch")
 transformers = pytest.importorskip("transformers")
 
-from openrsi import Patch  # noqa: E402
-from openrsi_weights import WeightsEvolvable, write_rows  # noqa: E402
-from openrsi_weights.train import encode, seq_logprob, train  # noqa: E402
+from anyrsi import Patch  # noqa: E402
+from anyrsi_weights import WeightsEvolvable, write_rows  # noqa: E402
+from anyrsi_weights.train import encode, seq_logprob, train  # noqa: E402
 
 PROMPT = [{"role": "user", "content": "is the sky blue"}]
 
@@ -50,7 +50,7 @@ def test_sft_learns_the_answer(tiny, tmp_path):
     report = train("sft", str(tiny), str(data), str(tmp_path / "out"), {"epochs": 15, "lr": 5e-3})
     assert report["loss_per_epoch"][-1] < report["loss_per_epoch"][0]
     assert logp(tmp_path / "out", "yes it is") > logp(tiny, "yes it is")
-    assert json.loads((tmp_path / "out" / "openrsi_train.json").read_text())["method"] == "sft"
+    assert json.loads((tmp_path / "out" / "anyrsi_train.json").read_text())["method"] == "sft"
 
 
 def test_dpo_moves_probability_from_the_wrong_answer_to_the_right_one(tiny, tmp_path):
@@ -88,7 +88,7 @@ def test_weights_evolvable_runs_the_builtin_trainer_and_can_roll_back(tiny, tmp_
                                                  "config": {"epochs": 2, "lr": 1e-3}}]))
     model = w.export(snap.id)[0]["text"]
     assert snap.parent_ids == ["ckpt_root"] and (tmp_path / "w" / "checkpoints").exists()
-    assert json.loads(open(f"{model}/openrsi_train.json").read())["method"] == "dpo"
+    assert json.loads(open(f"{model}/anyrsi_train.json").read())["method"] == "dpo"
     w.rollback("ckpt_root")
     assert w.export()[0]["text"] == str(tiny)
 

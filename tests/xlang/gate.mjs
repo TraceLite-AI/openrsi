@@ -1,4 +1,4 @@
-// 只照着 spec/tools.json 写的准入组件（JavaScript），不依赖 OpenRSI 的任何代码。
+// 只照着 spec/tools.json 写的准入组件（JavaScript），不依赖 AnyRSI 的任何代码。
 // 逻辑和参考实现 HoldoutGate 的默认配置一致：候选的 holdout 必须严格高于父快照；有 anchor 时不能下降。
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

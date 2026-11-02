@@ -11,8 +11,8 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from openrsi import Task, build_server, connect, from_messages
-from openrsi_judge import EvidenceJudge, Rubric
+from anyrsi import Task, build_server, connect, from_messages
+from anyrsi_judge import EvidenceJudge, Rubric
 
 RUBRIC = Rubric.model_validate({
     "items": [

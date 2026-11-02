@@ -1,4 +1,4 @@
-"""生成一个 Harbor 格式的玩具题库（每道题一个带 task.toml 的目录），给 openrsi.mock.yaml 用。
+"""生成一个 Harbor 格式的玩具题库（每道题一个带 task.toml 的目录），给 anyrsi.mock.yaml 用。
 
 两种题：
   sum      "Compute the sum of: 3, 9, 4"     模型自己算，答对的概率取决于权重（mock_llm.py 里的 level）

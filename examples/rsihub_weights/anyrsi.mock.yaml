@@ -1,0 +1,57 @@
+# 本地调通用：同一个循环里既改 agent 代码、又训权重，题库按 RSIHub 的方式组织（Harbor 格式）。
+# 假 Harbor（fake_harbor.py）+ 假推理服务（mock_llm.py）+ 假训练（fake_train.py），不需要 GPU、Docker 或 API key。
+#
+#   python make_toy_dataset.py toy_tasks && anyrsi run anyrsi.mock.yaml
+#
+# 题库里 1/3 是乘法题（模型永远算错，要改代码加乘法工具），2/3 是加法题（答对率取决于权重）。
+# 每代由 Shinka 在两个提案器里选一个：
+#   code     CodeRewriter：看错题和源码，改 agent/toy_agent.py
+#   weights  PreferenceProposer（KTO）：答对的轨迹标"好"、答错的标"坏"，一起拿去训。错题也是训练数据
+# 假模型的答案是固定的，所以用 KTO（不需要同一道题一对一错）。真模型采样有随机性时，可以改成 method: dpo，
+# 再加 loop.train_samples: 2，让每道题答两次，把一对一错的配成 DPO 数据
+protocol: anyrsi/0.4
+name: rsihub-code-and-weights-mock
+
+components:
+  env:
+    python: "anyrsi_rsihub:RSIHubTaskEnv"
+    with: {dataset: toy_tasks, split: {train: 0.5, gate: 0.25, sealed: 0.25}, seed: 0, train_per_round: 16}
+  agent:
+    python: "anyrsi_rsihub:HarborAgent"
+    with:
+      repo: .anyrsi/harness
+      command: [python, fake_harbor.py, run, -p, "{dataset}", --include-task-name, "{task}", --job-name, "{job}",
+                --jobs-dir, "{jobs_dir}"]
+      agent_args: [--agent-import-path, "agent.toy_agent:ToyAgent"]
+      extra_args: [--ae, "OPENAI_BASE_URL={base_url}"]
+      timeout: 60
+      server:
+        port: 8197
+        startup_timeout: 30
+        log_dir: .anyrsi/server-logs
+        command: [python, mock_llm.py, --model, "{model}", --port, "{port}"]
+  judge: {python: "anyrsi_rsihub:HarborRewardJudge"}
+  proposer:
+    python: "anyrsi_proposer:CompositeProposer"
+    with:
+      proposers:
+        - {name: code, python: "anyrsi_llm:CodeRewriter", with: {base_url: "http://127.0.0.1:8197/v1", model: policy}}
+        - {name: weights, python: "anyrsi_weights:PreferenceProposer", with: {data_dir: .anyrsi/kto, method: kto, min_examples: 4}}
+  algorithm: {python: "anyrsi_algorithm:ShinkaAlgorithm", with: {proposers: [code, weights], max_generations: 6, patience: 4}}
+  gate:      {python: "anyrsi_gate:HoldoutGate"}
+  guard:     {python: "anyrsi_guard:PolicyGuard"}
+  lineage:   {python: "anyrsi_lineage:LineageStore", with: {path: .anyrsi/lineage.jsonl}}
+
+evolvables:
+  harness:
+    python: "anyrsi_harness:HarnessEvolvable"
+    with: {repo: .anyrsi/harness, template: harness_template, mutable: ["agent/**"]}
+  weights:
+    python: "anyrsi_weights:WeightsEvolvable"
+    with:
+      base_model: base
+      path: .anyrsi/weights
+      trainer: [python, fake_train.py, --model, "{base_model}", --data, "{data}", --output, "{output_dir}"]
+
+loop:
+  max_patches: 1

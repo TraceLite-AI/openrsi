@@ -12,9 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "secret_ops"))
 
-from openrsi import Agent, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory  # noqa: E402
-from openrsi_evolvables import run_skill  # noqa: E402
-from secret_ops import OPS, SecretOpsEnv  # noqa: E402,F401  SecretOpsEnv 供 openrsi.yaml 引用
+from anyrsi import Agent, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory  # noqa: E402
+from anyrsi_evolvables import run_skill  # noqa: E402
+from secret_ops import OPS, SecretOpsEnv  # noqa: E402,F401  SecretOpsEnv 供 anyrsi.yaml 引用
 
 EXPR = {
     "add": "a + b", "sub": "a - b", "mul": "a * b", "mul+1": "a * b + 1", "add+1": "a + b + 1",

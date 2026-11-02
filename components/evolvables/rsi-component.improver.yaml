@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/improver
+protocol: anyrsi/0.4
+name: anyrsi/improver
 version: 0.4.1
 description: 提案器的策略（Improver 层，type improver）。agent 看不到；运行时按 loop.meta_every 进化，按同预算下的下游提升准入。
 kinds: [evolvable]
@@ -14,5 +14,5 @@ implements:
 capabilities: {snapshot_tree: true, meta: true}
 runtime:
   transport: stdio
-  command: [openrsi-serve, "openrsi_evolvables:ImproverEvolvable", --with, '{"path": "./improver-store"}']
+  command: [anyrsi-serve, "anyrsi_evolvables:ImproverEvolvable", --with, '{"path": "./improver-store"}']
 evolvable_surfaces: [strategy]

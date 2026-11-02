@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from openrsi import EnvCell, Task
+from anyrsi import EnvCell, Task
 
 from secret_ops import RuleAgent, SecretOpsEnv
 

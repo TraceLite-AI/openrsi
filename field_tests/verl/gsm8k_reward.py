@@ -1,4 +1,4 @@
-"""GSM8K 奖励：用 OpenRSI 判别器打分，答案抽取规则和 verl 自带的 gsm8k 奖励一致（取最后一个 "#### 数字"）。
+"""GSM8K 奖励：用 AnyRSI 判别器打分，答案抽取规则和 verl 自带的 gsm8k 奖励一致（取最后一个 "#### 数字"）。
 
 verl 配置：
     custom_reward_function.path=<本文件>
@@ -6,9 +6,9 @@ verl 配置：
 """
 import re
 
-from openrsi_judge import EvidenceJudge
-from openrsi_verl import make_compute_score
-from openrsi_verl.reward import default_trajectory
+from anyrsi_judge import EvidenceJudge
+from anyrsi_verl import make_compute_score
+from anyrsi_verl.reward import default_trajectory
 
 RUBRIC = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
 _ANSWER = re.compile(r"#### (\-?[0-9\.\,]+)")

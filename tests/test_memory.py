@@ -1,7 +1,7 @@
 import pytest
 
-from openrsi import Item, Patch, StaleSnapshotError
-from openrsi_memory import MemoryEvolvable
+from anyrsi import Item, Patch, StaleSnapshotError
+from anyrsi_memory import MemoryEvolvable
 
 
 def add(*items):

@@ -1,0 +1,106 @@
+# 没有 GPU 时用：transformers 推理服务（hf_server.py）+ 少量题目，CPU 上也能把真实小模型的全流程走一遍（4 核 CPU 约 1 小时）。
+#   python prepare_gsm8k.py gsm8k && anyrsi run anyrsi.cpu.yaml
+protocol: anyrsi/0.4
+name: small-model-cpu
+plugins:
+- gsm8k_env
+components:
+  env:
+    python: gsm8k_env:GSM8KEnv
+    with:
+      data_dir: gsm8k
+      train_per_round: 12
+      holdout: 15
+      final: 15
+  agent:
+    python: anyrsi_llm:ChatAgent
+    with:
+      model: policy
+      max_tokens: 384
+      server:
+        port: 8100
+        startup_timeout: 900
+        log_dir: .anyrsi/server-logs
+        command:
+        - python
+        - hf_server.py
+        - --model
+        - '{model}'
+        - --port
+        - '{port}'
+  judge:
+    python: anyrsi_judge:EvidenceJudge
+    with:
+      rubric:
+        items:
+        - id: correct
+          check: output_equals
+          required: true
+          params:
+            extract: (?:####|\\boxed\{)\s*\$?(-?[0-9][0-9\.\,]*)
+  evidence:
+    same_as: judge
+  proposer:
+    python: anyrsi_proposer:CompositeProposer
+    with:
+      proposers:
+      - name: prompt
+        python: anyrsi_llm:PromptRewriter
+        with:
+          base_url: http://127.0.0.1:8100/v1
+          model: policy
+      - name: weights
+        python: anyrsi_weights:DistillProposer
+        with:
+          data_dir: .anyrsi/sft
+          min_examples: 3
+  algorithm:
+    python: anyrsi_algorithm:ShinkaAlgorithm
+    with:
+      proposers:
+      - prompt
+      - weights
+      max_generations: 3
+      patience: 3
+  gate:
+    python: anyrsi_gate:HoldoutGate
+    with: {}
+  guard:
+    python: anyrsi_guard:PolicyGuard
+  lineage:
+    python: anyrsi_lineage:LineageStore
+    with:
+      path: .anyrsi/lineage.jsonl
+evolvables:
+  prompt:
+    python: anyrsi_evolvables:PromptEvolvable
+    with:
+      path: .anyrsi/prompt
+      initial:
+      - id: instructions
+        text: Solve the math problem step by step. On the last line, write the final
+          answer as '#### <number>'.
+  weights:
+    python: anyrsi_weights:WeightsEvolvable
+    with:
+      base_model: Qwen/Qwen2.5-0.5B-Instruct
+      path: .anyrsi/weights
+      trainer:
+      - python
+      - train_sft.py
+      - --model
+      - '{base_model}'
+      - --data
+      - '{data}'
+      - --output
+      - '{output_dir}'
+      - --epochs
+      - '1'
+      - --lr
+      - 1e-5
+      - --batch
+      - '2'
+      - --max-len
+      - '512'
+loop:
+  max_patches: 1

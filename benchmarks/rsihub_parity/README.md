@@ -1,6 +1,6 @@
 # 和 RSIHub 拉齐的对照实验（做法 A：用 RSIHub 的评测器）
 
-在 RSIHub 里跑同一个方法的两个版本，只换算子、其余完全相同，看 OpenRSI 的组件有没有带来差别。
+在 RSIHub 里跑同一个方法的两个版本，只换算子、其余完全相同，看 AnyRSI 的组件有没有带来差别。
 同时用 RSIHub 公布的数字检查我们的基线有没有对上。
 
 ## 设置
@@ -17,13 +17,13 @@
 
 两组的唯一区别：
 
-| 算子 | baseline（RSIHub 原样） | openrsi |
+| 算子 | baseline（RSIHub 原样） | anyrsi |
 |---|---|---|
-| validate | `hyperagents`：Python 编译检查 | `openrsi_guard`：同样的编译检查，加上护栏（不许改 `evaluator/`、不许写入密钥） |
-| gate | `parent_eligible`：评估完整就入档 | `openrsi_no_regression`：评估完整，且总分不降、逐题变差不超过 2 道 |
+| validate | `hyperagents`：Python 编译检查 | `anyrsi_guard`：同样的编译检查，加上护栏（不许改 `evaluator/`、不许写入密钥） |
+| gate | `parent_eligible`：评估完整就入档 | `anyrsi_no_regression`：评估完整，且总分不降、逐题变差不超过 2 道 |
 | select | `score_child_prop` | 不变 |
 
-可选第三组 `shinka`：在 openrsi 基础上把 select 换成 `openrsi_shinka`。
+可选第三组 `shinka`：在 anyrsi 基础上把 select 换成 `anyrsi_shinka`。
 
 RSIHub 公布的这一行：训练分 58.0% → 68.0%，全量分 56.2% → 69.7%。我们的 baseline 应该接近这个数。
 不会完全一样：他们论文实验用的具体划分没有公开，而且单次运行本身有噪声。同一个原始 agent，在他们表里不同方法那几行的训练分是 58% 到 70% 不等，说明单次运行的差别可能有 ±6 个百分点。
@@ -45,11 +45,11 @@ git clone https://github.com/simple-agent-lab/RSIHub && cd RSIHub
 echo "OPENAI_API_KEY=..." > .env
 export RSIHUB=$PWD
 
-# 1. 下载数据集、构建 Codex 变异镜像。这一步会执行 uv sync，所以要在装 OpenRSI 之前做
+# 1. 下载数据集、构建 Codex 变异镜像。这一步会执行 uv sync，所以要在装 AnyRSI 之前做
 ./scripts/setup_terminal_bench.sh hyperagents
 
-# 2. OpenRSI 环境（必须是 Python 3.12，算子会在 RSIHub 的进程里加载这里的包）
-cd /path/to/openrsi
+# 2. AnyRSI 环境（必须是 Python 3.12，算子会在 RSIHub 的进程里加载这里的包）
+cd /path/to/anyrsi
 uv venv -p 3.12 .venv-parity && . .venv-parity/bin/activate
 uv pip install -e sdk/python -e components/gate -e components/guard -e components/lineage -e adapters/rsihub pyyaml
 
@@ -61,16 +61,16 @@ python benchmarks/rsihub_parity/make_recipes.py $RSIHUB
 
 # 5. 冒烟测试：每组 1 代，确认能跑通、看单价
 WORKSPACE=$RSIHUB/runs/smoke-baseline bash benchmarks/rsihub_parity/run_arm.sh $RSIHUB baseline 1
-WORKSPACE=$RSIHUB/runs/smoke-openrsi  bash benchmarks/rsihub_parity/run_arm.sh $RSIHUB openrsi 1
+WORKSPACE=$RSIHUB/runs/smoke-anyrsi  bash benchmarks/rsihub_parity/run_arm.sh $RSIHUB anyrsi 1
 
 # 6. 正式实验（两组可以同时跑，前提是机器扛得住 2 × 10 个并发容器）
 bash benchmarks/rsihub_parity/run_arm.sh $RSIHUB baseline
-bash benchmarks/rsihub_parity/run_arm.sh $RSIHUB openrsi
+bash benchmarks/rsihub_parity/run_arm.sh $RSIHUB anyrsi
 
 # 7. 全量 89 题评估：原始 agent 一次，两组最佳版本各一次
-python benchmarks/rsihub_parity/full_eval.py $RSIHUB $RSIHUB/runs/openrsi-parity-baseline 0
-python benchmarks/rsihub_parity/full_eval.py $RSIHUB $RSIHUB/runs/openrsi-parity-baseline best
-python benchmarks/rsihub_parity/full_eval.py $RSIHUB $RSIHUB/runs/openrsi-parity-openrsi best
+python benchmarks/rsihub_parity/full_eval.py $RSIHUB $RSIHUB/runs/anyrsi-parity-baseline 0
+python benchmarks/rsihub_parity/full_eval.py $RSIHUB $RSIHUB/runs/anyrsi-parity-baseline best
+python benchmarks/rsihub_parity/full_eval.py $RSIHUB $RSIHUB/runs/anyrsi-parity-anyrsi best
 
 # 8. 汇总
 python benchmarks/rsihub_parity/compare.py $RSIHUB
@@ -84,16 +84,16 @@ python benchmarks/rsihub_parity/compare.py $RSIHUB
 哪一步失败就把那一步的终端输出发来。最可能出问题的两处：
 
 - 第 7 步：`evolve init` 不一定接受本地仓库（`file://`）作为 target，`run --max-generations 0` 也不一定被接受（脚本失败时会打印替代命令）。
-- gate 拿不到逐题分数：默认 `openrsi_no_regression` 会退回只比总分，原因里写着"只比总分"，compare 的逐代列表里能看到。生成配方时加 `--strict-gate` 就改为直接拒绝（候选漏题、多题、某题评估不完整、任务集哈希不同也都拒绝），推荐正式实验用。
+- gate 拿不到逐题分数：默认 `anyrsi_no_regression` 会退回只比总分，原因里写着"只比总分"，compare 的逐代列表里能看到。生成配方时加 `--strict-gate` 就改为直接拒绝（候选漏题、多题、某题评估不完整、任务集哈希不同也都拒绝），推荐正式实验用。
 
 ## 严格模式和这个实验的边界
 
-适配器有严格模式（`strict: true`，见 `adapters/rsihub/openrsi_rsihub/core.py`）：
+适配器有严格模式（`strict: true`，见 `adapters/rsihub/anyrsi_rsihub/core.py`）：
 
 - gate：回退上限必须显式给出；父代和候选的逐题向量必须覆盖同一批题、任务集哈希一致，否则拒绝，不退回只比总分。
 - validate：`evaluator/**` 和 `operators/**` 总受保护（配置漏写也一样），默认编译检查，`required_files` 里的文件不能被删。
 
-这个对照实验只对 gate 用严格模式（`--strict-gate`）。validate 不用：Hyperagents 原版允许改 `operators/`，如果 openrsi 组强制保护它，两组能改的范围就不一样了，比较不公平。要做"两组可改范围相同、算子固定"的受控实验，应当另开一组配方，两组都保护 `operators/**`，不能和这个原版对齐实验混在一起报告。
+这个对照实验只对 gate 用严格模式（`--strict-gate`）。validate 不用：Hyperagents 原版允许改 `operators/`，如果 anyrsi 组强制保护它，两组能改的范围就不一样了，比较不公平。要做"两组可改范围相同、算子固定"的受控实验，应当另开一组配方，两组都保护 `operators/**`，不能和这个原版对齐实验混在一起报告。
 
 ## 现在的状态
 
@@ -104,4 +104,4 @@ python benchmarks/rsihub_parity/compare.py $RSIHUB
 拿到这组结果后做两件事：
 
 1. 如果差别明显、预算允许，扩到其他方法（AHE、GEPA、A-Evolve）、Codex 目标 agent 和 τ³ Banking（Harbor 里的 `sierra-research/tau3-bench` banking 部分，97 题，划分 50 / 20 / 27）。
-2. 做法 B：OpenRSI 自己的运行时通过 Harbor 跑同样的基准和划分。
+2. 做法 B：AnyRSI 自己的运行时通过 Harbor 跑同样的基准和划分。

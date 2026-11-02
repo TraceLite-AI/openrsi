@@ -3,5 +3,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 memory-store/
-.openrsi/
+.anyrsi/
 examples/rsihub_weights/toy_tasks/

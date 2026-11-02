@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openrsi.dev/schemas/0.4/ScreenResult.json",
+  "$id": "https://anyrsi.dev/schemas/0.4/ScreenResult.json",
   "additionalProperties": true,
   "description": "评估前的筛查：和已经评估过的候选太像就不必再花评估成本（0.4）。",
   "properties": {

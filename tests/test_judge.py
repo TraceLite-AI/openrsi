@@ -1,7 +1,7 @@
 import hashlib
 
-from openrsi import AnchorExample, Step, Task, Trajectory
-from openrsi_judge import EvidenceJudge, LLMCheckResult, Rubric, RubricJudge, TrajectoryCollector, parse_test_summary
+from anyrsi import AnchorExample, Step, Task, Trajectory
+from anyrsi_judge import EvidenceJudge, LLMCheckResult, Rubric, RubricJudge, TrajectoryCollector, parse_test_summary
 
 import judge_standalone
 
@@ -131,8 +131,8 @@ def test_calibrate():
 
 def test_claude_checker_request_shape():
     """不调用真实 API：检查请求参数，以及拒答和未知证据 id 的处理。"""
-    from openrsi_judge import ClaudeChecker, LLMCheckError
-    from openrsi import Evidence
+    from anyrsi_judge import ClaudeChecker, LLMCheckError
+    from anyrsi import Evidence
 
     class FakeMessages:
         def __init__(self, response):

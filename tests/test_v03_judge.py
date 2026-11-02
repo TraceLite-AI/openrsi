@@ -6,19 +6,19 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from openrsi import (Agent, Environment, Episode, EvolvableInfo, GateRequest, Patch, ProposalRequest, Proposer, Task,
+from anyrsi import (Agent, Environment, Episode, EvolvableInfo, GateRequest, Patch, ProposalRequest, Proposer, Task,
                      Trajectory, build_server, connect, load_manifest)
-from openrsi.conformance import check
-from openrsi_gate import HoldoutGate
-from openrsi_judge import EvolvingJudge
-from openrsi_proposer import CompositeProposer, LessonProposer, RubricAuditor
-from openrsi_runtime import Runner, Wiring, load_config
-from openrsi_runtime.config import RunConfig
+from anyrsi.conformance import check
+from anyrsi_gate import HoldoutGate
+from anyrsi_judge import EvolvingJudge
+from anyrsi_proposer import CompositeProposer, LessonProposer, RubricAuditor
+from anyrsi_runtime import Runner, Wiring, load_config
+from anyrsi_runtime.config import RunConfig
 
 import coevo
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = ROOT / "examples" / "judge_coevolution" / "openrsi.yaml"
+EXAMPLE = ROOT / "examples" / "judge_coevolution" / "anyrsi.yaml"
 LENIENT = {"items": [{"id": "says_done", "check": "output_matches", "params": {"pattern": "done"}, "required": True}]}
 
 
@@ -98,7 +98,7 @@ def config(tmp_path, **loop):
     data["loop"]["anchor"] = str(EXAMPLE.parent / "anchor.jsonl") if data["loop"].get("anchor") else None
     for slot in ("judge", "memory", "lineage"):
         data["components"][slot]["with"]["path"] = f"state/{slot}"
-    path = tmp_path / "openrsi.yaml"
+    path = tmp_path / "anyrsi.yaml"
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     return load_config(path)
 
@@ -209,15 +209,15 @@ class PickyAgent(Agent):
 def test_counterfactual_attribution(tmp_path):
     data = {"name": "cf", "components": {
         "env": {"python": f"{__name__}:OneTaskEnv"}, "agent": {"python": f"{__name__}:PickyAgent"},
-        "judge": {"python": "openrsi_judge:EvidenceJudge",
+        "judge": {"python": "anyrsi_judge:EvidenceJudge",
                   "with": {"rubric": {"items": [{"id": "eq", "check": "output_equals", "required": True}]}}},
-        "memory": {"python": "openrsi_memory:MemoryEvolvable"},
-        "proposer": {"python": "openrsi_proposer:LessonProposer"},
-        "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm"},
-        "gate": {"python": "openrsi_gate:HoldoutGate"}, "lineage": {"python": "openrsi_lineage:LineageStore"}},
+        "memory": {"python": "anyrsi_memory:MemoryEvolvable"},
+        "proposer": {"python": "anyrsi_proposer:LessonProposer"},
+        "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm"},
+        "gate": {"python": "anyrsi_gate:HoldoutGate"}, "lineage": {"python": "anyrsi_lineage:LineageStore"}},
         "loop": {"counterfactual_reruns": 10, "retrieve_k": 10}}
-    (tmp_path / "openrsi.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
-    cfg = load_config(tmp_path / "openrsi.yaml")
+    (tmp_path / "anyrsi.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+    cfg = load_config(tmp_path / "anyrsi.yaml")
 
     async def go():
         async with Wiring(cfg) as w:

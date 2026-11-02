@@ -1,7 +1,7 @@
 # 现场测试
 
 单元测试（`tests/`）只能用替身验证。这里的测试要在真实环境里跑：你的机器、真实的 verl、真实的 RSIHub。
-每个脚本都会打印 `PASS` 或 `FAIL`，结果写在 `field_tests/out/` 下。全部跑完后执行 `bash field_tests/collect.sh`，把生成的 `openrsi-field-report.tgz` 发回来；只跑了一部分也可以发。
+每个脚本都会打印 `PASS` 或 `FAIL`，结果写在 `field_tests/out/` 下。全部跑完后执行 `bash field_tests/collect.sh`，把生成的 `anyrsi-field-report.tgz` 发回来；只跑了一部分也可以发。
 
 建议按下表顺序跑，前面的不过就先停下来发结果。
 
@@ -12,20 +12,20 @@
 | V2 | 导出的 RL 数据和 verl 格式一致，verl 的 RLHFDataset 能读；防泄漏 | verl、transformers | 1 分钟 | 否 |
 | V3 | 小模型 GRPO，奖励用我们的判别器；可选对照：verl 自带奖励 | 1 张 GPU、vllm | 20～40 分钟 | 否 |
 | V4 | 权重进化：连续两次 verl SFT，第二次从第一次的输出继续；回滚 | 1 张 GPU | 20～40 分钟 | 否 |
-| R1 | OpenRSI 算子装进 RSIHub：能发现、描述、校验配置，能 import 到 OpenRSI | RSIHub 仓库、uv | 1 分钟 | 否 |
+| R1 | AnyRSI 算子装进 RSIHub：能发现、描述、校验配置，能 import 到 AnyRSI | RSIHub 仓库、uv | 1 分钟 | 否 |
 | R2 | 拿已有的 RSIHub workspace 离线重放：逐题分数、准入对比、护栏、篡改评估器能否被拦 | 一个跑过的 workspace | 1～5 分钟 | 否 |
 | R3 | 真实 RSIHub 配方换上我们的三个算子跑 1～2 代 | Docker、Terminal-Bench 数据、OpenAI 等 API | 视配方 | 是 |
 
 ## L0 本机基线
 
 ```bash
-git clone https://github.com/TraceLite-AI/openrsi && cd openrsi
+git clone https://github.com/TraceLite-AI/anyrsi && cd anyrsi
 bash field_tests/run_local.sh            # 可以指定解释器：bash field_tests/run_local.sh python3.12
 ```
 
 在 `field_tests/out/local/venv` 里新建环境，不碰你现有的环境。通过标准：最后一行 `合计：N 通过，0 失败`。
 
-后面的测试需要一个装了 OpenRSI 的环境。可以直接用 L0 的：`. field_tests/out/local/venv/bin/activate`，再装 verl；或者把下面这些装进你已有的 verl 环境：
+后面的测试需要一个装了 AnyRSI 的环境。可以直接用 L0 的：`. field_tests/out/local/venv/bin/activate`，再装 verl；或者把下面这些装进你已有的 verl 环境：
 
 ```bash
 pip install -e sdk/python -e components/judge -e components/gate -e components/guard -e components/lineage \
@@ -54,7 +54,7 @@ python field_tests/verl/v4_weights_sft.py --src ~/data/gsm8k --model Qwen/Qwen2.
 
 ## RSIHub
 
-RSIHub 要求 Python 3.12+。OpenRSI 最好也用 3.12 的环境（算子脚本在 RSIHub 的进程里运行，会用到 OpenRSI 环境里编译过的包）。
+RSIHub 要求 Python 3.12+。AnyRSI 最好也用 3.12 的环境（算子脚本在 RSIHub 的进程里运行，会用到 AnyRSI 环境里编译过的包）。
 
 ```bash
 bash field_tests/rsihub/r1_operators.sh /path/to/RSIHub
@@ -62,9 +62,9 @@ python field_tests/rsihub/r2_replay.py /path/to/RSIHub/runs/<某个跑过的 wor
 python field_tests/rsihub/r3_recipe.py /path/to/RSIHub --base hill_climb     # 然后按它打印的命令跑
 ```
 
-- **R1** 通过：三个算子都能被 `evolve operator list` 发现、`describe` 正常；合法配置通过、非法和未知字段被拒；RSIHub 的 Python 能 import 到 OpenRSI。
+- **R1** 通过：三个算子都能被 `evolve operator list` 发现、`describe` 正常；合法配置通过、非法和未知字段被拒；RSIHub 的 Python 能 import 到 AnyRSI。
 - **R2** 通过：能算出逐题分数；篡改评估器的探针被拦下；每个候选的改动都能检查。准入结果和 RSIHub 的不一致是预期的（我们要求逐题不回退，比 hillclimb 严），我需要看具体是哪些。
-- **R3** 通过：`preflight` 和 `verify` 通过；每一代都有 `validate/openrsi_guard.json` 和带 `no_regression` 的 `gate.json`。注意不要在装完 OpenRSI 之后执行 `uv sync`，它会删掉 RSIHub venv 里的额外包。
+- **R3** 通过：`preflight` 和 `verify` 通过；每一代都有 `validate/anyrsi_guard.json` 和带 `no_regression` 的 `gate.json`。注意不要在装完 AnyRSI 之后执行 `uv sync`，它会删掉 RSIHub venv 里的额外包。
 
 没有跑过的 workspace 也没关系：R3 跑完的 workspace 可以直接用于 R2。
 

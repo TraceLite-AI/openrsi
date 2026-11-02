@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# V3（GPU）：小模型 GRPO，奖励用 OpenRSI 判别器；CONTROL=1 时再用 verl 自带 gsm8k 奖励跑一遍对照。
+# V3（GPU）：小模型 GRPO，奖励用 AnyRSI 判别器；CONTROL=1 时再用 verl 自带 gsm8k 奖励跑一遍对照。
 # 先跑 V2 生成数据。参数名按 verl 0.4 以后的 main_ppo 写；你的 verl 版本报未知参数就告诉我。
 #   MODEL=Qwen/Qwen2.5-0.5B-Instruct N_GPUS=1 STEPS=30 CONTROL=1 bash field_tests/verl/v3_grpo_smoke.sh
 set -euo pipefail
@@ -29,11 +29,11 @@ run() {  # run <名字> [额外参数...]
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=8 \
     trainer.n_gpus_per_node="$N_GPUS" trainer.nnodes=1 trainer.logger='["console"]' \
     trainer.total_training_steps="$STEPS" trainer.test_freq=10 trainer.save_freq=-1 trainer.val_before_train=True \
-    trainer.project_name=openrsi-field trainer.experiment_name="$name" \
+    trainer.project_name=anyrsi-field trainer.experiment_name="$name" \
     "$@" 2>&1 | tee "$OUT/v3-$name.log"
 }
 
-run openrsi custom_reward_function.path="$HERE/gsm8k_reward.py" custom_reward_function.name=compute_score
+run anyrsi custom_reward_function.path="$HERE/gsm8k_reward.py" custom_reward_function.name=compute_score
 [[ ${CONTROL:-0} == 1 ]] && run verl_builtin
 
 echo "--- 验证集分数（训练前 / 训练后）"

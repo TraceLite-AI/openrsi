@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from openrsi import Item, Patch, ProposalRequest, Proposer, build_server, connect, load_manifest
-from openrsi.conformance import check
-from openrsi_evolvables import PromptEvolvable, SkillLibrary, run_skill
-from openrsi_guard import PolicyGuard
-from openrsi_runtime import Runner, Wiring, load_config
+from anyrsi import Item, Patch, ProposalRequest, Proposer, build_server, connect, load_manifest
+from anyrsi.conformance import check
+from anyrsi_evolvables import PromptEvolvable, SkillLibrary, run_skill
+from anyrsi_guard import PolicyGuard
+from anyrsi_runtime import Runner, Wiring, load_config
 
 import secret_ops
 
@@ -99,7 +99,7 @@ def test_guard_allows_benign_and_warns_on_injection():
 # ---------------------------------------------------------------- 运行时
 
 def write_config(tmp_path, data):
-    path = tmp_path / "openrsi.yaml"
+    path = tmp_path / "anyrsi.yaml"
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     return load_config(path)
 
@@ -114,14 +114,14 @@ def run(cfg, generations=None):
 
 
 def skill_config(tmp_path, skills_command=False):
-    data = yaml.safe_load((ROOT / "examples/skill_ops/openrsi.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((ROOT / "examples/skill_ops/anyrsi.yaml").read_text(encoding="utf-8"))
     data["components"]["lineage"]["with"]["path"] = "state/lineage.jsonl"
     if skills_command:
         pythonpath = os.pathsep.join(str(ROOT / p) for p in ("sdk/python", "components/evolvables"))
-        data["evolvables"]["skills"] = {"command": [sys.executable, "-m", "openrsi_evolvables", "--kind", "skills",
+        data["evolvables"]["skills"] = {"command": [sys.executable, "-m", "anyrsi_evolvables", "--kind", "skills",
                                                     "--path", "state/skills"], "env": {"PYTHONPATH": pythonpath}}
     else:
-        data["evolvables"]["skills"] = {"python": "openrsi_evolvables:SkillLibrary", "with": {"path": "state/skills"}}
+        data["evolvables"]["skills"] = {"python": "anyrsi_evolvables:SkillLibrary", "with": {"path": "state/skills"}}
     return write_config(tmp_path, data)
 
 
@@ -159,11 +159,11 @@ class TwoTargetWriter(Proposer):
 
 
 def multi_config(tmp_path):
-    data = yaml.safe_load((ROOT / "examples/secret_ops/openrsi.yaml").read_text(encoding="utf-8"))
-    data["components"]["memory"] = {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
+    data = yaml.safe_load((ROOT / "examples/secret_ops/anyrsi.yaml").read_text(encoding="utf-8"))
+    data["components"]["memory"] = {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
     data["components"]["lineage"]["with"]["path"] = "state/lineage.jsonl"
     data["components"]["proposer"] = {"python": f"{__name__}:TwoTargetWriter"}
-    data["evolvables"] = {"prompt": {"python": "openrsi_evolvables:PromptEvolvable", "with": {"path": "state/prompt"}}}
+    data["evolvables"] = {"prompt": {"python": "anyrsi_evolvables:PromptEvolvable", "with": {"path": "state/prompt"}}}
     data["loop"]["max_patches"] = 3
     return write_config(tmp_path, data)
 

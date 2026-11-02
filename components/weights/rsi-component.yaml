@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/weights
+protocol: anyrsi/0.4
+name: anyrsi/weights
 version: 0.4.1
 description: 模型权重作为可进化体。快照是 checkpoint，补丁是一次训练（自带训练器 SFT / DPO / KTO，或任何外部训练命令，比如 verl、LLaMA-Factory）；回滚是切换 checkpoint。
 kinds: [evolvable]
@@ -14,5 +14,5 @@ implements:
 capabilities: {checkpoints: true, builtin_trainer: true, external_trainer: true}
 runtime:
   transport: stdio
-  command: [openrsi-weights, --base-model, Qwen/Qwen3-8B, --path, ./weights, --dry-run]
+  command: [anyrsi-weights, --base-model, Qwen/Qwen3-8B, --path, ./weights, --dry-run]
 evolvable_surfaces: [weights]

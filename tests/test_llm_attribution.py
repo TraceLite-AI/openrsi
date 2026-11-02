@@ -3,14 +3,14 @@ import asyncio
 import sys
 from pathlib import Path
 
-import openrsi_llm
+import anyrsi_llm
 import pytest
 import yaml
 
-from openrsi import (Attribution, AttributionTarget, EvolvableInfo, Episode, ProposalRequest, RubricResult, Task,
+from anyrsi import (Attribution, AttributionTarget, EvolvableInfo, Episode, ProposalRequest, RubricResult, Task,
                      Trajectory, Verdict, build_server, connect)
-from openrsi_llm import PromptRewriter
-from openrsi_runtime import Runner, Wiring, load_config
+from anyrsi_llm import PromptRewriter
+from anyrsi_runtime import Runner, Wiring, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 INFO = EvolvableInfo(target="prompt", type="prompt", head="s0")
@@ -40,14 +40,14 @@ def request(episodes, attributions) -> ProposalRequest:
 
 @pytest.fixture
 def calls(monkeypatch):
-    """替换 openrsi_llm.chat，记下每次请求的 messages，返回一段新的系统提示。"""
+    """替换 anyrsi_llm.chat，记下每次请求的 messages，返回一段新的系统提示。"""
     seen = []
 
     def fake_chat(base_url, model, messages, **kw):
         seen.append(messages)
         return {"text": "Think step by step and state the final value.", "usage": {}, "finish_reason": "stop"}
 
-    monkeypatch.setattr(openrsi_llm, "chat", fake_chat)
+    monkeypatch.setattr(anyrsi_llm, "chat", fake_chat)
     return seen
 
 
@@ -60,7 +60,7 @@ def test_attribution_reaches_request_payload(calls):
     attrs = [attribution("traj-0", TRAIN_SENTINEL), attribution("holdout-traj-9", HOLDOUT_SENTINEL)]
     [patch] = PromptRewriter("http://x/v1").propose(request(eps, attrs))
     text = user_text(calls)
-    assert TRAIN_SENTINEL in text and "Attribution notes:" in text and openrsi_llm.ATTRIBUTION_HEADER in text
+    assert TRAIN_SENTINEL in text and "Attribution notes:" in text and anyrsi_llm.ATTRIBUTION_HEADER in text
     assert HOLDOUT_SENTINEL not in text  # 不属于本轮 train 的归因必须丢掉
     # 归因放在对应错题下面，不放到别的题下面
     block0, block1 = text.split("---")
@@ -132,12 +132,12 @@ def test_attribution_survives_mcp_transport(calls):
 def test_runner_feeds_real_attributions_to_rewriter(tmp_path, calls, monkeypatch):
     """完整循环：官方归因器的输出经运行时进入 PromptRewriter 的请求，补丁说明记下用了哪些归因。"""
     monkeypatch.syspath_prepend(str(ROOT / "examples" / "secret_ops"))
-    data = yaml.safe_load((ROOT / "examples" / "secret_ops" / "openrsi.yaml").read_text(encoding="utf-8"))
-    data["components"]["memory"] = {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
+    data = yaml.safe_load((ROOT / "examples" / "secret_ops" / "anyrsi.yaml").read_text(encoding="utf-8"))
+    data["components"]["memory"] = {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}
     data["components"]["lineage"]["with"]["path"] = "state/lineage.jsonl"
-    data["components"]["proposer"] = {"python": "openrsi_llm:PromptRewriter", "with": {"base_url": "http://x/v1"}}
-    data["evolvables"] = {"prompt": {"python": "openrsi_evolvables:PromptEvolvable", "with": {"path": "state/prompt"}}}
-    path = tmp_path / "openrsi.yaml"
+    data["components"]["proposer"] = {"python": "anyrsi_llm:PromptRewriter", "with": {"base_url": "http://x/v1"}}
+    data["evolvables"] = {"prompt": {"python": "anyrsi_evolvables:PromptEvolvable", "with": {"path": "state/prompt"}}}
+    path = tmp_path / "anyrsi.yaml"
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     cfg = load_config(path)
 

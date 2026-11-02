@@ -2,44 +2,44 @@
 import asyncio
 from pathlib import Path
 
-import openrsi_llm
+import anyrsi_llm
 import pytest
 import yaml
 
-from openrsi import EvolvableInfo, Episode, ProposalRequest, Task, Trajectory, Verdict
-from openrsi_evolvables import CurriculumEvolvable, ImproverEvolvable, apply_curriculum
-from openrsi_llm import PromptRewriter, StrategyRewriter
-from openrsi_proposer import CurriculumProposer
-from openrsi_runtime import Runner, Wiring, load_config
+from anyrsi import EvolvableInfo, Episode, ProposalRequest, Task, Trajectory, Verdict
+from anyrsi_evolvables import CurriculumEvolvable, ImproverEvolvable, apply_curriculum
+from anyrsi_llm import PromptRewriter, StrategyRewriter
+from anyrsi_proposer import CurriculumProposer
+from anyrsi_runtime import Runner, Wiring, load_config
 
 from meta_ops import ContextRecordingAgent
 
 EQ = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
-IMPROVER = {"python": "openrsi_evolvables:ImproverEvolvable",
+IMPROVER = {"python": "anyrsi_evolvables:ImproverEvolvable",
             "with": {"path": "state/improver", "initial": [{"id": "max_rules", "text": "learn at most 1 rule per patch",
                                                             "data": {"max_rules": 1, "order": 0}}]}}
 
 
 def config(base: Path, proposer: dict, evolvables: dict, *, meta_every=2, agent="meta_ops:ContextRecordingAgent",
            train_limit=None, meta_min_gain=0.0):
-    data = {"protocol": "openrsi/0.4", "name": "meta", "plugins": ["meta_ops", "secret_ops"],
+    data = {"protocol": "anyrsi/0.4", "name": "meta", "plugins": ["meta_ops", "secret_ops"],
             "components": {
                 "env": {"python": "secret_ops:SecretOpsEnv", "with": {"seed": 0}},
                 "agent": {"python": agent}, "proposer": proposer,
-                "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+                "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
                 "evidence": {"same_as": "judge"},
-                "attribution": {"python": "openrsi_attribution:RubricEvidenceAttributor"},
-                "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm",
+                "attribution": {"python": "anyrsi_attribution:RubricEvidenceAttributor"},
+                "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm",
                               "with": {"max_generations": 50, "patience": 50}},
-                "gate": {"python": "openrsi_gate:HoldoutGate"},
-                "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
-                "memory": {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}},
+                "gate": {"python": "anyrsi_gate:HoldoutGate"},
+                "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
+                "memory": {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}}},
             "evolvables": evolvables,
             "loop": {"meta_every": meta_every, "meta_min_gain": meta_min_gain,
                      **({"train_limit": train_limit} if train_limit else {})}}
     base.mkdir(parents=True, exist_ok=True)
-    (base / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    return load_config(base / "openrsi.yaml")
+    (base / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return load_config(base / "anyrsi.yaml")
 
 
 def run(cfg, generations):
@@ -106,9 +106,9 @@ def test_without_meta_every_meta_targets_stay_frozen(tmp_path):
 # ---------------------------------------------------------------- curriculum
 
 def test_curriculum_changes_train_selection_only(tmp_path):
-    proposer = {"python": "openrsi_proposer:CompositeProposer",
+    proposer = {"python": "anyrsi_proposer:CompositeProposer",
                 "with": {"proposers": ["curriculum", {"name": "rules", "python": "meta_ops:SolverOnlyInducer"}]}}
-    cfg = config(tmp_path, proposer, {"curriculum": {"python": "openrsi_evolvables:CurriculumEvolvable",
+    cfg = config(tmp_path, proposer, {"curriculum": {"python": "anyrsi_evolvables:CurriculumEvolvable",
                                                      "with": {"path": "state/curriculum"}}}, train_limit=3)
 
     async def go():
@@ -135,7 +135,7 @@ def test_apply_curriculum_orders_drops_and_limits():
 
 def test_curriculum_evolvable_validates_weights(tmp_path):
     c = CurriculumEvolvable(path=tmp_path / "c", initial={"x": 1.0})
-    from openrsi import ComponentError, Patch
+    from anyrsi import ComponentError, Patch
     with pytest.raises(ComponentError, match="非负数"):
         c.apply(Patch(target="curriculum", ops=[{"op": "add", "item": {"id": "tag:y", "kind": "curriculum",
                                                                         "text": "y", "data": {"tag": "y", "weight": -1}}}]))
@@ -167,7 +167,7 @@ def _fake_chat(monkeypatch, reply):
         seen.append(messages)
         return {"text": reply, "usage": {}, "finish_reason": "stop"}
 
-    monkeypatch.setattr(openrsi_llm, "chat", chat)
+    monkeypatch.setattr(anyrsi_llm, "chat", chat)
     return seen
 
 
@@ -195,7 +195,7 @@ def test_strategy_rewriter_only_touches_improver(monkeypatch):
 
 
 def test_new_manifests_match():
-    from openrsi import build_server, connect, load_manifest
+    from anyrsi import build_server, connect, load_manifest
 
     root = Path(__file__).resolve().parents[1]
     for manifest, factory in (("evolvables/rsi-component.improver.yaml", lambda: ImproverEvolvable()),
@@ -218,7 +218,7 @@ def test_ordinary_generations_do_not_offer_meta_targets_to_the_proposer(tmp_path
 
 def test_curriculum_really_steers_which_train_tasks_are_picked(tmp_path):
     cfg = config(tmp_path, {"python": "meta_ops:SolverOnlyInducer"},
-                 {"curriculum": {"python": "openrsi_evolvables:CurriculumEvolvable",
+                 {"curriculum": {"python": "anyrsi_evolvables:CurriculumEvolvable",
                                  "with": {"path": "state/curriculum"}}}, train_limit=3)
 
     async def go():
@@ -228,7 +228,7 @@ def test_curriculum_really_steers_which_train_tasks_are_picked(tmp_path):
             genome = {t: (await x.facade.snapshot()).id for t, x in r.targets.items()}
             plain = await r._train_tasks(1, genome)
             drop = plain[0].tags[0]
-            from openrsi import Patch
+            from anyrsi import Patch
             item = {"id": f"tag:{drop}", "kind": "curriculum", "text": "x", "data": {"tag": drop, "weight": 0}}
             snap = await r.targets["curriculum"].facade.apply(Patch(target="curriculum", ops=[{"op": "add", "item": item}]))
             steered = await r._train_tasks(1, {**genome, "curriculum": snap.id})

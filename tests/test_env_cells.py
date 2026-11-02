@@ -16,9 +16,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from openrsi import ToolCallError, build_server, connect
-from openrsi.conformance import check
-from openrsi_runtime import CellError, CellsConfig, Runner, Wiring, load_config
+from anyrsi import ToolCallError, build_server, connect
+from anyrsi.conformance import check
+from anyrsi_runtime import CellError, CellsConfig, Runner, Wiring, load_config
 
 from cells_env import PLAIN, VARIANT, CellsEnv, RecordingAgent
 from secret_ops import SecretOpsEnv
@@ -37,25 +37,25 @@ def components(env=None, agent=None):
         "env": env or {"python": "cells_env:CellsEnv"},
         "agent": agent or {"python": "secret_ops:RuleAgent"},
         "proposer": {"python": "secret_ops:RuleInducer"},
-        "judge": {"python": "openrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
+        "judge": {"python": "anyrsi_judge:EvidenceJudge", "with": {"rubric": EQ}},
         "evidence": {"same_as": "judge"},
-        "attribution": {"python": "openrsi_attribution:RubricEvidenceAttributor"},
-        "algorithm": {"python": "openrsi_algorithm:GreedyAlgorithm",
+        "attribution": {"python": "anyrsi_attribution:RubricEvidenceAttributor"},
+        "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm",
                       "with": {"max_generations": 12, "patience": 6, "target_score": 1.0}},
-        "gate": {"python": "openrsi_gate:HoldoutGate"},
-        "lineage": {"python": "openrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
-        "memory": {"python": "openrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}},
+        "gate": {"python": "anyrsi_gate:HoldoutGate"},
+        "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
+        "memory": {"python": "anyrsi_memory:MemoryEvolvable", "with": {"path": "state/memory"}},
     }
 
 
 def write_config(base: Path, comps=None, cells=None, **loop):
-    data = {"protocol": "openrsi/0.4", "name": "cells", "plugins": ["cells_env"],
+    data = {"protocol": "anyrsi/0.4", "name": "cells", "plugins": ["cells_env"],
             "components": comps or components(), "loop": {"retrieve_k": 5, **loop}}
     if cells is not None:
         data["cells"] = cells
     base.mkdir(parents=True, exist_ok=True)
-    (base / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    return load_config(base / "openrsi.yaml")
+    (base / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return load_config(base / "anyrsi.yaml")
 
 
 def run(cfg, generations=None, logs=None):
@@ -125,7 +125,7 @@ def test_trajectory_ids_distinguish_cells(tmp_path):
         async with Wiring(cfg) as w:
             r = Runner(w, cfg.loop)
             await r._load_targets()
-            from openrsi_runtime import CellRegistry
+            from anyrsi_runtime import CellRegistry
             r.registry = await CellRegistry.open(w.env, cfg.cells)
             tasks = await r.tasks("train", 1, 2)
             genome = {t: (await tgt.facade.snapshot()).id for t, tgt in r.targets.items()}
@@ -218,7 +218,7 @@ def _free_port() -> int:
 
 
 def _launch(kw, base, http_port=None):
-    cmd = [sys.executable, "-m", "openrsi.launch", "cells_env:CellsEnv", "--with", json.dumps(kw),
+    cmd = [sys.executable, "-m", "anyrsi.launch", "cells_env:CellsEnv", "--with", json.dumps(kw),
            "--path", str(TESTS), "--path", str(ROOT / "examples" / "secret_ops"), "--cwd", str(base)]
     if http_port is None:
         return {"command": cmd, "env": {"PYTHONPATH": PYTHONPATH}}

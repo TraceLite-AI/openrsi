@@ -1,6 +1,6 @@
-"""V2（CPU）：用 OpenRSI 导出 verl 的 RL 数据，检查格式能被 verl 的数据集类读进去，并检查防泄漏。
+"""V2（CPU）：用 AnyRSI 导出 verl 的 RL 数据，检查格式能被 verl 的数据集类读进去，并检查防泄漏。
 
-把 verl 的 gsm8k parquet 转成 OpenRSI Task（train / test 分别标成 train / holdout），再用 tasks_to_rl_rows 导出。
+把 verl 的 gsm8k parquet 转成 AnyRSI Task（train / test 分别标成 train / holdout），再用 tasks_to_rl_rows 导出。
 导出的 train.parquet / test.parquet 给 V3 的 GRPO 运行用。
 
 用法：python field_tests/verl/v2_data_export.py --src ~/data/gsm8k --tokenizer Qwen/Qwen2.5-0.5B-Instruct
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from openrsi import Task
-from openrsi_verl import DataLeakError, tasks_to_rl_rows, write_rows
+from anyrsi import Task
+from anyrsi_verl import DataLeakError, tasks_to_rl_rows, write_rows
 
 OUT = Path(__file__).resolve().parent.parent / "out" / "verl"
 

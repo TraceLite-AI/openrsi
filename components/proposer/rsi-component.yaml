@@ -1,7 +1,7 @@
-protocol: openrsi/0.4
-name: openrsi/lesson-proposer
+protocol: anyrsi/0.4
+name: anyrsi/lesson-proposer
 version: 0.4.0
-description: 把 train 上的失败原因写成按标签归类的教训，删除多次只带来失败的条目。ClaudeProposer 用 Claude 写经验（openrsi-proposer --kind claude）。
+description: 把 train 上的失败原因写成按标签归类的教训，删除多次只带来失败的条目。ClaudeProposer 用 Claude 写经验（anyrsi-proposer --kind claude）。
 kinds: [proposer]
 implements:
   - rsi_component_info
@@ -9,4 +9,4 @@ implements:
 capabilities: {llm: optional}
 runtime:
   transport: stdio
-  command: [openrsi-proposer]
+  command: [anyrsi-proposer]

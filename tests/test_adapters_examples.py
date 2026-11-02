@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from openrsi import Task, Trajectory
-from openrsi_dspy import feedback_text, judge_metric
-from openrsi_judge import EvidenceJudge, Rubric
-from openrsi_langgraph import evaluate_state, trajectory_from_state
+from anyrsi import Task, Trajectory
+from anyrsi_dspy import feedback_text, judge_metric
+from anyrsi_judge import EvidenceJudge, Rubric
+from anyrsi_langgraph import evaluate_state, trajectory_from_state
 
 import memory_evolution
 

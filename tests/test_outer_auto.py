@@ -1,9 +1,9 @@
 """外循环自动出候选（OuterLoop.auto_round）：自动生成、筛选、验证，但从不自动升级。"""
 import pytest
 
-from openrsi import Episode, Evidence, Task, Trajectory, Verdict
-from openrsi_attribution import RubricEvidenceAttributor
-from openrsi_runtime.outer import (AttributionFixture, CandidateSpec, OuterError, OuterLoop, ValidationPlan,
+from anyrsi import Episode, Evidence, Task, Trajectory, Verdict
+from anyrsi_attribution import RubricEvidenceAttributor
+from anyrsi_runtime.outer import (AttributionFixture, CandidateSpec, OuterError, OuterLoop, ValidationPlan,
                                    grid_candidates, judge_check_candidates, qualification_hash)
 
 from test_outer_loop import BASE_RUBRIC, QUAL, example, judge
@@ -68,7 +68,7 @@ def cell_fixture(i: int) -> AttributionFixture:
         task = Task(id=f"t{i}", env_ref=cell, split="train", input={"q": i})
         traj = Trajectory(id=f"traj{i}@{cell}", task_id=task.id, steps=[])
         ev = Evidence.make("env_cell", {"cell": cell, "coords": coords, "fingerprint": "f"}, f"runtime:cell:{cell}",
-                           "openrsi/runtime")
+                           "anyrsi/runtime")
         return Episode(task=task, trajectory=traj, evidence=[ev], verdict=Verdict(
             task_id=task.id, trajectory_id=traj.id, passed=passed, score=float(passed), judge_ref="j"))
 
@@ -79,9 +79,9 @@ def cell_fixture(i: int) -> AttributionFixture:
 
 def test_attribution_grid_search_picks_cross_cell_contrast(tmp_path):
     qual = [cell_fixture(i) for i in range(10)]
-    cands = grid_candidates("openrsi_attribution:CellContrastAttributor", {"env_weight": [0.3, 0.8]})
-    assert [c.ref for c in cands] == ["openrsi_attribution:CellContrastAttributor{'env_weight': 0.3}",
-                                      "openrsi_attribution:CellContrastAttributor{'env_weight': 0.8}"]
+    cands = grid_candidates("anyrsi_attribution:CellContrastAttributor", {"env_weight": [0.3, 0.8]})
+    assert [c.ref for c in cands] == ["anyrsi_attribution:CellContrastAttributor{'env_weight': 0.3}",
+                                      "anyrsi_attribution:CellContrastAttributor{'env_weight': 0.8}"]
     loop = OuterLoop(tmp_path)
     proposal, v = loop.auto_round("attribution", "rubric-evidence", RubricEvidenceAttributor(), cands, plan(qual), qual)
     assert v.accepted and v.base_metrics["localization"] == 0 and v.candidate_metrics["localization"] == 1

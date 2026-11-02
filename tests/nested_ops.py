@@ -1,10 +1,10 @@
 """循环即 agent 的测试组件：外层的"题"是内层 secret_ops 的随机种子，外层改的是内层用哪个进化算法。"""
 from __future__ import annotations
 
-from openrsi import Environment, Item, Patch, Proposer, Task
+from anyrsi import Environment, Item, Patch, Proposer, Task
 
-INDEPENDENT = {"python": "openrsi_algorithm:IndependentAlgorithm", "with": {"max_generations": 100, "patience": 100}}
-GREEDY = {"python": "openrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 100, "patience": 100}}
+INDEPENDENT = {"python": "anyrsi_algorithm:IndependentAlgorithm", "with": {"max_generations": 100, "patience": 100}}
+GREEDY = {"python": "anyrsi_algorithm:GreedyAlgorithm", "with": {"max_generations": 100, "patience": 100}}
 
 
 class InnerSeedsEnv(Environment):

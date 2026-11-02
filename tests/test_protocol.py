@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 from mcp.client.stdio import StdioServerParameters
 
-from openrsi import (Evidence, Judge, Patch, Task, ToolCallError, Trajectory, Verdict, RubricResult, build_server,
+from anyrsi import (Evidence, Judge, Patch, Task, ToolCallError, Trajectory, Verdict, RubricResult, build_server,
                      connect, load_manifest)
-from openrsi.conformance import FIXTURE_TASK, FIXTURE_TRAJECTORY, check
-from openrsi.export_spec import render
-from openrsi_judge import EvidenceJudge, Rubric
-from openrsi_memory import MemoryEvolvable
+from anyrsi.conformance import FIXTURE_TASK, FIXTURE_TRAJECTORY, check
+from anyrsi.export_spec import render
+from anyrsi_judge import EvidenceJudge, Rubric
+from anyrsi_memory import MemoryEvolvable
 
 ROOT = Path(__file__).resolve().parents[1]
 RUBRIC = Rubric.model_validate({"items": [
@@ -83,7 +83,7 @@ def test_conformance_catches_bad_judge():
 def test_conformance_over_real_stdio_subprocess(tmp_path):
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(
         str(ROOT / p) for p in ("sdk/python", "components/judge", "components/memory"))}
-    params = StdioServerParameters(command=sys.executable, args=["-m", "openrsi_memory", "--path", str(tmp_path)],
+    params = StdioServerParameters(command=sys.executable, args=["-m", "anyrsi_memory", "--path", str(tmp_path)],
                                    env=env)
     report = run(check(params))
     assert report.ok, report.text()
@@ -110,4 +110,4 @@ def test_manifest_matches_served_tools(component, factory):
 def test_spec_files_are_up_to_date():
     stale = [rel for rel, text in render().items()
              if not (ROOT / "spec" / rel).exists() or (ROOT / "spec" / rel).read_text(encoding="utf-8") != text]
-    assert not stale, f"spec 过期，运行 python -m openrsi.export_spec spec 重新生成：{stale}"
+    assert not stale, f"spec 过期，运行 python -m anyrsi.export_spec spec 重新生成：{stale}"

@@ -1,0 +1,36 @@
+# 判别器和 agent 轮流进化：先识破作弊，再学会走正路。
+#
+#   anyrsi run examples/judge_coevolution/anyrsi.yaml
+#
+# anchor.jsonl 是人工标注集，由 `python coevo.py` 生成。
+
+protocol: anyrsi/0.4
+name: judge-coevolution
+plugins: [coevo]
+
+components:
+  env:         {python: "coevo:BugfixEnv"}
+  agent:       {python: "coevo:ShortcutCoder"}
+  judge:
+    python: "anyrsi_judge:EvolvingJudge"
+    with:
+      protect: ["tests/**"]
+      path: .anyrsi/rubric
+      rubric:                      # 起点：只看 agent 有没有说 done
+        items:
+          - {id: says_done, check: output_matches, params: {pattern: done}, required: true}
+  evidence:    {same_as: judge}
+  memory:      {python: "anyrsi_memory:MemoryEvolvable", with: {path: .anyrsi/memory}}
+  attribution: {python: "anyrsi_attribution:RubricEvidenceAttributor"}
+  proposer:    {python: "anyrsi_proposer:CompositeProposer", with: {proposers: [lesson, rubric-auditor]}}
+  algorithm:   {python: "anyrsi_algorithm:GreedyAlgorithm", with: {metric: progress, max_generations: 8, patience: 4, target_score: 3.0}}
+  gate:        {python: "anyrsi_gate:HoldoutGate"}
+  lineage:     {python: "anyrsi_lineage:LineageStore", with: {path: .anyrsi/lineage.jsonl}}
+
+evolvables:
+  rubric:      {same_as: judge}    # 判别器本身也是可进化体
+
+loop:
+  anchor: anchor.jsonl
+  judge_every: 2                   # 偶数代改判别器，奇数代改 agent 侧
+  metric: progress

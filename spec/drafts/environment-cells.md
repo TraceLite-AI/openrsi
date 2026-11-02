@@ -1,6 +1,6 @@
 # 草案：环境格与环境坐标（拟入 0.5）
 
-状态：讨论稿。参考实现已经实现了第 2–4、6 节（`EnvCell`、`rsi_env_cells`、`cell` 参数、编排文件的 `cells`、指纹核对、`task@cell` 键、谱系记录、一致性检查），见 `runtime/openrsi_runtime/cells.py`；协议版本仍是 0.4，这部分算 0.5 草案。执行绑定（题目真的在格里跑）还没有实现。和 PROTOCOL.md 一样，"必须""不得"是规范要求，"应当"是强烈建议。
+状态：讨论稿。参考实现已经实现了第 2–4、6 节（`EnvCell`、`rsi_env_cells`、`cell` 参数、编排文件的 `cells`、指纹核对、`task@cell` 键、谱系记录、一致性检查），见 `runtime/anyrsi_runtime/cells.py`；协议版本仍是 0.4，这部分算 0.5 草案。执行绑定（题目真的在格里跑）还没有实现。和 PROTOCOL.md 一样，"必须""不得"是规范要求，"应当"是强烈建议。
 
 ## 为什么要补
 
@@ -81,7 +81,7 @@
 
 ```yaml
 components:
-  env: {python: "envshift_openrsi:EnvShiftEnv", with: {suite: coding}}
+  env: {python: "envshift_anyrsi:EnvShiftEnv", with: {suite: coding}}
 cells:
   train:   [linux-utf8]
   holdout: [linux-utf8, linux-cp1252]   # 同一批题，两个格都考
@@ -109,7 +109,7 @@ cells:
 
 ## 9. 落地要改的地方
 
-- `sdk/python/openrsi/types.py`：加 `EnvCell`，给 `LineageEntry` 加 `env_cells`；`protocol.py`：加 `rsi_env_cells`，给 `rsi_env_tasks` 加 `cell`；然后 `python -m openrsi.export_spec spec`。
+- `sdk/python/anyrsi/types.py`：加 `EnvCell`，给 `LineageEntry` 加 `env_cells`；`protocol.py`：加 `rsi_env_cells`，给 `rsi_env_tasks` 加 `cell`；然后 `python -m anyrsi.export_spec spec`。
 - `runtime/`：运行开始时记录指纹，取题时核对；逐题分数的键带格；读编排文件的 `cells`。
 - `conformance`：检查 `env_ref` 都是声明过的格，`cell` 参数能过滤，未知格报错。
 - PROTOCOL.md 加一节，README 两版同步，REVIEW.md 基线记下变化。

@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/evidence-judge
+protocol: anyrsi/0.4
+name: anyrsi/evidence-judge
 version: 0.4.0
 description: 从轨迹和工作目录收集可核验证据，再按 rubric 判别；每条结论引用证据。
 kinds: [evidence, judge]
@@ -14,5 +14,5 @@ capabilities:
   llm_checks: optional      # rubric 里的 llm 项需要 anthropic
 runtime:
   transport: stdio
-  command: [openrsi-judge, --rubric, rubric.yaml]
+  command: [anyrsi-judge, --rubric, rubric.yaml]
 evolvable_surfaces: [rubric]

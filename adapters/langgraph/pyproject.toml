@@ -1,14 +1,14 @@
 [project]
-name = "openrsi-langgraph"
+name = "anyrsi-langgraph"
 version = "0.4.0"
-description = "Turn LangGraph message state into OpenRSI trajectories and judge them"
+description = "Turn LangGraph message state into AnyRSI trajectories and judge them"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = ["openrsi-sdk>=0.4,<0.5"]
+dependencies = ["anyrsi-sdk>=0.4,<0.5"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["openrsi_langgraph"]
+packages = ["anyrsi_langgraph"]

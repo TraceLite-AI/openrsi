@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from openrsi import (Episode, Evidence, EvolvableInfo, GateRequest, Item, LineageEntry, ProposalRequest, RubricResult,
+from anyrsi import (Episode, Evidence, EvolvableInfo, GateRequest, Item, LineageEntry, ProposalRequest, RubricResult,
                      Task, TellRequest, Trajectory, Verdict, build_server, connect, load_manifest)
-from openrsi.conformance import check
-from openrsi_algorithm import ArchiveAlgorithm, GreedyAlgorithm
-from openrsi_attribution import RubricEvidenceAttributor, item_scores
-from openrsi_gate import HoldoutGate, two_proportion_z
-from openrsi_lineage import LineageStore
-from openrsi_proposer import ClaudeProposer, LessonProposer, ProposedItem, ProposedPatch
+from anyrsi.conformance import check
+from anyrsi_algorithm import ArchiveAlgorithm, GreedyAlgorithm
+from anyrsi_attribution import RubricEvidenceAttributor, item_scores
+from anyrsi_gate import HoldoutGate, two_proportion_z
+from anyrsi_lineage import LineageStore
+from anyrsi_proposer import ClaudeProposer, LessonProposer, ProposedItem, ProposedPatch
 
 ROOT = Path(__file__).resolve().parents[1]
 

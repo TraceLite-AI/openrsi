@@ -1,11 +1,11 @@
-"""P4：外循环受控升级（runtime/openrsi_runtime/outer.py）。"""
+"""P4：外循环受控升级（runtime/anyrsi_runtime/outer.py）。"""
 import pytest
 
-from openrsi import (AnchorExample, Attribution, AttributionTarget, Episode, Judge, Step, Task, Trajectory,
+from anyrsi import (AnchorExample, Attribution, AttributionTarget, Episode, Judge, Step, Task, Trajectory,
                      Verdict)
-from openrsi_attribution import RubricEvidenceAttributor
-from openrsi_judge import EvidenceJudge
-from openrsi_runtime.outer import (AttributionFixture, OuterError, OuterLoop, ValidationPlan, qualification_hash)
+from anyrsi_attribution import RubricEvidenceAttributor
+from anyrsi_judge import EvidenceJudge
+from anyrsi_runtime.outer import (AttributionFixture, OuterError, OuterLoop, ValidationPlan, qualification_hash)
 
 BASE_RUBRIC = {"items": [{"id": "correct", "check": "output_equals", "required": True}]}
 GOOD_RUBRIC = {"items": [{"id": "correct", "check": "output_equals", "required": True},
@@ -163,7 +163,7 @@ def test_stale_proposal_cannot_overwrite_a_newer_version(tmp_path):
 def failing_episode(i: int) -> Episode:
     task = Task(id=f"t{i}", input={"q": i}, split="train")
     traj = Trajectory(id=f"traj{i}", task_id=task.id, output="x", steps=[], used_items=["m_bad"])
-    from openrsi import RubricResult
+    from anyrsi import RubricResult
     v = Verdict(task_id=task.id, trajectory_id=traj.id, passed=False, score=0.0, judge_ref="j",
                 rubric=[RubricResult(id="correct", result="fail", note="wrong")])
     return Episode(task=task, trajectory=traj, verdict=v)

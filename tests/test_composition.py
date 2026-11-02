@@ -15,10 +15,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from openrsi import ComponentUnavailableError, connect
-from openrsi.conformance import check
-from openrsi_algorithm import ALGORITHMS
-from openrsi_runtime import Runner, Wiring, load_config
+from anyrsi import ComponentUnavailableError, connect
+from anyrsi.conformance import check
+from anyrsi_algorithm import ALGORITHMS
+from anyrsi_runtime import Runner, Wiring, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 XLANG = ROOT / "tests" / "xlang"
@@ -32,12 +32,12 @@ SLOTS = {
     "env": ("secret_ops:SecretOpsEnv", {"seed": 0}),
     "agent": ("secret_ops:RuleAgent", {}),
     "proposer": ("secret_ops:RuleInducer", {}),
-    "judge": ("openrsi_judge:EvidenceJudge", {"rubric": EQ}),
-    "attribution": ("openrsi_attribution:RubricEvidenceAttributor", {}),
-    "algorithm": ("openrsi_algorithm:GreedyAlgorithm", {"max_generations": 12, "patience": 6, "target_score": 1.0}),
-    "gate": ("openrsi_gate:HoldoutGate", {}),
-    "lineage": ("openrsi_lineage:LineageStore", {"path": "state/lineage.jsonl"}),
-    "memory": ("openrsi_memory:MemoryEvolvable", {"path": "state/memory"}),
+    "judge": ("anyrsi_judge:EvidenceJudge", {"rubric": EQ}),
+    "attribution": ("anyrsi_attribution:RubricEvidenceAttributor", {}),
+    "algorithm": ("anyrsi_algorithm:GreedyAlgorithm", {"max_generations": 12, "patience": 6, "target_score": 1.0}),
+    "gate": ("anyrsi_gate:HoldoutGate", {}),
+    "lineage": ("anyrsi_lineage:LineageStore", {"path": "state/lineage.jsonl"}),
+    "memory": ("anyrsi_memory:MemoryEvolvable", {"path": "state/memory"}),
 }
 
 
@@ -46,18 +46,18 @@ def python_spec(target, kw):
 
 
 def stdio_spec(target, kw, base):
-    return {"command": [sys.executable, "-m", "openrsi.launch", target, "--with", json.dumps(kw),
+    return {"command": [sys.executable, "-m", "anyrsi.launch", target, "--with", json.dumps(kw),
                         "--path", str(ROOT / "examples" / "secret_ops"), "--cwd", str(base)],
             "env": {"PYTHONPATH": PYTHONPATH}}
 
 
 def write_config(base: Path, components: dict, loop: dict | None = None):
-    data = {"protocol": "openrsi/0.4", "name": "composition", "plugins": ["secret_ops"],
+    data = {"protocol": "anyrsi/0.4", "name": "composition", "plugins": ["secret_ops"],
             "components": {**components, "evidence": {"same_as": "judge"}},
             "loop": {"retrieve_k": 5, "max_patches": 1, **(loop or {})}}
     base.mkdir(parents=True, exist_ok=True)
-    (base / "openrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
-    return load_config(base / "openrsi.yaml")
+    (base / "anyrsi.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return load_config(base / "anyrsi.yaml")
 
 
 def run(cfg, generations=None):
@@ -96,10 +96,10 @@ GATES = {"holdout": {}, "no_regression": {"max_task_regressions": 0}}
 def test_composition_matrix(tmp_path, algorithm, gate):
     comps = {slot: python_spec(*spec) for slot, spec in SLOTS.items()}
     cls = ALGORITHMS[algorithm]
-    comps["algorithm"] = python_spec(f"openrsi_algorithm:{cls.__name__}",
+    comps["algorithm"] = python_spec(f"anyrsi_algorithm:{cls.__name__}",
                                      {"max_generations": 12, "patience": 6, "target_score": 1.0})
-    comps["gate"] = python_spec("openrsi_gate:HoldoutGate", GATES[gate])
-    comps["guard"] = python_spec("openrsi_guard:PolicyGuard", {})
+    comps["gate"] = python_spec("anyrsi_gate:HoldoutGate", GATES[gate])
+    comps["guard"] = python_spec("anyrsi_guard:PolicyGuard", {})
     _, log = run(write_config(tmp_path, comps))
     check_invariants(log)
     best = max(e.metrics["holdout"] for e in log if e.status in ("root", "accepted"))
@@ -118,7 +118,7 @@ def free_port() -> int:
 
 def start_http(target, kw, base):
     port = free_port()
-    proc = subprocess.Popen([sys.executable, "-m", "openrsi.launch", target, "--with", json.dumps(kw), "--path",
+    proc = subprocess.Popen([sys.executable, "-m", "anyrsi.launch", target, "--with", json.dumps(kw), "--path",
                              str(ROOT / "examples" / "secret_ops"), "--cwd", str(base), "--transport",
                              "streamable-http", "--port", str(port)],
                             env={**os.environ, "PYTHONPATH": PYTHONPATH}, stdout=subprocess.DEVNULL,
@@ -192,8 +192,8 @@ def test_node_gate_passes_conformance_and_runs_in_loop(tmp_path):
 
 @xlang
 def test_node_client_uses_python_judge():
-    out = subprocess.run(["node", str(XLANG / "client.mjs"), sys.executable, "-m", "openrsi.launch",
-                          "openrsi_judge:EvidenceJudge", "--with", json.dumps({"rubric": EQ})],
+    out = subprocess.run(["node", str(XLANG / "client.mjs"), sys.executable, "-m", "anyrsi.launch",
+                          "anyrsi_judge:EvidenceJudge", "--with", json.dumps({"rubric": EQ})],
                          capture_output=True, text=True, timeout=60, env={**os.environ, "PYTHONPATH": PYTHONPATH})
     assert out.returncode == 0, out.stderr
     result = json.loads(out.stdout)
@@ -207,7 +207,7 @@ def test_crashed_subprocess_component_then_resume(tmp_path):
     flag = tmp_path / "crash-at"
     flag.write_text("2")  # 第 2 次调用 propose 时进程退出
     comps = {s: python_spec(*spec) for s, spec in SLOTS.items()}
-    comps["proposer"] = {"command": [sys.executable, "-m", "openrsi.launch", "openrsi_inducer_fault:FlakyInducer",
+    comps["proposer"] = {"command": [sys.executable, "-m", "anyrsi.launch", "anyrsi_inducer_fault:FlakyInducer",
                                      "--with", json.dumps({"flag": str(flag)}), "--path",
                                      str(ROOT / "examples" / "secret_ops")],
                          "env": {"PYTHONPATH": PYTHONPATH}}

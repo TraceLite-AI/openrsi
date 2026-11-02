@@ -1,5 +1,5 @@
-protocol: openrsi/0.4
-name: openrsi/harbor-reward-judge
+protocol: anyrsi/0.4
+name: anyrsi/harbor-reward-judge
 version: 0.4.2
 description: 按 Harbor 验证脚本的奖励打分。自己重新读 result.json、核对哈希和题名，不信 agent 转述的分数；没有奖励判失败。
 kinds: [judge]
@@ -10,4 +10,4 @@ implements:
 capabilities: {harbor: true}
 runtime:
   transport: stdio
-  command: [openrsi-serve, "openrsi_rsihub:HarborRewardJudge"]
+  command: [anyrsi-serve, "anyrsi_rsihub:HarborRewardJudge"]

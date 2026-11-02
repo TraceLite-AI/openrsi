@@ -1,6 +1,6 @@
 # 原生循环 A/B/C 对照实验
 
-对应 `spec/drafts/two-loop-evolution.md` §8B（P3）。用同一套 OpenRSI 运行时跑三组：
+对应 `spec/drafts/two-loop-evolution.md` §8B（P3）。用同一套 AnyRSI 运行时跑三组：
 
 | 组 | 做法 | 回答什么 |
 | --- | --- | --- |
