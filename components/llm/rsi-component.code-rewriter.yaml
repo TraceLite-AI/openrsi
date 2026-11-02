@@ -1,6 +1,6 @@
 protocol: anyrsi/0.4
 name: anyrsi/code-rewriter
-version: 0.4.3
+version: 0.4.4
 description: 用 LLM 读答错的 train 题（过程尾部、判错原因、归因）和 agent 的可改源码，生成 harness 可进化体的文件写入补丁。只写可改范围内的文件；把题目原文写进代码的补丁整份丢掉。
 kinds: [proposer]
 implements:

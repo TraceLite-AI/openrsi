@@ -49,6 +49,28 @@ class ComponentSpec(BaseModel):
         return self
 
 
+class GroupConfig(BaseModel):
+    """组提案：一次出一组候选，在考试题上算组内优势（见 anyrsi_runtime.group）。写了 loop.group 才启用；
+    启用后普通的解题侧代都按组来做（判别器代、元层代不变）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    size: int = Field(default=4, ge=1, description="每组几个候选（G）")
+    proposals: str = Field(default="samples", pattern="^(samples|directions)$",
+                           description="samples：同一提案器多采样；directions：沿归因反复指出的不同对象各出一个")
+    min_support: int = Field(default=2, ge=1, description="directions 模式下，一个对象至少在几道错题里被追责才算方向")
+    strategy: str | dict[str, Any] = Field(
+        default="parent_paired",
+        description="组内优势策略：parent_paired / grpo / best_of_n / training_free，"
+                    "或 {name: …, with: {…}}，或 {python: module:Class, with: {…}}")
+    confirm_fraction: float = Field(default=0.5, ge=0.0, lt=1.0,
+                                    description="考试题里留多少做确认半（准入只看确认半）；0 表示不分，挑和判用同一批题")
+    alpha: float = Field(default=0.05, gt=0, lt=1, description="parent_paired 的显著性水平（按组大小做 Bonferroni）")
+    common_seed: bool = Field(default=True, description="同一代同一道题给所有版本同一个 rollout_seed（公共随机数）")
+    experience_target: str | None = Field(default=None,
+                                          description="training_free 策略写经验的可进化体（memory 之类）")
+
+
 class LoopConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -69,6 +91,7 @@ class LoopConfig(BaseModel):
                                    description="每隔几代做一次元层进化（improver、curriculum 类型的可进化体）；不填则元层不进化")
     meta_min_gain: float = Field(default=0.0, ge=0.0,
                                  description="元层候选的下游提升至少要比当前版本多多少才接受")
+    group: GroupConfig | None = Field(default=None, description="组提案：一组候选在考试题上比较，按策略选或写经验")
 
 
 class BindingSpec(BaseModel):

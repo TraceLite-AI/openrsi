@@ -1,6 +1,6 @@
 protocol: anyrsi/0.4
 name: anyrsi/chat-agent
-version: 0.4.3
+version: 0.4.4
 description: 调用 OpenAI 兼容接口的执行体。prompt 段落拼成系统提示，memory 条目附在后面；上下文里有权重条目时按模型路径启动或重启推理服务（比如 vLLM）。
 kinds: [agent]
 implements:

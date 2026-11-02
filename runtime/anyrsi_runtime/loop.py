@@ -29,6 +29,11 @@
   - 接受时连同它产出的那个解题侧改进一起进谱系，这样算法下一代会从它出发
   - curriculum 只影响练习题怎么挑，考试题不变
 
+组提案（loop.group，见 group.py）：
+  - 普通的解题侧代改成：提案器一次出一组候选（G 个），父版本和全部候选做同一批考试题（同一道题同一个种子）
+  - 考试题分成选择半和确认半：选择半上按策略算组内优势、决定选谁；确认半交给准入组件比较候选和父版本
+  - 策略可替换：parent_paired（减父版本，配对检验）、grpo、best_of_n、training_free（把组内比较写成经验进记忆）
+
 判别器参与进化时（loop.judge_every）：
   - agent 侧和判别器轮流进化，同一代只改一边，分数变化才能归因
   - 判别器的修改会改变 holdout 的打分标准，所以它的准入看 anchor（与人工标注的一致率），不看 holdout
@@ -49,6 +54,7 @@ from anyrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
+from .group import Member, lesson_patch, load_strategy, rollout_seed, split_tasks
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
 Genome = dict[str, str]  # 可进化体 target → 快照 id
@@ -76,6 +82,7 @@ class GenerationReport:
     train_score: float
     candidates: list[Candidate] = field(default_factory=list)
     note: str = ""
+    group: dict[str, Any] | None = None  # 组提案模式下这一组的情况
 
 
 @dataclass
@@ -384,6 +391,16 @@ class Runner:
         if not holdout:
             raise IsolationError("env 没有给出 holdout 题，无法做准入")
         self.holdout = holdout  # 整个运行用同一套 holdout，候选之间才可比
+        self.group_strategy = None
+        if self.cfg.group is not None:
+            self.group_strategy = load_strategy(self.cfg.group.strategy)
+            if not getattr(self.group_strategy, "selects", True):
+                t = self.cfg.group.experience_target
+                if not t or t not in self.targets:
+                    raise ValueError(f"策略 {self.group_strategy.name} 要写经验，loop.group.experience_target 必须是一个"
+                                     f"可进化体（现有：{sorted(self.targets)}）")
+            self.holdout_select, self.holdout_confirm = split_tasks(
+                [self._key(t) for t in holdout], self.cfg.group.confirm_fraction, self.run_id or "anyrsi")
 
         entries = await w.lineage.log(target=self.lineage_target)
         if not entries:
@@ -459,6 +476,8 @@ class Runner:
         meta = self._meta_turn(gen)
         if meta is not None:
             return await self._meta_generation(gen, parent, meta, proposer_hint)
+        if self.cfg.group is not None and self._allowed_targets(gen) == self._solver_targets():
+            return await self._group_generation(gen, parent)
         w = self.w
         parent_genome = self.genomes[parent]
         await self.checkout(parent_genome)
@@ -693,3 +712,184 @@ class Runner:
                                            accepted=decision.accepted, metrics=m, task_scores=tasks,
                                            proposer=patch.proposer_ref))
         return Candidate(id=cid, metrics=m, accepted=decision.accepted, reason=decision.reason or "", target=t)
+
+    # ------------------------------------------------------------ 组提案
+
+    def _group_solver(self) -> list[str]:
+        """组提案模式下提案器可以改的对象：解题侧，除去经验库（经验库只由经验型策略写）。"""
+        exp = self.cfg.group.experience_target if self.cfg.group else None
+        return [t for t in self._solver_targets() if t != exp]
+
+    def _proposal(self, parent: str, pg: Genome, episodes: list[Episode], attributions: list[Attribution],
+                  states: dict[str, Any], hints: dict[str, Any], max_patches: int) -> ProposalRequest:
+        solver = self._group_solver()
+        return ProposalRequest(target=self.targets[solver[0]].info, targets=[self.targets[t].info for t in solver],
+                               parent_snapshot=parent, episodes=episodes, attributions=attributions,
+                               state=states[solver[0]], states=states, max_patches=max_patches, hints=hints)
+
+    async def _group_members(self, parent: str, pg: Genome, episodes: list[Episode], attributions: list[Attribution],
+                             states: dict[str, Any]) -> list[tuple[Genome, Patch, str, str | None]]:
+        """凑一组候选：先按方向（directions 模式），再多采样补足到 G 个。重复、越界、被护栏或可进化体拒绝的不算。"""
+        g = self.cfg.group
+        solver = self._group_solver()
+        out: list[tuple[Genome, Patch, str, str | None]] = []
+        seen: set[str] = set()
+        improver = await self._improver_hint(pg)
+
+        async def take(patches: list[Patch], direction: str | None) -> None:
+            for patch in patches:
+                if len(out) >= g.size:
+                    return
+                t = solver[0] if len(solver) == 1 else patch.target
+                if t not in solver:
+                    continue
+                patch = patch.model_copy(update={"target": self.targets[t].info.target, "base_snapshot": pg[t]})
+                key = content_hash([t, patch.ops])
+                if key in seen:
+                    continue
+                seen.add(key)
+                if await self._guard_blocks(patch, self.targets[t].info):
+                    continue
+                await self.checkout(pg)
+                try:
+                    snap = await self.targets[t].facade.apply(patch)
+                except (ToolCallError, ComponentError, ValueError, KeyError):
+                    continue
+                out.append(({**pg, t: snap.id}, patch, t, direction))
+
+        base_hints: dict[str, Any] = {"role": "solver", "group_size": g.size, **({"improver": improver} if improver else {})}
+        if g.proposals == "directions":
+            blamed: dict[str, set[str]] = {}
+            for a in attributions:
+                for tg in a.targets:
+                    if tg.weight < 0:
+                        blamed.setdefault(f"{tg.kind}:{tg.ref}", set()).add(a.episode_id)
+            dirs = sorted(((len(v), k) for k, v in blamed.items() if len(v) >= g.min_support), key=lambda x: (-x[0], x[1]))
+            for i, (n, name) in enumerate(dirs[: g.size]):
+                hints = {**base_hints, "group_index": i,
+                         "direction": {"id": name, "support": n,
+                                       "text": f"fix what attribution blames: {name} (blamed in {n} failed episodes)"}}
+                await take(await self.w.proposer.propose(self._proposal(parent, pg, episodes, attributions, states,
+                                                                        hints, 1)), name)
+        tries = 0
+        while len(out) < g.size and tries < 2 * g.size:
+            tries += 1
+            want = g.size - len(out)
+            hints = {**base_hints, "group_index": len(out), "sample": tries}
+            patches = await self.w.proposer.propose(self._proposal(parent, pg, episodes, attributions, states, hints,
+                                                                   want if tries == 1 else 1))
+            if not patches and tries >= 2:
+                break
+            await take(patches, None)
+        await self.checkout(pg)
+        return out
+
+    def _seeded(self, tasks: list[Task], gen: int) -> list[Task]:
+        if not self.cfg.group.common_seed:
+            return tasks
+        return [t.model_copy(update={"metadata": {**t.metadata, "rollout_seed": rollout_seed(self.run_id, gen,
+                                                                                               self._key(t))}})
+                for t in tasks]
+
+    @staticmethod
+    def _subset(scores: dict[str, float], keys: list[str]) -> dict[str, float]:
+        vals = [scores[k] for k in keys if k in scores]
+        return {"holdout": fmean(vals) if vals else 0.0, "n_holdout": float(len(vals))}
+
+    async def _group_generation(self, gen: int, parent: str) -> GenerationReport:
+        g = self.cfg.group
+        strategy = self.group_strategy
+        w = self.w
+        pg = self.genomes[parent]
+        await self.checkout(pg)
+        train = await self._train_tasks(gen, pg)
+        _check_split(train, "train")
+        episodes = await self.train_episodes(train, pg)
+        report = GenerationReport(generation=gen, parent_id=parent, parent_metrics=self.metrics[parent],
+                                  train_score=fmean(e.verdict.score for e in episodes) if episodes else 0.0,
+                                  note=f"组提案（{strategy.name}）")
+        attributions = await w.attribution.explain(episodes) if w.attribution and episodes else []
+        if self.records is not None:
+            self._record_attributions(attributions)
+        states = {t: await tgt.facade.export(pg[t]) for t, tgt in self.targets.items()}
+        members = await self._group_members(parent, pg, episodes, attributions, states)
+
+        async def reject(reason: str) -> GenerationReport:
+            report.note += f"；{reason}"
+            await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, accepted=False))
+            await self.checkout(pg)
+            return report
+
+        if not members:
+            return await reject("提案器没有提出可用的修改")
+        tasks = self._seeded(self.holdout, gen)
+        sel, conf = self.holdout_select, self.holdout_confirm or self.holdout_select
+        parent_m, _ = await self.score(tasks, pg, "holdout")
+        parent_scores = dict(self.last_task_scores)
+        results = []
+        for member_genome, *_ in members:
+            m, _ = await self.score(tasks, member_genome, "holdout")
+            results.append((m, dict(self.last_task_scores)))
+        group = [Member(index=i, scores={k: results[i][1][k] for k in sel}, rationale=members[i][1].rationale or "",
+                        direction=members[i][3]) for i in range(len(members))]
+        decision = strategy.decide({k: parent_scores[k] for k in sel}, group, g.alpha)
+        report.group = {**strategy.summary(), "size": len(members), "reason": decision.reason,
+                        "chosen": decision.chosen, "parent_select": self._subset(parent_scores, sel)["holdout"],
+                        "members": [{"index": i, "target": members[i][2], "direction": members[i][3],
+                                     "advantage": decision.advantage[i] if i < len(decision.advantage) else None,
+                                     "z": decision.z[i] if i < len(decision.z) else None,
+                                     "select": self._subset(results[i][1], sel)["holdout"]}
+                                    for i in range(len(members))],
+                        "lessons": [x.text for x in decision.lessons]}
+
+        if getattr(strategy, "selects", True):
+            if decision.chosen is None:
+                return await reject(decision.reason)
+            genome, patch, t, direction = members[decision.chosen]
+            m, scores = results[decision.chosen]
+        else:
+            if not decision.lessons:
+                return await reject(decision.reason)
+            t = g.experience_target
+            existing = {d.get("id") for d in states.get(t) or [] if isinstance(d, dict)}
+            patch = lesson_patch(self.targets[t].info.target, pg[t], decision.lessons, existing)
+            await self.checkout(pg)
+            try:
+                snap = await self.targets[t].facade.apply(patch)
+            except (ToolCallError, ComponentError, ValueError, KeyError) as e:
+                return await reject(f"经验写不进 {t}：{e}")
+            genome = {**pg, t: snap.id}
+            m, _ = await self.score(tasks, genome, "holdout")
+            scores = dict(self.last_task_scores)
+        report.candidates.append(await self._group_candidate(gen, parent, genome, patch, t, m, scores, parent_m,
+                                                             parent_scores, conf, report.train_score, decision.reason))
+        await self.checkout(pg)
+        return report
+
+    async def _group_candidate(self, gen: int, parent: str, genome: Genome, patch: Patch, t: str, m: dict[str, float],
+                               scores: dict[str, float], parent_m: dict[str, float], parent_scores: dict[str, float],
+                               conf: list[str], train_score: float, reason: str) -> Candidate:
+        """组里选出的候选（或写了经验的新版本）在确认半上和父版本比，交给准入组件决定。"""
+        w = self.w
+        cid = genome_id(genome)
+        base = {**{k: v for k, v in parent_m.items() if k == "anchor"}, **self._subset(parent_scores, conf)}
+        cand = {**{k: v for k, v in m.items() if k == "anchor"}, **self._subset(scores, conf)}
+        decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=base, candidate=cand,
+                                                  baseline_tasks={k: parent_scores[k] for k in conf},
+                                                  candidate_tasks={k: scores[k] for k in conf if k in scores}))
+        decision.checks.append(GateCheck(name="group", passed=True,
+                                         detail=f"{reason}；确认半 {len(conf)} 道：父版本 {base['holdout']:.3f} → "
+                                                f"候选 {cand['holdout']:.3f}"))
+        metrics = {**m, "train_of_parent": train_score, "holdout_confirm": cand["holdout"],
+                   "parent_holdout_confirm": base["holdout"]}
+        metrics = self._with_epoch(metrics, self.metrics[parent].get("judge_epoch", 0.0))
+        status = "accepted" if decision.accepted else "rejected"
+        await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
+                                            status=status, metrics=metrics, decision=decision, patch=patch,
+                                            snapshots=genome, task_scores=scores, env_cells=self.env_cells))
+        if decision.accepted:
+            self.genomes[cid], self.metrics[cid], self.task_scores[cid] = genome, metrics, scores
+        await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid,
+                                           accepted=decision.accepted, metrics=metrics, task_scores=scores,
+                                           proposer=patch.proposer_ref))
+        return Candidate(id=cid, metrics=metrics, accepted=decision.accepted, reason=decision.reason or "", target=t)
