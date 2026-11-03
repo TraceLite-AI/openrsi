@@ -23,6 +23,15 @@ agent 按 p 掷硬币；题目带 rollout_seed 时用它当随机数（公共随
     A / A+fb / group / group+fb / group+fb-shuffled（好坏标签随机打乱的对照）
 
     python benchmarks/group_toy/group_toy.py --recursive --budget 6000 --seeds 0 1 2 3 4 5 6 7 8 9
+
+agent 给自己出改法（--self，loop.self_propose）：agent 收到"改进你自己"的题时，出改法的水平跟它自己的能力挂钩
+（真实答对率越接近最优，改对的概率越高、顺手改坏的越少）——这是递归改进的核心假设，玩具里是设定的。对照：
+    group:fixed   组提案 + 外部提案器，水平固定在 agent 起点的水平（只有 agent 自进化）
+    group:self    组提案 + agent 给自己出改法（递归）
+    A:fixed / A:self   同上，但用原来的循环（每代 1 个改法，分数变高就收）
+    group:strong  组提案 + 一个一直很强的外部提案器（上限参考）
+
+    python benchmarks/group_toy/group_toy.py --self --budget 6000 --seeds 0 1 2 3 4 5 6 7 8 9
 """
 from __future__ import annotations
 
@@ -104,13 +113,45 @@ class ToyEnv(Environment):
         return out[:limit] if limit else out
 
 
+P_START, P_BEST = 0.39, 0.85
+
+
+def capability(values: dict[str, str]) -> float:
+    """agent 的能力：真实答对率在起点和最优之间走到了哪（0～1）。"""
+    return min(1.0, max(0.0, (true_p(values) - P_START) / (P_BEST - P_START)))
+
+
 class ToyAgent(Agent):
+    """做题：按真实答对率掷硬币。收到"改进你自己"的题（loop.self_propose）时出一个改法，水平跟自己的能力挂钩：
+    改对的概率 self_q_lo → self_q_hi，顺手改坏的概率 self_break → 0（能力从 0 到 1 线性变化）。"""
+
     name, version = "toy/group-agent", "0.1.0"
 
-    def __init__(self, seed: int = 0, attr_acc: float = 0.5):
+    def __init__(self, seed: int = 0, attr_acc: float = 0.5, self_q_lo: float = 0.2, self_q_hi: float = 0.9,
+                 self_collateral: float = 0.5, self_break: float = 0.8):
         self.rng, self.attr_acc = random.Random(f"agent:{seed}"), attr_acc
+        self.self_q = (self_q_lo, self_q_hi)
+        self.self_collateral, self.self_break = self_collateral, self_break
+
+    def _improve_self(self, task: Task, context: list[Item], snapshot_id: str | None) -> Trajectory:
+        values = effective(context)
+        cap = capability(values)
+        q = self.self_q[0] + (self.self_q[1] - self.self_q[0]) * cap
+        seed = task.metadata.get("rollout_seed")
+        rng = random.Random(seed) if isinstance(seed, int) else self.rng
+        blames = [a["ref"] for a in task.input.get("attributions", []) if a.get("weight", 0) < 0]
+        direction = (task.input.get("hints") or {}).get("direction")
+        change = make_edit(rng, values, blames, direction, q, self.self_collateral, self.self_break * (1 - cap))
+        ops = [{"op": "replace", "item": {"id": k, "kind": "prompt", "text": v}}
+               for k, v in sorted(change.items()) if values.get(k) != v]
+        out = json.dumps({"target": "prompt", "ops": ops,
+                          "rationale": "set " + ", ".join(f"{k}={v}" for k, v in sorted(change.items()))})
+        return Trajectory(id=f"traj-{task.id}-{snapshot_id}", task_id=task.id, snapshot_id=snapshot_id, output=out,
+                          metadata={"capability": cap, "q": q})
 
     def run(self, task: Task, context: list[Item], snapshot_id: str | None = None) -> Trajectory:
+        if isinstance(task.input, dict) and task.input.get("kind") == "self_improvement":
+            return self._improve_self(task, context, snapshot_id)
         values = effective(context)
         p = true_p(values, task.metadata.get("difficulty", 0.0))
         seed = task.metadata.get("rollout_seed")
@@ -135,6 +176,30 @@ class ToyAttributor(Attributor):
         return [Attribution(episode_id=ep.trajectory.id, method="toy",
                             targets=[AttributionTarget(kind="item", ref=ep.trajectory.metadata["blame"], weight=-1.0)])
                 for ep in episodes if ep.trajectory.metadata.get("blame") and not ep.verdict.passed]
+
+
+def make_edit(rng: random.Random, current: dict[str, str], blames: list[str], direction: Any, q: float,
+              collateral: float, break_bias: float, score: dict[tuple[str, str], int] | None = None) -> dict[str, str]:
+    """出一个改法：挑一个位置（有方向按方向，否则随便挑一个被归因的位置），改对的概率 q；
+    还有 collateral 的概率顺手改动另一个位置，其中 break_bias 的概率是改坏。score 是提案器反馈学到的偏好。"""
+    score = score or {}
+    if direction:
+        slot = str(direction["id"]).split(":", 1)[-1]
+    else:
+        slot = rng.choice(blames) if blames else rng.choice(SLOTS)
+    if slot not in SLOTS:
+        slot = rng.choice(SLOTS)
+    known = {v: score[(slot, v)] for v in VALUE if score.get((slot, v), 0) > 0}
+    if known and rng.random() < 0.9:
+        change = {slot: max(known, key=known.get)}
+    else:
+        change = {slot: BEST[slot] if rng.random() < q else rng.choice(list(VALUE))}
+    if rng.random() < collateral:
+        other = rng.choice([s for s in SLOTS if s != slot])
+        value = WORST[other] if rng.random() < break_bias else rng.choice(list(VALUE))
+        if score.get((other, value), 0) >= 0:
+            change[other] = value
+    return change
 
 
 class ToyProposer(Proposer):
@@ -163,23 +228,9 @@ class ToyProposer(Proposer):
 
     def _one(self, request: ProposalRequest) -> Patch | None:
         current = effective(request.state or [])
-        score = self.learned(request)
-        direction = (request.hints or {}).get("direction")
-        if direction:
-            slot = str(direction["id"]).split(":", 1)[-1]
-        else:
-            blames = [t.ref for a in request.attributions for t in a.targets if t.weight < 0]
-            slot = self.rng.choice(blames) if blames else self.rng.choice(SLOTS)
-        known = {v: score[(slot, v)] for v in VALUE if score.get((slot, v), 0) > 0}
-        if known and self.rng.random() < 0.9:
-            change = {slot: max(known, key=known.get)}
-        else:
-            change = {slot: BEST[slot] if self.rng.random() < self.q else self.rng.choice(list(VALUE))}
-        if self.rng.random() < self.collateral:
-            other = self.rng.choice([s for s in SLOTS if s != slot])
-            value = WORST[other] if self.rng.random() < self.break_bias else self.rng.choice(list(VALUE))
-            if score.get((other, value), 0) >= 0:
-                change[other] = value
+        blames = [t.ref for a in request.attributions for t in a.targets if t.weight < 0]
+        change = make_edit(self.rng, current, blames, (request.hints or {}).get("direction"), self.q,
+                           self.collateral, self.break_bias, self.learned(request))
         ops = [{"op": "replace", "item": {"id": k, "kind": "prompt", "text": v}}
                for k, v in sorted(change.items()) if current.get(k) != v]
         if not ops:
@@ -219,7 +270,15 @@ class _Counting:
 def write_config(base: Path, arm: str, seed: int, *, q: float = 0.6, collateral: float = 0.5,
                  break_bias: float = 0.0, holdout: int = 60, size: int = 4) -> Path:
     """arm：A、paired、grpo、best_of_n、training_free，后面可以加 +fb（提案器反馈）或 +fb-shuffled（打乱的对照）；
-    group 等于 best_of_n。"""
+    group 等于 best_of_n。也可以写成 <A|group>:<fixed|self|strong>（--self 实验）：fixed 是水平固定在 agent 起点的
+    外部提案器，strong 是一直很强的外部提案器，self 是 agent 给自己出改法。"""
+    proposer_mode = None
+    if ":" in arm:
+        arm, proposer_mode = arm.split(":", 1)
+        if proposer_mode == "fixed":
+            q, collateral, break_bias = 0.2, 0.5, 0.8
+        elif proposer_mode == "strong":
+            q, collateral, break_bias = 0.9, 0.5, 0.0
     base_arm, _, fb = arm.partition("+")
     base_arm = "best_of_n" if base_arm == "group" else base_arm
     loop: dict[str, Any] = {"max_patches": 1, "train_limit": 30}
@@ -251,6 +310,9 @@ def write_config(base: Path, arm: str, seed: int, *, q: float = 0.6, collateral:
         "gate": {"python": "anyrsi_gate:HoldoutGate", "with": {"min_gain": 0.0}},
         "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
     }
+    if proposer_mode == "self":
+        loop["self_propose"] = True
+        del comps["proposer"]
     data = {"protocol": "anyrsi/0.4", "name": f"group-toy-{arm}", "plugins": ["group_toy"],
             "components": comps, "loop": loop, "evolvables": evolvables}
     base.mkdir(parents=True, exist_ok=True)
@@ -267,13 +329,36 @@ async def run_arm(arm: str, base: Path, seed: int, budget: int, **kw: Any) -> di
     lift: list[float] = []     # 同一时刻：读反馈的提案器 − 不读反馈的同款提案器，出好改法的比例之差
     ghost = ToyProposer(seed=seed + 7919, q=kw.get("q", 0.6), collateral=kw.get("collateral", 0.5),
                         break_bias=kw.get("break_bias", 0.0))
+    curve: list[tuple[int, str | None]] = []  # (已用调用数, 当时最新接受的版本)
     async with Wiring(cfg) as w:
-        counter = _Counting(w.components["agent"], budget)
+        agent = w.components["agent"]
+
+        class MeasuredAgent:  # agent 给自己出改法时，记下改法的真实效果
+            kinds = agent.kinds
+
+            async def run(self, task: Task, context: list[Item], snapshot_id: str | None = None) -> Any:
+                traj = await agent.run(task, context, snapshot_id)
+                if isinstance(task.input, dict) and task.input.get("kind") == "self_improvement":
+                    try:
+                        ops = json.loads(traj.output)["ops"]
+                    except (TypeError, ValueError, KeyError):
+                        ops = None
+                    if ops:
+                        before = effective(context)
+                        after = {**before, **{o["item"]["id"]: o["item"]["text"] for o in ops
+                                              if o.get("op") == "replace" and o["item"]["id"] in SLOTS}}
+                        quality.append(true_p(after) - true_p(before))
+                return traj
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(agent, name)
+
+        counter = _Counting(MeasuredAgent(), budget)
         w.components["agent"] = counter
-        inner = w.components["proposer"]
+        inner = w.components.get("proposer")
 
         class Measured:
-            kinds = inner.kinds
+            kinds = getattr(inner, "kinds", ["proposer"])
 
             async def propose(self, req: ProposalRequest) -> list[Patch]:
                 patches = await inner.propose(req)
@@ -301,8 +386,18 @@ async def run_arm(arm: str, base: Path, seed: int, budget: int, **kw: Any) -> di
             def __getattr__(self, name: str) -> Any:
                 return getattr(inner, name)
 
-        w.components["proposer"] = Measured()
+        if inner is not None:
+            w.components["proposer"] = Measured()
         runner = Runner(w, cfg.loop)
+        latest: list[str | None] = [None]
+
+        def track(report: Any) -> None:
+            for c in report.candidates:
+                if c.accepted:
+                    latest[0] = c.id
+            curve.append((counter.calls, latest[0]))
+
+        runner.on_generation = track
         try:
             await runner.run()
         except BudgetExhausted:
@@ -323,7 +418,13 @@ async def run_arm(arm: str, base: Path, seed: int, budget: int, **kw: Any) -> di
             parent = next(x for x in log if x.id == e.parent_ids[0])
             harmful += await truth(e) < await truth(parent)
         third = max(1, len(quality) // 3)
-        return {"arm": arm, "seed": seed, "calls": counter.calls, "accepted": len(accepted), "harmful": harmful,
+        by_id = {e.id: e for e in log}
+        points = []
+        for frac in (0.25, 0.5, 0.75, 1.0):
+            upto = [cid for calls, cid in curve if calls <= frac * budget]
+            cid = next((c for c in reversed(upto) if c), None)
+            points.append(round(await truth(by_id[cid]) if cid else await truth(root), 4))
+        return {"arm": arm, "seed": seed, "curve": points, "calls": counter.calls, "accepted": len(accepted), "harmful": harmful,
                 "true_start": round(await truth(root), 4), "true_final": round(await truth(final), 4),
                 "proposals": len(quality),
                 "good_early": round(fmean(q > 0 for q in quality[:third]), 4) if quality else 0.0,
@@ -349,9 +450,11 @@ async def experiment(out: Path, seeds: list[int], budget: int, arms: tuple[str, 
                "lift_late": round(fmean(r["lift_late"] for r in rs), 3) if rs[0]["lift_late"] is not None else None,
                "true_final_sd": round(stdev(finals), 4) if len(finals) > 1 else 0.0,
                "accepted_mean": round(acc / len(rs), 2),
-               "harmful_rate": round(sum(r["harmful"] for r in rs) / acc, 3) if acc else 0.0}
-        if a != "A" and "A" in arms and len(seeds) > 1:
-            d = [by[(s, a)]["true_final"] - by[(s, "A")]["true_final"] for s in seeds]
+               "harmful_rate": round(sum(r["harmful"] for r in rs) / acc, 3) if acc else 0.0,
+               "curve": [round(fmean(r["curve"][i] for r in rs), 3) for i in range(4)]}
+        base = arms[0]  # 第一组是对照
+        if a != base and len(seeds) > 1:
+            d = [by[(s, a)]["true_final"] - by[(s, base)]["true_final"] for s in seeds]
             row["vs_A"] = round(fmean(d), 4)
             row["vs_A_se"] = round(stdev(d) / len(d) ** 0.5, 4)
         summary[a] = row
@@ -365,14 +468,15 @@ async def experiment(out: Path, seeds: list[int], budget: int, arms: tuple[str, 
 def markdown(r: dict[str, Any]) -> str:
     lines = [f"# 组提案（{r['label']}）", "",
              f"预算每组每个种子 {r['budget']} 次 agent 调用；种子 {r['seeds']}；设置 {r['settings']}。", "",
-             "| 做法 | 最终真实答对率 | 相对 A（配对） | 平均接受次数 | 接受里真实变差 | 好提案比例 前 1/3 → 后 1/3 | "
-             "读反馈带来的提升 前 1/3 → 后 1/3 |",
-             "| --- | --- | --- | --- | --- | --- | --- |"]
+             f"| 做法 | 最终真实答对率 | 相对 {next(iter(r['summary']))}（配对） | 平均接受次数 | 接受里真实变差 | "
+             "好提案比例 前 1/3 → 后 1/3 | 读反馈带来的提升 前 1/3 → 后 1/3 | 真实答对率 @25/50/75/100% 预算 |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for a, s in r["summary"].items():
         vs = f"{s['vs_A']:+.3f} ± {s['vs_A_se']:.3f}" if "vs_A" in s else "—"
         lf = f"{s['lift_early']:+.2f} → {s['lift_late']:+.2f}" if s.get("lift_early") is not None else "—"
+        cv = " / ".join(f"{x:.2f}" for x in s["curve"])
         lines.append(f"| {a} | {s['true_final_mean']:.3f} ± {s['true_final_sd']:.3f} | {vs} | {s['accepted_mean']} | "
-                     f"{s['harmful_rate']:.1%} | {s['good_early']:.2f} → {s['good_late']:.2f} | {lf} |")
+                     f"{s['harmful_rate']:.1%} | {s['good_early']:.2f} → {s['good_late']:.2f} | {lf} | {cv} |")
     return "\n".join(lines) + "\n"
 
 
@@ -384,10 +488,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--q", type=float, default=0.6)
     ap.add_argument("--collateral", type=float, default=0.5)
     ap.add_argument("--break-bias", type=float, default=0.0)
-    ap.add_argument("--recursive", action="store_true", help="递归改进实验：提案器读考试反馈")
+    ap.add_argument("--recursive", action="store_true", help="提案器反馈实验：提案器读考试反馈")
+    ap.add_argument("--self", dest="self_", action="store_true", help="递归改进实验：agent 给自己出改法")
     ap.add_argument("--out", type=Path, default=Path("out/group_toy"))
     args = ap.parse_args(argv)
     arms = ("A", "A+fb", "group", "group+fb", "group+fb-shuffled") if args.recursive else tuple(args.arms.split(","))
+    if args.self_:
+        arms = ("A:fixed", "A:self", "group:fixed", "group:self", "group:strong")
     asyncio.run(experiment(args.out, args.seeds, args.budget, arms, q=args.q,
                            collateral=args.collateral, break_bias=args.break_bias))
     print((args.out / "report.md").read_text(encoding="utf-8"))
