@@ -20,6 +20,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,25 @@ def _quirk_for(error: str) -> str | None:
     return None
 
 
+# Optional in-process measurement hook; context-local for concurrent benchmark arms.
+request_observer = ContextVar("anyrsi_request_observer", default=None)
+
+
+def _request_json(req, timeout):
+    observer = request_observer.get()
+    ordinal = observer.before() if observer else None
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            data = json.loads(response.read())
+    except BaseException:
+        if observer:
+            observer.after(ordinal, {}, False)
+        raise
+    if observer:
+        observer.after(ordinal, data.get("usage") or {}, True)
+    return data
+
+
 def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float | None = 0.0,
          max_tokens: int = 512, timeout: float = 300.0, api_key: str | None = None,
          extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -78,8 +98,7 @@ def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperatu
                                      headers={"Content-Type": "application/json",
                                               **({"Authorization": f"Bearer {api_key}"} if api_key else {})})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                data = json.loads(r.read())
+            data = _request_json(req, timeout)
             break
         except urllib.error.HTTPError as e:
             detail = e.read()[:500]
@@ -494,7 +513,11 @@ class CodeRewriter(Proposer):
     def __init__(self, base_url: str, model: str = "policy", max_examples: int = 4, max_files: int = 3,
                  max_file_chars: int = 20000, trace_chars: int = 2500, temperature: float = 0.4,
                  max_tokens: int = 8000, timeout: float = 600.0, api_key_env: str | None = None,
-                 max_attribution_lines: int = 24, max_attribution_chars: int = 3000):
+                 max_attribution_lines: int = 24, max_attribution_chars: int = 3000,
+                 max_hunk_lines: int | None = None):
+        if max_hunk_lines is not None and max_hunk_lines < 1:
+            raise ValueError("max_hunk_lines must be positive")
+        self.max_hunk_lines = max_hunk_lines
         self.base_url, self.model = base_url, model
         self.max_examples, self.max_files, self.max_file_chars, self.trace_chars = (max_examples, max_files,
                                                                                     max_file_chars, trace_chars)
@@ -535,8 +558,12 @@ class CodeRewriter(Proposer):
         listing = "\n\n".join(f"=== {p} ===\n{t}" for p, t in sorted(files.items()))
         user = (f"Editable path patterns: {', '.join(target.surfaces) or '(any)'}\nAt most {self.max_files} files.\n\n"
                 f"Current files:\n\n{listing}\n\n{header}Failures:\n\n" + "\n\n---\n\n".join(examples))
+        system = CODE_SYSTEM
+        if self.max_hunk_lines:
+            system += (f" Propose localized edits to existing files, at most {self.max_hunk_lines} changed lines per hunk."
+                       " Leave unrelated lines verbatim.")
         try:
-            out = chat(self.base_url, self.model, [{"role": "system", "content": CODE_SYSTEM + strategy_notes(request)},
+            out = chat(self.base_url, self.model, [{"role": "system", "content": system + strategy_notes(request)},
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
@@ -548,8 +575,9 @@ class CodeRewriter(Proposer):
         if obj is None or not isinstance(obj.get("files"), list):
             return []
         ops = []
+        seen_files = set()
         for f in obj["files"]:
-            if len(ops) >= self.max_files:
+            if len(seen_files) >= self.max_files:
                 break
             if not isinstance(f, dict) or not isinstance(f.get("path"), str) or not isinstance(f.get("content"), str):
                 continue
@@ -561,7 +589,17 @@ class CodeRewriter(Proposer):
             if any(_copies(content, task_text(ep.task)) and not _copies(files.get(path, ""), task_text(ep.task))
                    for ep in failed):
                 return []  # 把错题原文写进了代码：等于背答案，整份丢掉
-            ops.append({"op": "write", "path": path, "content": content})
+            if path in seen_files:
+                return []
+            seen_files.add(path)
+            if self.max_hunk_lines is None:
+                ops.append({"op": "write", "path": path, "content": content})
+            else:
+                from .line_hunks import line_hunks
+                try:
+                    ops.extend(line_hunks(path, files.get(path, ""), content, self.max_hunk_lines))
+                except ValueError:
+                    return []
         if not ops:
             return []
         rationale = str(obj.get("rationale") or "")[:300] or f"rewrite {len(ops)} files"

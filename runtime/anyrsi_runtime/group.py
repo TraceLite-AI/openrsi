@@ -295,6 +295,10 @@ BUILTIN["merge"] = MergePositive
 def op_key(op: dict[str, Any]) -> str:
     """一条操作改的是哪个条目：item.id / item_id / id，都没有时用整条操作的内容。"""
     item = op.get("item") if isinstance(op.get("item"), dict) else {}
+    if op.get("op") == "diff" and op.get("path"):
+        header = next((line.split(" ")[1] for line in op.get("unified", "").splitlines() if line.startswith("@@ -")), None)
+        if header:
+            return f"{op['path']}:{header}"
     key = item.get("id") or op.get("item_id") or op.get("id") or op.get("path")
     return str(key) if key else hashlib.sha256(repr(sorted(op.items())).encode()).hexdigest()[:16]
 
@@ -303,6 +307,9 @@ def describe_op(op: dict[str, Any]) -> str:
     """一条操作的简短说明：操作 条目: 内容。"""
     item = op.get("item") if isinstance(op.get("item"), dict) else {}
     text = str(item.get("text") or "").replace("\n", " ")
+    if op.get("op") == "diff":
+        text = " ".join(line for line in op.get("unified", "").splitlines()
+                        if line.startswith(("+", "-")) and not line.startswith(("+++", "---")))
     return f"{op.get('op', '?')} {op_key(op)}" + (f": {text[:120]}" if text else "")
 
 

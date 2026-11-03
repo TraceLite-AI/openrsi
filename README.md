@@ -433,3 +433,5 @@ AnyRSI builds on the [Model Context Protocol](https://modelcontextprotocol.io) a
 ## License
 
 [Apache License 2.0](LICENSE)
+
+The [controlled direction pilot](benchmarks/self_propose_llm/README.md) uses disjoint expression identities and equal search HTTP-attempt ceilings, including proposals and retries. Historical tables use the earlier protocol. CodeRewriter optionally emits bounded line hunks (`max_hunk_lines`); a hunk is a structural unit, not a guarantee of one behavioral change.

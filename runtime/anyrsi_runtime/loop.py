@@ -63,7 +63,7 @@ from anyrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
-from .group import Member, atomize, describe_op, lesson_patch, load_strategy, merge_patches, rollout_seed, split_tasks
+from .group import Member, atomize, describe_op, lesson_patch, load_strategy, merge_patches, op_key, rollout_seed, split_tasks
 from .momentum import Direction, DirectionLedger, profile
 from .self_propose import build_task, parse_patch
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
@@ -916,8 +916,11 @@ class Runner:
             genome, patch, t, direction = members[decision.chosen]
             m, scores = results[decision.chosen]
             merge = [i for i in getattr(decision, "merge", None) or [] if members[i][2] == t]
+            report.group["applied_members"] = [decision.chosen]
             if len(merge) > 1:  # 合并型策略：所有变好的方向一起走一步（只合并改同一个可进化体的）
                 patch = merge_patches([members[i][1] for i in merge])
+                if await self._guard_blocks(patch, self.targets[t].info):
+                    return await reject("combined patch rejected by guard")
                 await self.checkout(pg)
                 try:
                     snap = await self.targets[t].facade.apply(patch)
@@ -926,7 +929,14 @@ class Runner:
                 genome = {**pg, t: snap.id}
                 m, _ = await self.score(tasks, genome, "holdout")
                 scores = dict(self.last_task_scores)
-                report.group["merged"] = merge
+                seen = set()
+                applied = []
+                for i in merge:
+                    keys = {op_key(op) for op in members[i][1].ops}
+                    if keys - seen:
+                        applied.append(i)
+                    seen.update(keys)
+                report.group["merged"] = report.group["applied_members"] = applied
         else:
             if not decision.lessons:
                 return await reject(decision.reason)
@@ -956,7 +966,7 @@ class Runner:
         """方向动量：通过准入的那一步里的小改动记为有用的方向，测出来变差的记为有害的方向；
         顺便统计有方向指导和没有方向指导的改法各自的平均优势（对照）。"""
         assert self.ledger is not None
-        taken = set(getattr(decision, "merge", None) or ([decision.chosen] if decision.chosen is not None else []))
+        taken = set(report.group.get("applied_members", []))
         by_label: dict[str, list[float]] = {}
         for i, (_, patch, _, label) in enumerate(members):
             adv = decision.advantage[i] if i < len(decision.advantage) else 0.0

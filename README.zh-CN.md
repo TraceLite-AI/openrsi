@@ -431,3 +431,5 @@ AnyRSI 基于 [Model Context Protocol](https://modelcontextprotocol.io)，借鉴
 ## 许可证
 
 [Apache License 2.0](LICENSE)
+
+[方向对照实验的新协议](benchmarks/self_propose_llm/README.md)按算式内容隔离划分，搜索按实际 HTTP 请求设上限（包括提案与重试）。旧表仍是旧协议。CodeRewriter 可通过 `max_hunk_lines` 生成有行数上限的局部补丁；一个 hunk 是结构单位，不能保证只有一个行为变化。
