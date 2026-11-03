@@ -299,7 +299,8 @@ def op_key(op: dict[str, Any]) -> str:
     return str(key) if key else hashlib.sha256(repr(sorted(op.items())).encode()).hexdigest()[:16]
 
 
-def _describe(op: dict[str, Any]) -> str:
+def describe_op(op: dict[str, Any]) -> str:
+    """一条操作的简短说明：操作 条目: 内容。"""
     item = op.get("item") if isinstance(op.get("item"), dict) else {}
     text = str(item.get("text") or "").replace("\n", " ")
     return f"{op.get('op', '?')} {op_key(op)}" + (f": {text[:120]}" if text else "")
@@ -309,7 +310,7 @@ def atomize(patch: Patch) -> list[Patch]:
     """把补丁拆成每条操作一个的小补丁。只有一条操作时原样返回。"""
     if len(patch.ops) <= 1:
         return [patch]
-    return [patch.model_copy(update={"ops": [op], "rationale": f"{_describe(op)} (part {i + 1}/{len(patch.ops)} of: "
+    return [patch.model_copy(update={"ops": [op], "rationale": f"{describe_op(op)} (part {i + 1}/{len(patch.ops)} of: "
                                                               f"{(patch.rationale or '')[:200]})"})
             for i, op in enumerate(patch.ops)]
 
@@ -324,7 +325,7 @@ def merge_patches(patches: list[Patch]) -> Patch:
             if k not in seen:
                 seen.add(k)
                 ops.append(op)
-    return patches[0].model_copy(update={"ops": ops, "rationale": " | ".join(_describe(op) for op in ops)[:1000],
+    return patches[0].model_copy(update={"ops": ops, "rationale": " | ".join(describe_op(op) for op in ops)[:1000],
                                          "proposer_ref": patches[0].proposer_ref})
 
 
@@ -352,5 +353,5 @@ def lesson_patch(target: str, base: str, lessons: list[Item], existing: set[str]
 
 
 __all__ = ["BUILTIN", "BestOfN", "Decision", "GRPO", "GroupStrategy", "Member", "MergePositive", "ParentPaired",
-           "TrainingFreeGRPO", "atomize", "lesson_patch", "load_strategy", "mean_z", "merge_patches", "op_key",
+           "TrainingFreeGRPO", "atomize", "describe_op", "lesson_patch", "load_strategy", "mean_z", "merge_patches", "op_key",
            "rollout_seed", "split_tasks", "z_threshold"]

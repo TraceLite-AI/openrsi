@@ -63,7 +63,8 @@ from anyrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
-from .group import Member, atomize, lesson_patch, load_strategy, merge_patches, rollout_seed, split_tasks
+from .group import Member, atomize, describe_op, lesson_patch, load_strategy, merge_patches, rollout_seed, split_tasks
+from .momentum import Direction, DirectionLedger, profile
 from .self_propose import build_task, parse_patch
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
@@ -321,6 +322,9 @@ class Runner:
                         by_item.setdefault(r.id, []).append(1.0 if r.result == "pass" else 0.0)
             m.update({f"rubric:{k}": fmean(v) for k, v in by_item.items()})
         self.last_task_scores = {self._key(e.task): e.verdict.score for e in episodes}
+        self.last_task_rubric = {self._key(e.task): {r.id: 1.0 if r.result == "pass" else 0.0 for r in e.verdict.rubric
+                                                     if r.result in ("pass", "fail")} for e in episodes}
+        self.last_task_tags = {self._key(e.task): list(e.task.tags or []) for e in episodes}
         if self.registry and len(self.last_task_scores) != len(episodes):
             raise CellError("逐题分数的键重复：同一道题在同一个格里被评了两次")
         if self.anchor:
@@ -408,8 +412,12 @@ class Runner:
             raise IsolationError("env 没有给出 holdout 题，无法做准入")
         self.holdout = holdout  # 整个运行用同一套 holdout，候选之间才可比
         self.group_strategy = None
+        self.ledger: DirectionLedger | None = None
         if self.cfg.group is not None:
             self.group_strategy = load_strategy(self.cfg.group.strategy)
+            mom = self.cfg.group.momentum
+            if mom is not None:
+                self.ledger = DirectionLedger(mom.decay, mom.max_items, mom.negative)
             if not getattr(self.group_strategy, "selects", True):
                 t = self.cfg.group.experience_target
                 if not t or t not in self.targets:
@@ -804,6 +812,18 @@ class Runner:
                                        "text": f"fix what attribution blames: {name} (blamed in {n} failed episodes)"}}
                 await take(await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints, 1),
                                                pg), name)
+        mom = g.momentum
+        if mom is not None and self.ledger is not None:  # 方向动量：前 explore 个改法不给方向，其余带上方向
+            hint = self.ledger.hint(self._gen)
+            for i in range(g.size):
+                if enough():
+                    break
+                guided = hint is not None and i >= mom.explore
+                hints = {**base_hints, "group_index": i, "sample": i + 1, **({"momentum": hint} if guided else {})}
+                await take(await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints, 1), pg),
+                           "guided" if guided else "explore")
+            await self.checkout(pg)
+            return out
         tries = 0
         while not enough() and tries < 2 * g.size:
             tries += 1
@@ -859,10 +879,13 @@ class Runner:
         sel, conf = self.holdout_select, self.holdout_confirm or self.holdout_select
         parent_m, _ = await self.score(tasks, pg, "holdout")
         parent_scores = dict(self.last_task_scores)
+        parent_rubric, task_tags = dict(self.last_task_rubric), dict(self.last_task_tags)
         results = []
+        rubrics = []
         for member_genome, *_ in members:
             m, _ = await self.score(tasks, member_genome, "holdout")
             results.append((m, dict(self.last_task_scores)))
+            rubrics.append(dict(self.last_task_rubric))
         group = [Member(index=i, scores={k: results[i][1][k] for k in sel}, rationale=members[i][1].rationale or "",
                         direction=members[i][3]) for i in range(len(members))]
         decision = strategy.decide({k: parent_scores[k] for k in sel}, group, g.alpha)
@@ -884,6 +907,9 @@ class Runner:
 
         if getattr(strategy, "selects", True):
             if decision.chosen is None:
+                if self.ledger is not None:  # 没选出候选，测出来变差的方向照样记下
+                    self._record_directions(gen, members, results, rubrics, decision, False, parent_scores,
+                                            parent_rubric, task_tags, sel, report)
                 return await reject(decision.reason)
             genome, patch, t, direction = members[decision.chosen]
             m, scores = results[decision.chosen]
@@ -913,10 +939,39 @@ class Runner:
             genome = {**pg, t: snap.id}
             m, _ = await self.score(tasks, genome, "holdout")
             scores = dict(self.last_task_scores)
-        report.candidates.append(await self._group_candidate(gen, parent, genome, patch, t, m, scores, parent_m,
-                                                             parent_scores, conf, report.train_score, decision.reason))
+        cand = await self._group_candidate(gen, parent, genome, patch, t, m, scores, parent_m,
+                                           parent_scores, conf, report.train_score, decision.reason)
+        report.candidates.append(cand)
+        if self.ledger is not None and getattr(strategy, "selects", True):
+            self._record_directions(gen, members, results, rubrics, decision, cand.accepted, parent_scores,
+                                    parent_rubric, task_tags, sel, report)
         await self.checkout(pg)
         return report
+
+    def _record_directions(self, gen: int, members: list[Any], results: list[Any], rubrics: list[Any], decision: Any,
+                           accepted: bool, parent_scores: dict[str, float], parent_rubric: dict[str, Any],
+                           task_tags: dict[str, list[str]], sel: list[str], report: GenerationReport) -> None:
+        """方向动量：通过准入的那一步里的小改动记为有用的方向，测出来变差的记为有害的方向；
+        顺便统计有方向指导和没有方向指导的改法各自的平均优势（对照）。"""
+        assert self.ledger is not None
+        taken = set(getattr(decision, "merge", None) or ([decision.chosen] if decision.chosen is not None else []))
+        by_label: dict[str, list[float]] = {}
+        for i, (_, patch, _, label) in enumerate(members):
+            adv = decision.advantage[i] if i < len(decision.advantage) else 0.0
+            by_label.setdefault(label or "other", []).append(adv)
+            helped = accepted and i in taken and adv > 0
+            if not helped and adv >= 0:
+                continue
+            rub, tags = profile(parent_scores, results[i][1], parent_rubric, rubrics[i], task_tags, sel)
+            what = " | ".join(describe_op(op) for op in patch.ops)  # 方向以改动内容为准，提案器的理由放后面
+            why = (patch.rationale or "").strip()
+            text = what if not why or what in why else f"{what} (why: {why[:150]})"
+            self.ledger.add(Direction(generation=gen, text=text, advantage=adv, helped=helped, rubric=rub, tags=tags))
+        report.group["momentum"] = {
+            "by_label": {k: {"n": len(v), "mean_advantage": round(fmean(v), 4), "improved": sum(x > 0 for x in v)}
+                         for k, v in by_label.items()},
+            "ledger": {"helped": sum(d.helped for d in self.ledger.items),
+                       "hurt": sum(not d.helped for d in self.ledger.items)}}
 
     async def _group_candidate(self, gen: int, parent: str, genome: Genome, patch: Patch, t: str, m: dict[str, float],
                                scores: dict[str, float], parent_m: dict[str, float], parent_scores: dict[str, float],

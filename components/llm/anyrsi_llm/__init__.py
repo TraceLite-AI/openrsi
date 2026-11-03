@@ -28,6 +28,15 @@ from anyrsi import Agent, Attribution, ComponentError, Item, Patch, ProposalRequ
 __version__ = "0.4.5"
 
 
+class LLMFatalError(ComponentError):
+    """不可恢复的接口错误（key 无效、额度用完、模型不存在）：组件不吞掉它，整个运行停下来报错，
+    免得每次调用都失败、却空跑完所有代、最后只报 0 分。"""
+
+
+def _fatal(code: int, detail: str) -> bool:
+    return code in (401, 403, 404) or "insufficient_quota" in detail or "no credits" in detail.lower()
+
+
 # 有的模型不接受某些参数（比如新的推理模型要 max_completion_tokens、只允许默认 temperature）。
 # 遇到这类 400 报错时改写参数重试一次，并按 (base_url, model) 记住，之后直接用改写后的参数。
 _QUIRKS: dict[tuple[str, str], set[str]] = {}
@@ -74,7 +83,10 @@ def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperatu
             break
         except urllib.error.HTTPError as e:
             detail = e.read()[:500]
-            quirk = _quirk_for(detail.decode("utf-8", "replace")) if e.code == 400 else None
+            text = detail.decode("utf-8", "replace")
+            if _fatal(e.code, text):
+                raise LLMFatalError(f"LLM 接口返回 {e.code}，无法继续：{text[:300]}") from e
+            quirk = _quirk_for(text) if e.code == 400 else None
             if quirk is None or quirk in _QUIRKS.get(key, set()):
                 raise ComponentError(f"LLM 接口返回 {e.code}：{detail!r}") from e
             _QUIRKS.setdefault(key, set()).add(quirk)
@@ -211,6 +223,8 @@ class ChatAgent(Agent):
                                                    {"role": "user", "content": question}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key, extra=seed_extra(task))
+        except LLMFatalError:
+            raise
         except ComponentError as e:
             return Trajectory(id=f"traj-{task.id}-{snapshot_id}-error", task_id=task.id, snapshot_id=snapshot_id,
                               output=None, steps=[Step(id="s0", type="observation", content=str(e), is_error=True)],
@@ -341,6 +355,8 @@ class StrategyRewriter(Proposer):
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
+        except LLMFatalError:
+            raise
         except ComponentError:
             return []
         text = out["text"].strip().strip("`").strip()
@@ -400,6 +416,8 @@ class PromptRewriter(Proposer):
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
+        except LLMFatalError:
+            raise
         except ComponentError:
             return []
         text = out["text"].strip().strip("`").strip()
@@ -522,6 +540,8 @@ class CodeRewriter(Proposer):
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
+        except LLMFatalError:
+            raise
         except ComponentError:
             return []
         obj = _json_object(out["text"])
@@ -583,6 +603,8 @@ class PatchProposer(Proposer):
                                                          {"role": "user", "content": task_text(task)}],
                              temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                              api_key=self.api_key)
+            except LLMFatalError:
+                raise
             except ComponentError:
                 continue
             patch = parse_patch(reply["text"], request, self.model)
@@ -591,6 +613,6 @@ class PatchProposer(Proposer):
         return out
 
 
-__all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PatchProposer", "PromptRewriter", "StrategyRewriter",
+__all__ = ["ChatAgent", "CodeRewriter", "LLMFatalError", "ManagedServer", "PatchProposer", "PromptRewriter", "StrategyRewriter",
            "attribution_context",
            "chat", "render_prompt", "seed_extra", "strategy_notes", "task_text"]

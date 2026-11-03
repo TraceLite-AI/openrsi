@@ -25,6 +25,8 @@ INSTRUCTION = (
     "You are improving yourself. Below are your current editable parts, tasks you recently failed (with what you did "
     "and why it was judged wrong), and an analysis of what caused the failures. Propose ONE change to your own "
     "editable parts that would make you succeed on such tasks in general. Never write answers to specific tasks. "
+    "If hints.momentum is present, it lists changes verified on held-out tasks to help (keep moving in those "
+    "directions) or hurt (avoid them). "
     "Reply with one JSON object only: {\"target\": <one of the targets>, \"ops\": [<patch operations in the format of "
     "that target's examples>], \"rationale\": <one sentence>}."
 )
@@ -50,7 +52,7 @@ def build_task(request: ProposalRequest, *, gen: int, index: int, seed: int | No
                          "output": _text(ep.trajectory.output, 800), "why_wrong": why})
     attributions = [{"episode": a.episode_id, "kind": t.kind, "ref": t.ref, "weight": t.weight, "note": t.note}
                     for a in request.attributions for t in a.targets][:50]
-    hints = {k: v for k, v in (request.hints or {}).items() if k in ("direction", "step", "group_index", "improver")}
+    hints = {k: v for k, v in (request.hints or {}).items() if k in ("direction", "step", "group_index", "improver", "momentum")}
     body = {"targets": targets, "failures": failures, "attributions": attributions, "hints": hints}
     listing = _text(body, max_state_chars * max(1, len(targets)) + 8000)
     metadata: dict[str, Any] = {"self_improvement": True, "generation": gen, "index": index}

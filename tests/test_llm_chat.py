@@ -117,3 +117,21 @@ def test_transient_network_errors_are_retried(monkeypatch):
     with pytest.raises(ComponentError, match="连不上"):
         chat("http://x/v1", "m", [{"role": "user", "content": "hi"}])
     assert len(calls) == 3
+
+
+def test_quota_and_auth_errors_stop_the_run():
+    from anyrsi_llm import ChatAgent, LLMFatalError, PatchProposer
+
+    anyrsi_llm._QUIRKS.clear()
+    srv, url, seen = serve(lambda b: "You have no credits remaining. Add credits to continue using the API")
+    try:
+        with pytest.raises(LLMFatalError):
+            chat(url, "m", [{"role": "user", "content": "hi"}])
+        from anyrsi import EvolvableInfo, ProposalRequest, Task
+        with pytest.raises(LLMFatalError):  # 执行体和提案器都不吞掉它
+            ChatAgent(base_url=url, model="m").run(Task(id="t", split="train", input={"question": "q"}), [])
+        info = EvolvableInfo(target="prompt", type="prompt", head="h")
+        with pytest.raises(LLMFatalError):
+            PatchProposer(base_url=url, model="m").propose(ProposalRequest(target=info, parent_snapshot="p", state=[]))
+    finally:
+        srv.shutdown()

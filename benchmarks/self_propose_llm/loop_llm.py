@@ -11,6 +11,7 @@
     bon       组提案：一次 G 个改法，考试选择半上挑最好的一个，确认半准入
     grad      组提案 + 拆小合并：G 个改法拆成一条条小改动，逐条在选择半上测（有限差分），
               所有变好的合并成一步，确认半准入（loop.group.atomize + merge 策略）
+    mom       grad + 方向动量（loop.group.momentum）：测出来的好方向 / 坏方向交给算子，每代 1 个改法不给方向做对照
 
     python benchmarks/self_propose_llm/loop_llm.py --model gpt-5.4-mini --seeds 0 1 2 --generations 8
 """
@@ -117,9 +118,11 @@ def write_config(base: Path, arm: str, seed: int, model: str, key_env: str, gene
     loop: dict[str, Any] = {"max_patches": 1}
     if mode == "bon":
         loop["group"] = {"size": size, "strategy": "best_of_n", "confirm_fraction": confirm}
-    elif mode == "grad":
+    elif mode in ("grad", "mom"):
         loop["group"] = {"size": size, "strategy": "merge", "confirm_fraction": confirm, "atomize": True,
                          "max_atoms": 4 * size}
+        if mode == "mom":
+            loop["group"]["momentum"] = {"decay": 0.7, "max_items": 6, "explore": 1}
     elif mode != "A":
         raise ValueError(f"unknown loop mode {mode}")
     if who == "self":
@@ -148,6 +151,7 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
 
     cfg = load_config(write_config(base, arm, seed, model, key_env, generations, size, easy, confirm))
     curve: list[float] = []
+    labels: dict[str, list[float]] = {}
     calls_curve: list[int] = []
     async with Wiring(cfg) as w:
         agent = w.components["agent"]
@@ -174,6 +178,9 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
                     best[0] = c.metrics.get("holdout")
             curve.append(best[0] if best[0] is not None else report.parent_metrics.get("holdout"))
             calls_curve.append(calls[0])
+            for m in (report.group or {}).get("members", []):
+                if m.get("advantage") is not None:
+                    labels.setdefault(m.get("direction") or "other", []).append(m["advantage"])
 
         runner.on_generation = track
         await runner.run()
@@ -188,7 +195,10 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
             "generations": generations, "start": root.metrics.get("holdout"),
             "final": final.metrics.get("holdout"), "test": test, "curve": curve, "accepted": len(accepted),
             "proposals": len(proposals), "calls": calls_curve[-1] if calls_curve else 0,
-            "calls_curve": calls_curve, "final_prompt": [d["text"] for d in prompt]}
+            "calls_curve": calls_curve,
+            "by_label": {k: {"n": len(v), "mean_advantage": sum(v) / len(v), "improved": sum(x > 0 for x in v)}
+                         for k, v in labels.items()},
+            "final_prompt": [d["text"] for d in prompt]}
 
 
 def main() -> None:
