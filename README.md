@@ -32,7 +32,8 @@
 
 ## News
 
-- **2026-11** · Group proposals (`loop.group`): the proposer makes a group of candidates; the parent and every candidate take the same exam (holdout) tasks with a shared seed per task; half of the exam picks, the other half confirms. The group-advantage rule is pluggable: built-in parent-paired, GRPO-style, best-of-N and Training-Free-GRPO-style, or your own class with the same interface. On a toy problem the final score matches the current loop while harmful accepts drop from about 10% to 0; see [Experiments](#6-group-proposals-toy-problem-not-a-benchmark).
+- **2026-11** · Proposer feedback (`loop.improver_feedback`): each generation, which edits did better or worse on the exam is written back into the proposer's strategy notes, so the proposer improves too. On a toy problem the proposer's rate of good edits rises by 11–13 percentage points, but improvement does not accelerate yet.
+- **2026-11** · Group proposals (`loop.group`): the proposer makes a group of candidates; the parent and every candidate take the same exam (holdout) tasks with a shared seed per task; half of the exam picks, the other half confirms. The group-advantage rule is pluggable: built-in parent-paired, GRPO-style, best-of-N and Training-Free-GRPO-style, or your own class with the same interface. On a toy problem the final score matches the current loop while harmful accepts drop from 6–8% to 0; see [Experiments](#6-group-proposals-toy-problem-not-a-benchmark).
 - **2026-11** · Renamed to AnyRSI (formerly OpenRSI, which clashed with another project). Package names, the CLI and the protocol identifier are now `anyrsi`.
 - **2026-11** · RSIHub task banks (Harbor format) work as an AnyRSI environment, split by the same rule as RSIHub; one loop now evolves both agent code and weights. See [examples/rsihub_weights](examples/rsihub_weights/README.md).
 - **2026-10** · v0.4: six evolution algorithms (GEPA-style Pareto, ShinkaEvolve, AlphaEvolve-style islands, MAP-Elites, archive, greedy), per-task no-regression gating, harness (agent code) and model-weight evolution, and adapters for [verl](https://github.com/volcengine/verl) and [RSIHub](https://github.com/simple-agent-lab/RSIHub).
@@ -312,16 +313,18 @@ A full `secret_ops` run (8 generations) takes 0.07 s in-process and 14 s with ev
 
 | Proposer | A | Parent-paired | GRPO-style | Best-of-N | Training-Free-GRPO-style |
 |---|---|---|---|---|---|
-| Good | 0.784 | 0.577 | 0.744 | 0.769 | 0.772 |
-| Poor | 0.732 | 0.467 | 0.696 | 0.696 | 0.688 |
+| Good | 0.788 | 0.572 | 0.773 | 0.784 | 0.764 |
+| Poor | 0.720 | 0.406 | 0.699 | 0.701 | 0.715 |
 
-Values are the true pass rate of the final version. The last three match A (differences not significant) while the share of accepted changes that are truly worse drops from about 10% to 0; the cost is taking the exam five times per generation. The parent-paired test is too strict on 30 tasks and makes the least progress.
+Values are the true pass rate of the final version. The last three match A (differences not significant) while the share of accepted changes that are truly worse drops from 6–8% to 0; the cost is taking the exam five times per generation. The parent-paired test is too strict on 30 tasks and makes the least progress.
+
+**Recursive improvement** (`loop.improver_feedback`): each generation, which edits did better or worse on the exam is written back into the proposer's strategy notes. A proposer that reads group-comparison feedback makes good edits 11–13 percentage points more often than the same proposer without it at the same moment (5–6 points with shuffled labels, 6–9 points with accept/reject feedback), but the gain does not grow over generations and the final score does not beat the no-feedback arm. See [benchmarks/group_toy](benchmarks/group_toy/README.md).
 
 ## Project Status
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 334 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 339 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 

@@ -1,6 +1,7 @@
 """组提案的玩具实验：一组候选在考试题上比，四种策略和"现在的循环"比，最优解已知。
 
 被进化的是 12 个"位置"（prompt 可进化体里的 s0..s11），每个取 good / neutral / bad，权重不同（两个无关）。
+标签只是名字：s1、s4、s7、s9 这四个位置"bad"反而最好，所以提案器要知道每个位置该选哪个（改对的概率 q）。
 真实答对率 p = clamp(0.55 + 0.3 · Σ wᵢvᵢ / Σ wᵢ + 题目难度, 0.03, 0.97)；起点 ≈ 0.39，最优 0.85。
 agent 按 p 掷硬币；题目带 rollout_seed 时用它当随机数（公共随机数：同一代同一道题，各版本掷同一枚硬币）。
 答错时说一个原因（attr_acc 的概率是真正拖后腿的位置）。提案器模拟 LLM：看一道错题的归因去改，
@@ -16,6 +17,12 @@ agent 按 p 掷硬币；题目带 rollout_seed 时用它当随机数（公共随
 组提案都是每组 4 个候选，考试题一半挑、一半确认（准入只看确认半，分数变高就收）。
 
     python benchmarks/group_toy/group_toy.py --budget 6000 --seeds 0 1 2 3 4
+
+递归改进实验（--recursive）：提案器会读 loop.improver_feedback 写回来的"考试上好 / 差的改法"，
+下次改同一个位置时偏向赢过的取值、避开输过的顺手改动。看提案器出好改法的比例是不是逐代上升：
+    A / A+fb / group / group+fb / group+fb-shuffled（好坏标签随机打乱的对照）
+
+    python benchmarks/group_toy/group_toy.py --recursive --budget 6000 --seeds 0 1 2 3 4 5 6 7 8 9
 """
 from __future__ import annotations
 
@@ -42,13 +49,22 @@ from anyrsi import (Agent, Attribution, AttributionTarget, Attributor, Environme
 SLOTS = [f"s{i}" for i in range(12)]
 WEIGHTS = dict(zip(SLOTS, [0.16, 0.14, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07, 0.06, 0.05, 0.0, 0.0]))
 VALUE = {"good": 1.0, "neutral": 0.0, "bad": -1.0}
-START = {s: ("bad" if i % 2 == 0 else "neutral") for i, s in enumerate(SLOTS)}
+# 标签只是名字：有几个位置"bad"反而最好（极性反过来），所以"改成 good"不总是对的，
+# 提案器要知道每个位置该选哪个（改对的概率 q），反馈里"哪个取值赢了"才真的带信息
+FLIPPED = {"s1", "s4", "s7", "s9"}
+BEST = {s: ("bad" if s in FLIPPED else "good") for s in SLOTS}
+WORST = {s: ("good" if s in FLIPPED else "bad") for s in SLOTS}
+START = {s: (WORST[s] if i % 2 == 0 else "neutral") for i, s in enumerate(SLOTS)}
+
+
+def val(slot: str, label: str) -> float:
+    return -VALUE[label] if slot in FLIPPED else VALUE[label]
 SET = re.compile(r"\b(s\d+)=(good|neutral|bad)\b")
 SYNTHETIC = "synthetic toy，已知最优解，非 benchmark"
 
 
 def true_p(values: dict[str, str], difficulty: float = 0.0) -> float:
-    s = sum(WEIGHTS[k] * VALUE[values.get(k, "neutral")] for k in SLOTS) / sum(WEIGHTS.values())
+    s = sum(WEIGHTS[k] * val(k, values.get(k, "neutral")) for k in SLOTS) / sum(WEIGHTS.values())
     return min(0.97, max(0.03, 0.55 + 0.3 * s + difficulty))
 
 
@@ -102,7 +118,7 @@ class ToyAgent(Agent):
         right = u < p
         blame = None
         if not right:
-            harm = {k: WEIGHTS[k] * (1 - VALUE[values.get(k, "neutral")]) for k in SLOTS}
+            harm = {k: WEIGHTS[k] * (1 - val(k, values.get(k, "neutral"))) for k in SLOTS}
             if self.rng.random() < self.attr_acc and sum(harm.values()) > 0:
                 blame = self.rng.choices(SLOTS, weights=[harm[k] for k in SLOTS])[0]
             else:
@@ -123,25 +139,47 @@ class ToyAttributor(Attributor):
 
 class ToyProposer(Proposer):
     """有方向（hints.direction = item:sN）就改 sN；否则随便挑一道错题，按它的归因改。改对的概率 q，
-    顺手改动别处的概率 collateral（其中 break_bias 是改坏）。一次可以返回多个提案（max_patches）。"""
+    顺手改动别处的概率 collateral（其中 break_bias 是改坏）。一次可以返回多个提案（max_patches）。
+
+    会读提案器的策略说明（hints.improver，由 loop.improver_feedback 写入）："BETTER … set sK=V" 记一分，
+    "WORSE …" 扣一分。要改的位置有得分为正的取值时，九成照着改；顺手改动如果是得分为负的取值，就不做。
+    没有策略说明时和原来完全一样。"""
 
     name, version = "toy/group-proposer", "0.1.0"
 
     def __init__(self, seed: int = 0, q: float = 0.6, collateral: float = 0.5, break_bias: float = 0.0):
         self.rng, self.q, self.collateral, self.break_bias = random.Random(f"proposer:{seed}"), q, collateral, break_bias
 
+    @staticmethod
+    def learned(request: ProposalRequest) -> dict[tuple[str, str], int]:
+        score: dict[tuple[str, str], int] = {}
+        for items in ((request.hints or {}).get("improver") or {}).values():
+            for d in items or []:
+                text = str(d.get("text", "")) if isinstance(d, dict) else ""
+                sign = 1 if text.startswith("BETTER") else -1 if text.startswith("WORSE") else 0
+                for k, v in SET.findall(text):
+                    score[(k, v)] = score.get((k, v), 0) + sign
+        return score
+
     def _one(self, request: ProposalRequest) -> Patch | None:
         current = effective(request.state or [])
+        score = self.learned(request)
         direction = (request.hints or {}).get("direction")
         if direction:
             slot = str(direction["id"]).split(":", 1)[-1]
         else:
             blames = [t.ref for a in request.attributions for t in a.targets if t.weight < 0]
             slot = self.rng.choice(blames) if blames else self.rng.choice(SLOTS)
-        change = {slot: "good" if self.rng.random() < self.q else self.rng.choice(list(VALUE))}
+        known = {v: score[(slot, v)] for v in VALUE if score.get((slot, v), 0) > 0}
+        if known and self.rng.random() < 0.9:
+            change = {slot: max(known, key=known.get)}
+        else:
+            change = {slot: BEST[slot] if self.rng.random() < self.q else self.rng.choice(list(VALUE))}
         if self.rng.random() < self.collateral:
             other = self.rng.choice([s for s in SLOTS if s != slot])
-            change[other] = "bad" if self.rng.random() < self.break_bias else self.rng.choice(list(VALUE))
+            value = WORST[other] if self.rng.random() < self.break_bias else self.rng.choice(list(VALUE))
+            if score.get((other, value), 0) >= 0:
+                change[other] = value
         ops = [{"op": "replace", "item": {"id": k, "kind": "prompt", "text": v}}
                for k, v in sorted(change.items()) if current.get(k) != v]
         if not ops:
@@ -180,10 +218,19 @@ class _Counting:
 
 def write_config(base: Path, arm: str, seed: int, *, q: float = 0.6, collateral: float = 0.5,
                  break_bias: float = 0.0, holdout: int = 60, size: int = 4) -> Path:
+    """arm：A、paired、grpo、best_of_n、training_free，后面可以加 +fb（提案器反馈）或 +fb-shuffled（打乱的对照）；
+    group 等于 best_of_n。"""
+    base_arm, _, fb = arm.partition("+")
+    base_arm = "best_of_n" if base_arm == "group" else base_arm
     loop: dict[str, Any] = {"max_patches": 1, "train_limit": 30}
     evolvables: dict[str, Any] = {"prompt": {"python": "anyrsi_evolvables:PromptEvolvable",
                                              "with": {"target": "prompt", "path": "state/prompt",
                                                       "initial": [{"id": k, "text": v} for k, v in START.items()]}}}
+    if fb:
+        evolvables["improver"] = {"python": "anyrsi_evolvables:ImproverEvolvable",
+                                  "with": {"target": "improver", "path": "state/improver"}}
+        loop["improver_feedback"] = {"target": "improver", "shuffle": fb == "fb-shuffled"}
+    arm = base_arm
     if arm != "A":
         loop["group"] = {"size": size, "strategy": arm if arm != "paired" else "parent_paired",
                          "confirm_fraction": 0.5}
@@ -216,9 +263,45 @@ async def run_arm(arm: str, base: Path, seed: int, budget: int, **kw: Any) -> di
 
     cfg = load_config(write_config(base, arm, seed, **kw))
     start = time.monotonic()
+    quality: list[float] = []  # 每个提案的真实效果（相对提案时的父版本）
+    lift: list[float] = []     # 同一时刻：读反馈的提案器 − 不读反馈的同款提案器，出好改法的比例之差
+    ghost = ToyProposer(seed=seed + 7919, q=kw.get("q", 0.6), collateral=kw.get("collateral", 0.5),
+                        break_bias=kw.get("break_bias", 0.0))
     async with Wiring(cfg) as w:
         counter = _Counting(w.components["agent"], budget)
         w.components["agent"] = counter
+        inner = w.components["proposer"]
+
+        class Measured:
+            kinds = inner.kinds
+
+            async def propose(self, req: ProposalRequest) -> list[Patch]:
+                patches = await inner.propose(req)
+                before = effective(req.state or [])
+
+                def gain(p: Patch | None) -> float:
+                    if p is None:
+                        return 0.0
+                    after = dict(before)
+                    for op in p.ops:
+                        if op.get("op") == "replace" and op["item"]["id"] in SLOTS:
+                            after[op["item"]["id"]] = op["item"]["text"]
+                    return true_p(after) - true_p(before)
+
+                plain = req.model_copy(update={"hints": {k: v for k, v in (req.hints or {}).items()
+                                                         if k != "improver"}})
+                for p in patches:
+                    g = gain(p)
+                    quality.append(g)
+                    if (req.hints or {}).get("improver"):
+                        base = fmean(gain(ghost._one(plain)) > 0 for _ in range(8))
+                        lift.append(float(g > 0) - base)
+                return patches
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(inner, name)
+
+        w.components["proposer"] = Measured()
         runner = Runner(w, cfg.loop)
         try:
             await runner.run()
@@ -239,8 +322,14 @@ async def run_arm(arm: str, base: Path, seed: int, budget: int, **kw: Any) -> di
         for e in accepted:
             parent = next(x for x in log if x.id == e.parent_ids[0])
             harmful += await truth(e) < await truth(parent)
+        third = max(1, len(quality) // 3)
         return {"arm": arm, "seed": seed, "calls": counter.calls, "accepted": len(accepted), "harmful": harmful,
                 "true_start": round(await truth(root), 4), "true_final": round(await truth(final), 4),
+                "proposals": len(quality),
+                "good_early": round(fmean(q > 0 for q in quality[:third]), 4) if quality else 0.0,
+                "good_late": round(fmean(q > 0 for q in quality[-third:]), 4) if quality else 0.0,
+                "lift_early": round(fmean(lift[: max(1, len(lift) // 3)]), 4) if lift else None,
+                "lift_late": round(fmean(lift[-max(1, len(lift) // 3):]), 4) if lift else None,
                 "seconds": round(time.monotonic() - start, 2)}
 
 
@@ -254,6 +343,10 @@ async def experiment(out: Path, seeds: list[int], budget: int, arms: tuple[str, 
         finals = [r["true_final"] for r in rs]
         acc = sum(r["accepted"] for r in rs)
         row = {"true_final_mean": round(fmean(finals), 4),
+               "good_early": round(fmean(r["good_early"] for r in rs), 3),
+               "good_late": round(fmean(r["good_late"] for r in rs), 3),
+               "lift_early": round(fmean(r["lift_early"] for r in rs), 3) if rs[0]["lift_early"] is not None else None,
+               "lift_late": round(fmean(r["lift_late"] for r in rs), 3) if rs[0]["lift_late"] is not None else None,
                "true_final_sd": round(stdev(finals), 4) if len(finals) > 1 else 0.0,
                "accepted_mean": round(acc / len(rs), 2),
                "harmful_rate": round(sum(r["harmful"] for r in rs) / acc, 3) if acc else 0.0}
@@ -272,11 +365,14 @@ async def experiment(out: Path, seeds: list[int], budget: int, arms: tuple[str, 
 def markdown(r: dict[str, Any]) -> str:
     lines = [f"# 组提案（{r['label']}）", "",
              f"预算每组每个种子 {r['budget']} 次 agent 调用；种子 {r['seeds']}；设置 {r['settings']}。", "",
-             "| 做法 | 最终真实答对率 | 相对 A（配对） | 平均接受次数 | 接受里真实变差 |", "| --- | --- | --- | --- | --- |"]
+             "| 做法 | 最终真实答对率 | 相对 A（配对） | 平均接受次数 | 接受里真实变差 | 好提案比例 前 1/3 → 后 1/3 | "
+             "读反馈带来的提升 前 1/3 → 后 1/3 |",
+             "| --- | --- | --- | --- | --- | --- | --- |"]
     for a, s in r["summary"].items():
         vs = f"{s['vs_A']:+.3f} ± {s['vs_A_se']:.3f}" if "vs_A" in s else "—"
+        lf = f"{s['lift_early']:+.2f} → {s['lift_late']:+.2f}" if s.get("lift_early") is not None else "—"
         lines.append(f"| {a} | {s['true_final_mean']:.3f} ± {s['true_final_sd']:.3f} | {vs} | {s['accepted_mean']} | "
-                     f"{s['harmful_rate']:.1%} |")
+                     f"{s['harmful_rate']:.1%} | {s['good_early']:.2f} → {s['good_late']:.2f} | {lf} |")
     return "\n".join(lines) + "\n"
 
 
@@ -288,9 +384,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--q", type=float, default=0.6)
     ap.add_argument("--collateral", type=float, default=0.5)
     ap.add_argument("--break-bias", type=float, default=0.0)
+    ap.add_argument("--recursive", action="store_true", help="递归改进实验：提案器读考试反馈")
     ap.add_argument("--out", type=Path, default=Path("out/group_toy"))
     args = ap.parse_args(argv)
-    asyncio.run(experiment(args.out, args.seeds, args.budget, tuple(args.arms.split(",")), q=args.q,
+    arms = ("A", "A+fb", "group", "group+fb", "group+fb-shuffled") if args.recursive else tuple(args.arms.split(","))
+    asyncio.run(experiment(args.out, args.seeds, args.budget, arms, q=args.q,
                            collateral=args.collateral, break_bias=args.break_bias))
     print((args.out / "report.md").read_text(encoding="utf-8"))
     return 0

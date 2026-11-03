@@ -275,3 +275,125 @@ def test_config_validation():
         GroupConfig(proposals="whatever")
     with pytest.raises(ValueError):
         GroupConfig(confirm_fraction=1.0)
+
+
+# ---------------------------------------------------------------- 提案器反馈（递归改进）
+
+
+def run_feedback(tmp_path, arm, budget=1500, max_notes=None, gate=None):
+    import yaml
+
+    from anyrsi_runtime import Runner, Wiring, load_config
+
+    path = gt.write_config(tmp_path / arm.replace("+", "_"), arm, 0)
+    data = yaml.safe_load(path.read_text())
+    if max_notes:
+        data["loop"]["improver_feedback"]["max_notes"] = max_notes
+    if gate:
+        data["components"]["gate"]["with"].update(gate)
+    path.write_text(yaml.safe_dump(data))
+    cfg = load_config(path)
+    seen_hints = []
+
+    async def go():
+        async with Wiring(cfg) as w:
+            proposer = w.components["proposer"]
+
+            class Spy:
+                kinds = proposer.kinds
+
+                async def propose(self, req):
+                    seen_hints.append(req.hints.get("improver"))
+                    return await proposer.propose(req)
+
+                def __getattr__(self, n):
+                    return getattr(proposer, n)
+
+            w.components["proposer"] = Spy()
+            w.components["agent"] = gt._Counting(w.components["agent"], budget)
+            runner = Runner(w, cfg.loop)
+            reports = []
+            runner.on_generation = reports.append
+            try:
+                await runner.run()
+            except gt.BudgetExhausted:
+                pass
+            notes = await w.evolvables["improver"].export(runner.live_meta.get("improver")) \
+                if runner.live_meta.get("improver") else []
+            return runner, reports, notes, await w.lineage.log()
+
+    return (*asyncio.run(go()), seen_hints)
+
+
+def test_group_feedback_reaches_the_proposer_and_persists(tmp_path):
+    runner, reports, notes, log, hints = run_feedback(tmp_path, "group+fb", budget=3000, max_notes=5)
+    texts = [d["text"] for d in notes]
+    assert len(texts) == 5  # 写了不止 5 条，只保留最近 5 条
+    assert all(t.startswith(("BETTER", "WORSE")) and "set s" in t for t in texts)
+    assert any(t.startswith("BETTER") for t in texts)
+    later = [h for h in hints if h]
+    assert later, "后面几代的提案请求里应当带上反馈"
+    assert any("BETTER" in d["text"] for h in later for items in h.values() for d in items)
+    # 反馈是跨代保留的：被拒的代也会写，写进去的不随父版本回退
+    gens = sorted({int(d["id"].split("-")[1]) for d in notes})
+    assert gens == sorted(gens) and max(gens) >= len(reports) - 3
+
+
+def test_feedback_labels_follow_the_advantage_unless_shuffled(tmp_path):
+    _, _, notes, _, _ = run_feedback(tmp_path, "group+fb")
+    for d in notes:
+        adv = d["data"]["advantage"]
+        assert (adv > 0) == d["text"].startswith("BETTER")
+    _, _, shuffled, _, _ = run_feedback(tmp_path / "s", "group+fb-shuffled", budget=2500)
+    assert any((d["data"]["advantage"] > 0) != d["text"].startswith("BETTER") for d in shuffled)
+
+
+def test_normal_mode_feedback_from_gate_results(tmp_path):
+    # 准入要求显著提升：分数涨了但不显著的改法会被拒，它们不能记成 BETTER
+    runner, reports, notes, log, _ = run_feedback(tmp_path, "A+fb", budget=3000, max_notes=200,
+                                                  gate={"paired_significance_z": 1.0})
+    accepted = {e.patch.rationale for e in log if e.status == "accepted" and e.patch}
+    parent_holdout = {e.id: e.metrics.get("holdout", 0) for e in log}
+    up_but_rejected = [e for e in log if e.status == "rejected" and e.patch and e.parent_ids
+                       and e.metrics.get("holdout", 0) > parent_holdout.get(e.parent_ids[0], 1)]
+    assert up_but_rejected, "要有涨了但被拒的改法，这个测试才有意义"
+    better = [d for d in notes if d["text"].startswith("BETTER")]
+    worse = [d for d in notes if d["text"].startswith("WORSE")]
+    assert accepted and better and worse
+    assert {d["text"].split(": ", 1)[1] for d in better} <= accepted  # 只有被收下的改法记成 BETTER
+
+
+def test_feedback_target_must_be_an_improver(tmp_path):
+    import yaml
+
+    from anyrsi_runtime import Runner, Wiring, load_config
+
+    path = gt.write_config(tmp_path / "bad", "group+fb", 0)
+    data = yaml.safe_load(path.read_text())
+    data["loop"]["improver_feedback"]["target"] = "prompt"
+    path.write_text(yaml.safe_dump(data))
+    cfg = load_config(path)
+
+    async def go():
+        async with Wiring(cfg) as w:
+            await Runner(w, cfg.loop).run(1)
+
+    with pytest.raises(ValueError, match="improver"):
+        asyncio.run(go())
+
+
+def test_toy_proposer_learns_from_feedback():
+    from anyrsi import EvolvableInfo, ProposalRequest
+
+    info = EvolvableInfo(target="prompt", type="prompt", head="h")
+    state = [{"id": k, "kind": "prompt", "text": v} for k, v in gt.START.items()]
+    att = [gt.Attribution(episode_id="e", method="t", targets=[gt.AttributionTarget(kind="item", ref="s4", weight=-1)])]
+    notes = {"improver": [{"id": "fb", "text": "BETTER on the exam (+0.100): set s4=bad"},
+                          {"id": "fb2", "text": "WORSE on the exam (-0.100): set s4=good"}]}
+    p = gt.ToyProposer(seed=1, q=0.2, collateral=0.0)
+    plain = ProposalRequest(target=info, parent_snapshot="p", state=state, attributions=att)
+    taught = plain.model_copy(update={"hints": {"improver": notes}})
+    pick = lambda req: [x for x in (p._one(req) for _ in range(200)) if x]  # noqa: E731
+    rate = lambda ps: sum("s4=bad" in x.rationale for x in ps) / len(ps)  # noqa: E731
+    # 起点 s4 = good（s4 是"bad 最好"的位置）；不读反馈时 q = 0.2，改成 bad 的比例约 0.6
+    assert rate(pick(taught)) > 0.9 > 0.75 > rate(pick(plain))

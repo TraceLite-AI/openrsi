@@ -29,6 +29,10 @@
   - 接受时连同它产出的那个解题侧改进一起进谱系，这样算法下一代会从它出发
   - curriculum 只影响练习题怎么挑，考试题不变
 
+提案器的反馈（loop.improver_feedback）：每代把"哪个改法在考试上好 / 差"写进 improver 类型的可进化体，
+提案器下次出改法时读到。这部分状态跨代保留（live），不随父版本回退，也不走准入——它只影响提案器，
+agent 和考试分数不受它直接影响；它有没有用，看提案器出好改法的比例是不是逐代上升。
+
 组提案（loop.group，见 group.py）：
   - 普通的解题侧代改成：提案器一次出一组候选（G 个），父版本和全部候选做同一批考试题（同一道题同一个种子）
   - 考试题分成选择半和确认半：选择半上按策略算组内优势、决定选谁；确认半交给准入组件比较候选和父版本
@@ -43,6 +47,7 @@
 from __future__ import annotations
 
 import hashlib
+import random
 from dataclasses import dataclass, field
 from statistics import fmean
 from typing import Any, Callable
@@ -144,6 +149,7 @@ class Runner:
         self.metrics: dict[str, dict[str, float]] = {}
         self.task_scores: dict[str, dict[str, float]] = {}
         self.last_task_scores: dict[str, float] = {}
+        self.live_meta: dict[str, str] = {}  # 提案器反馈：跨代保留的 improver 快照
 
     # ------------------------------------------------------------ 可进化体
 
@@ -160,7 +166,10 @@ class Runner:
         if self.judge_target and not self.cfg.judge_every:
             self.log(f"判别器 {self.judge_target} 是可进化体，但没有配置 loop.judge_every，本次不进化它")
         self.meta_targets = sorted(t for t, x in self.targets.items() if x.info.type in META_TYPES)
-        if self.meta_targets and not self.cfg.meta_every:
+        fb = self.cfg.improver_feedback
+        if fb is not None and (fb.target not in self.targets or self.targets[fb.target].info.type != "improver"):
+            raise ValueError(f"loop.improver_feedback.target 必须是 improver 类型的可进化体（现有：{sorted(self.targets)}）")
+        if self.meta_targets and not self.cfg.meta_every and not (fb and set(self.meta_targets) == {fb.target}):
             self.log(f"元层可进化体 {self.meta_targets} 没有配置 loop.meta_every，本次不进化它们")
         if not self._solver_targets():
             raise ValueError("至少要有一个解题侧的可进化体（memory、prompt、skill、harness……）")
@@ -479,7 +488,7 @@ class Runner:
         if self.cfg.group is not None and self._allowed_targets(gen) == self._solver_targets():
             return await self._group_generation(gen, parent)
         w = self.w
-        parent_genome = self.genomes[parent]
+        parent_genome = self._live(parent)
         await self.checkout(parent_genome)
         train = await self._train_tasks(gen, parent_genome)
         _check_split(train, "train")
@@ -711,6 +720,11 @@ class Runner:
         await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid,
                                            accepted=decision.accepted, metrics=m, task_scores=tasks,
                                            proposer=patch.proposer_ref))
+        if self.cfg.improver_feedback is not None and not judge_change:
+            delta = m.get("holdout", 0.0) - self.metrics[parent].get("holdout", 0.0)
+            label = "better" if decision.accepted and delta > 0 else "worse" if delta < 0 else None
+            if label:
+                await self._improver_feedback(gen, [(label, delta, patch.rationale or "")])
         return Candidate(id=cid, metrics=m, accepted=decision.accepted, reason=decision.reason or "", target=t)
 
     # ------------------------------------------------------------ 组提案
@@ -800,7 +814,7 @@ class Runner:
         g = self.cfg.group
         strategy = self.group_strategy
         w = self.w
-        pg = self.genomes[parent]
+        pg = self._live(parent)
         await self.checkout(pg)
         train = await self._train_tasks(gen, pg)
         _check_split(train, "train")
@@ -833,6 +847,13 @@ class Runner:
         group = [Member(index=i, scores={k: results[i][1][k] for k in sel}, rationale=members[i][1].rationale or "",
                         direction=members[i][3]) for i in range(len(members))]
         decision = strategy.decide({k: parent_scores[k] for k in sel}, group, g.alpha)
+        if self.cfg.improver_feedback is not None and decision.advantage:
+            adv = decision.advantage
+            hi, lo = max(range(len(adv)), key=lambda i: adv[i]), min(range(len(adv)), key=lambda i: adv[i])
+            notes = ([("better", adv[hi], members[hi][1].rationale or "")] if adv[hi] > 0 else []) + \
+                    ([("worse", adv[lo], members[lo][1].rationale or "")] if adv[lo] < 0 and lo != hi else [])
+            await self._improver_feedback(gen, notes)
+            pg = {**pg, **self.live_meta}
         report.group = {**strategy.summary(), "size": len(members), "reason": decision.reason,
                         "chosen": decision.chosen, "parent_select": self._subset(parent_scores, sel)["holdout"],
                         "members": [{"index": i, "target": members[i][2], "direction": members[i][3],
@@ -893,3 +914,40 @@ class Runner:
                                            accepted=decision.accepted, metrics=metrics, task_scores=scores,
                                            proposer=patch.proposer_ref))
         return Candidate(id=cid, metrics=metrics, accepted=decision.accepted, reason=decision.reason or "", target=t)
+
+    # ------------------------------------------------------------ 提案器的反馈
+
+    def _live(self, parent: str) -> Genome:
+        """父版本的组合快照，再换上跨代保留的提案器策略（提案器反馈不随父版本回退）。"""
+        return {**self.genomes[parent], **self.live_meta}
+
+    async def _improver_feedback(self, gen: int, notes: list[tuple[str, float, str]]) -> None:
+        """把 (better / worse, 优势, 改法说明) 写进提案器的策略说明，只保留最近 max_notes 条。"""
+        fb = self.cfg.improver_feedback
+        notes = [n for n in notes if n[2].strip()]
+        if fb is None or not notes:
+            return
+        if fb.shuffle:  # 对照：好坏随机打乱
+            rng = random.Random(f"{self.run_id}:{gen}")
+            notes = [(rng.choice(["better", "worse"]), adv, text) for _, adv, text in notes]
+        tgt = self.targets[fb.target]
+        current = self.live_meta.get(fb.target) or (await tgt.facade.snapshot()).id
+        await tgt.facade.rollback(current)
+        existing = [d for d in await tgt.facade.export(current) if isinstance(d, dict) and d.get("id", "").startswith("fb-")]
+        ops: list[dict[str, Any]] = []
+        for i, (label, adv, text) in enumerate(notes):
+            word = "BETTER" if label == "better" else "WORSE"
+            item = Item(id=f"fb-{gen:05d}-{i}", kind="improver",
+                        text=f"{word} on the exam ({adv:+.3f}): {text.strip()[:300]}",
+                        tags=["exam-feedback", label], data={"generation": gen, "advantage": adv, "order": 100 + gen})
+            ops.append({"op": "add", "item": item.model_dump(mode="json")})
+        overflow = len(existing) + len(ops) - fb.max_notes
+        for d in sorted(existing, key=lambda d: d["id"])[: max(0, overflow)]:
+            ops.append({"op": "remove", "item_id": d["id"]})
+        try:
+            snap = await tgt.facade.apply(Patch(target=tgt.info.target, base_snapshot=current, ops=ops,
+                                                rationale=f"exam feedback from generation {gen}"))
+        except (ToolCallError, ComponentError, ValueError, KeyError) as e:
+            self.log(f"提案器反馈写不进 {fb.target}：{e}")
+            return
+        self.live_meta[fb.target] = snap.id
