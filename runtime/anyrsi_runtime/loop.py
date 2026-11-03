@@ -29,6 +29,14 @@
   - 接受时连同它产出的那个解题侧改进一起进谱系，这样算法下一代会从它出发
   - curriculum 只影响练习题怎么挑，考试题不变
 
+提案器的反馈（loop.improver_feedback）：每代把"哪个改法在考试上好 / 差"写进 improver 类型的可进化体，
+提案器下次出改法时读到。这部分状态跨代保留（live），不随父版本回退，也不走准入——它只影响提案器，
+agent 和考试分数不受它直接影响；它有没有用，看提案器出好改法的比例是不是逐代上升。
+
+agent 给自己出改法（loop.self_propose，见 self_propose.py）：解题侧的提案不再交给提案器，而是把
+"改进你自己"当成一道题交给当前版本的 agent，它用自己当前的提示、代码、记忆和权重来出改法。agent 变强，
+出改法的能力也跟着变强——这是递归改进最直接的形式。和组提案一起用时，每代让 agent 给自己出一组改法。
+
 组提案（loop.group，见 group.py）：
   - 普通的解题侧代改成：提案器一次出一组候选（G 个），父版本和全部候选做同一批考试题（同一道题同一个种子）
   - 考试题分成选择半和确认半：选择半上按策略算组内优势、决定选谁；确认半交给准入组件比较候选和父版本
@@ -43,6 +51,7 @@
 from __future__ import annotations
 
 import hashlib
+import random
 from dataclasses import dataclass, field
 from statistics import fmean
 from typing import Any, Callable
@@ -55,6 +64,7 @@ from anyrsi.types import canonical_json, for_agent
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
 from .group import Member, lesson_patch, load_strategy, rollout_seed, split_tasks
+from .self_propose import build_task, parse_patch
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
 Genome = dict[str, str]  # 可进化体 target → 快照 id
@@ -144,6 +154,9 @@ class Runner:
         self.metrics: dict[str, dict[str, float]] = {}
         self.task_scores: dict[str, dict[str, float]] = {}
         self.last_task_scores: dict[str, float] = {}
+        self.live_meta: dict[str, str] = {}  # 提案器反馈：跨代保留的 improver 快照
+        self._gen = 0                        # 当前代号（给 agent 自提案的题目编号和种子用）
+        self._self_index = 0
 
     # ------------------------------------------------------------ 可进化体
 
@@ -160,7 +173,10 @@ class Runner:
         if self.judge_target and not self.cfg.judge_every:
             self.log(f"判别器 {self.judge_target} 是可进化体，但没有配置 loop.judge_every，本次不进化它")
         self.meta_targets = sorted(t for t, x in self.targets.items() if x.info.type in META_TYPES)
-        if self.meta_targets and not self.cfg.meta_every:
+        fb = self.cfg.improver_feedback
+        if fb is not None and (fb.target not in self.targets or self.targets[fb.target].info.type != "improver"):
+            raise ValueError(f"loop.improver_feedback.target 必须是 improver 类型的可进化体（现有：{sorted(self.targets)}）")
+        if self.meta_targets and not self.cfg.meta_every and not (fb and set(self.meta_targets) == {fb.target}):
             self.log(f"元层可进化体 {self.meta_targets} 没有配置 loop.meta_every，本次不进化它们")
         if not self._solver_targets():
             raise ValueError("至少要有一个解题侧的可进化体（memory、prompt、skill、harness……）")
@@ -473,13 +489,14 @@ class Runner:
                     task_scores=e.task_scores, proposer=e.patch.proposer_ref if e.patch else None))
 
     async def _generation(self, gen: int, parent: str, proposer_hint: str | None = None) -> GenerationReport:
+        self._gen = gen
         meta = self._meta_turn(gen)
         if meta is not None:
             return await self._meta_generation(gen, parent, meta, proposer_hint)
         if self.cfg.group is not None and self._allowed_targets(gen) == self._solver_targets():
             return await self._group_generation(gen, parent)
         w = self.w
-        parent_genome = self.genomes[parent]
+        parent_genome = self._live(parent)
         await self.checkout(parent_genome)
         train = await self._train_tasks(gen, parent_genome)
         _check_split(train, "train")
@@ -501,12 +518,13 @@ class Runner:
             return report
         if allowed == [self.judge_target]:
             report.note = "判别器进化代"
-        patches = await w.proposer.propose(ProposalRequest(
+        patches = await self._propose(ProposalRequest(
             target=self.targets[allowed[0]].info, targets=[self.targets[t].info for t in allowed],
             parent_snapshot=parent, episodes=episodes, attributions=attributions,
             state=states[allowed[0]], states=states, max_patches=self.cfg.max_patches,
             hints={**({"proposer": proposer_hint} if proposer_hint else {}),
-                   **({"improver": imp} if (imp := await self._improver_hint(parent_genome)) else {})}))
+                   **({"improver": imp} if (imp := await self._improver_hint(parent_genome)) else {})}),
+            parent_genome, solver=allowed != [self.judge_target])
 
         if not patches:
             report.note = "提案器没有提出修改"
@@ -539,11 +557,11 @@ class Runner:
         states = {t: await tgt.facade.export(genome[t]) for t, tgt in self.targets.items()}
         solver = self._solver_targets()
         improver = await self._improver_hint(genome)
-        patches = await w.proposer.propose(ProposalRequest(
+        patches = await self._propose(ProposalRequest(
             target=self.targets[solver[0]].info, targets=[self.targets[t].info for t in solver],
             parent_snapshot=genome_id(genome), episodes=episodes, attributions=attributions,
             state=states[solver[0]], states=states, max_patches=1,
-            hints={"role": "solver", **({"improver": improver} if improver else {})}))
+            hints={"role": "solver", **({"improver": improver} if improver else {})}), genome)
         if not patches:
             return None
         patch = patches[0]
@@ -585,11 +603,11 @@ class Runner:
             self._record_attributions(attributions)
         states = {t: await tgt.facade.export(pg[t]) for t, tgt in self.targets.items()}
         info = self.targets[meta].info
-        patches = await w.proposer.propose(ProposalRequest(
+        patches = await self._propose(ProposalRequest(
             target=info, targets=[info], parent_snapshot=parent, episodes=episodes, attributions=attributions,
             state=states[meta], states=states, max_patches=1,
             hints={"role": "meta", "meta_target": meta, "meta_history": self._meta_history(),
-                   **({"proposer": proposer_hint} if proposer_hint else {})}))
+                   **({"proposer": proposer_hint} if proposer_hint else {})}), pg, solver=False)
 
         async def reject(reason: str) -> GenerationReport:
             report.note += f"；{reason}"
@@ -711,6 +729,11 @@ class Runner:
         await w.algorithm.tell(TellRequest(generation=gen, parent_id=parent, candidate_id=cid,
                                            accepted=decision.accepted, metrics=m, task_scores=tasks,
                                            proposer=patch.proposer_ref))
+        if self.cfg.improver_feedback is not None and not judge_change:
+            delta = m.get("holdout", 0.0) - self.metrics[parent].get("holdout", 0.0)
+            label = "better" if decision.accepted and delta > 0 else "worse" if delta < 0 else None
+            if label:
+                await self._improver_feedback(gen, [(label, delta, patch.rationale or "")])
         return Candidate(id=cid, metrics=m, accepted=decision.accepted, reason=decision.reason or "", target=t)
 
     # ------------------------------------------------------------ 组提案
@@ -769,15 +792,15 @@ class Runner:
                 hints = {**base_hints, "group_index": i,
                          "direction": {"id": name, "support": n,
                                        "text": f"fix what attribution blames: {name} (blamed in {n} failed episodes)"}}
-                await take(await self.w.proposer.propose(self._proposal(parent, pg, episodes, attributions, states,
-                                                                        hints, 1)), name)
+                await take(await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints, 1),
+                                               pg), name)
         tries = 0
         while len(out) < g.size and tries < 2 * g.size:
             tries += 1
             want = g.size - len(out)
             hints = {**base_hints, "group_index": len(out), "sample": tries}
-            patches = await self.w.proposer.propose(self._proposal(parent, pg, episodes, attributions, states, hints,
-                                                                   want if tries == 1 else 1))
+            patches = await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints,
+                                                         want if tries == 1 else 1), pg)
             if not patches and tries >= 2:
                 break
             await take(patches, None)
@@ -800,7 +823,7 @@ class Runner:
         g = self.cfg.group
         strategy = self.group_strategy
         w = self.w
-        pg = self.genomes[parent]
+        pg = self._live(parent)
         await self.checkout(pg)
         train = await self._train_tasks(gen, pg)
         _check_split(train, "train")
@@ -833,6 +856,13 @@ class Runner:
         group = [Member(index=i, scores={k: results[i][1][k] for k in sel}, rationale=members[i][1].rationale or "",
                         direction=members[i][3]) for i in range(len(members))]
         decision = strategy.decide({k: parent_scores[k] for k in sel}, group, g.alpha)
+        if self.cfg.improver_feedback is not None and decision.advantage:
+            adv = decision.advantage
+            hi, lo = max(range(len(adv)), key=lambda i: adv[i]), min(range(len(adv)), key=lambda i: adv[i])
+            notes = ([("better", adv[hi], members[hi][1].rationale or "")] if adv[hi] > 0 else []) + \
+                    ([("worse", adv[lo], members[lo][1].rationale or "")] if adv[lo] < 0 and lo != hi else [])
+            await self._improver_feedback(gen, notes)
+            pg = {**pg, **self.live_meta}
         report.group = {**strategy.summary(), "size": len(members), "reason": decision.reason,
                         "chosen": decision.chosen, "parent_select": self._subset(parent_scores, sel)["holdout"],
                         "members": [{"index": i, "target": members[i][2], "direction": members[i][3],
@@ -893,3 +923,62 @@ class Runner:
                                            accepted=decision.accepted, metrics=metrics, task_scores=scores,
                                            proposer=patch.proposer_ref))
         return Candidate(id=cid, metrics=metrics, accepted=decision.accepted, reason=decision.reason or "", target=t)
+
+    # ------------------------------------------------------------ 提案器的反馈
+
+    def _live(self, parent: str) -> Genome:
+        """父版本的组合快照，再换上跨代保留的提案器策略（提案器反馈不随父版本回退）。"""
+        return {**self.genomes[parent], **self.live_meta}
+
+    async def _improver_feedback(self, gen: int, notes: list[tuple[str, float, str]]) -> None:
+        """把 (better / worse, 优势, 改法说明) 写进提案器的策略说明，只保留最近 max_notes 条。"""
+        fb = self.cfg.improver_feedback
+        notes = [n for n in notes if n[2].strip()]
+        if fb is None or not notes:
+            return
+        if fb.shuffle:  # 对照：好坏随机打乱
+            rng = random.Random(f"{self.run_id}:{gen}")
+            notes = [(rng.choice(["better", "worse"]), adv, text) for _, adv, text in notes]
+        tgt = self.targets[fb.target]
+        current = self.live_meta.get(fb.target) or (await tgt.facade.snapshot()).id
+        await tgt.facade.rollback(current)
+        existing = [d for d in await tgt.facade.export(current) if isinstance(d, dict) and d.get("id", "").startswith("fb-")]
+        ops: list[dict[str, Any]] = []
+        for i, (label, adv, text) in enumerate(notes):
+            word = "BETTER" if label == "better" else "WORSE"
+            item = Item(id=f"fb-{gen:05d}-{i}", kind="improver",
+                        text=f"{word} on the exam ({adv:+.3f}): {text.strip()[:300]}",
+                        tags=["exam-feedback", label], data={"generation": gen, "advantage": adv, "order": 100 + gen})
+            ops.append({"op": "add", "item": item.model_dump(mode="json")})
+        overflow = len(existing) + len(ops) - fb.max_notes
+        for d in sorted(existing, key=lambda d: d["id"])[: max(0, overflow)]:
+            ops.append({"op": "remove", "item_id": d["id"]})
+        try:
+            snap = await tgt.facade.apply(Patch(target=tgt.info.target, base_snapshot=current, ops=ops,
+                                                rationale=f"exam feedback from generation {gen}"))
+        except (ToolCallError, ComponentError, ValueError, KeyError) as e:
+            self.log(f"提案器反馈写不进 {fb.target}：{e}")
+            return
+        self.live_meta[fb.target] = snap.id
+
+    # ------------------------------------------------------------ agent 给自己出改法
+
+    async def _propose(self, request: ProposalRequest, genome: Genome, solver: bool = True) -> list[Patch]:
+        """解题侧的提案：打开 self_propose 时交给当前版本的 agent，否则交给提案器组件。"""
+        if not (self.cfg.self_propose and solver):
+            if self.w.proposer is None:
+                raise ValueError("没有配置 components.proposer：判别器、元层的提案需要它")
+            return await self.w.proposer.propose(request)
+        out: list[Patch] = []
+        await self.checkout(genome)
+        gid = genome_id(genome)
+        for _ in range(request.max_patches):
+            self._self_index += 1
+            task = build_task(request, gen=self._gen, index=self._self_index,
+                              seed=rollout_seed(self.run_id, "self", self._gen, self._self_index))
+            context = await self.context(task, genome)
+            traj = await self.w.agent.run(for_agent(task), context, gid)
+            patch = parse_patch(traj.output, request, getattr(self.w, "refs", {}).get("agent", "agent"))
+            if patch is not None:
+                out.append(patch)
+        return out

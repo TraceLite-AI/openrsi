@@ -71,6 +71,18 @@ class GroupConfig(BaseModel):
                                           description="training_free 策略写经验的可进化体（memory 之类）")
 
 
+class ImproverFeedbackConfig(BaseModel):
+    """把考试结果反馈给提案器：每代把"哪个改法在考试上好 / 差"写进提案器的策略说明（improver 类型的可进化体），
+    提案器下次出改法时会读到（hints["improver"]）。组提案模式用组内优势，普通模式用准入结果。
+    这些说明只影响提案器、不影响 agent，所以直接写入、跨代保留，不走准入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: str = Field(description="写反馈的可进化体（类型必须是 improver）")
+    max_notes: int = Field(default=12, ge=1, description="最多保留几条，超出时删掉最旧的")
+    shuffle: bool = Field(default=False, description="对照实验用：把好 / 差随机打乱，验证起作用的是反馈内容而不是机制本身")
+
+
 class LoopConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -92,6 +104,11 @@ class LoopConfig(BaseModel):
     meta_min_gain: float = Field(default=0.0, ge=0.0,
                                  description="元层候选的下游提升至少要比当前版本多多少才接受")
     group: GroupConfig | None = Field(default=None, description="组提案：一组候选在考试题上比较，按策略选或写经验")
+    self_propose: bool = Field(default=False,
+                               description="agent 给自己出改法（递归改进）：解题侧的提案交给当前版本的 agent，"
+                                           "不用 components.proposer（判别器、元层的提案仍用它）")
+    improver_feedback: ImproverFeedbackConfig | None = Field(
+        default=None, description="把考试结果写回提案器的策略说明，让提案器自己也改进（递归改进）")
 
 
 class BindingSpec(BaseModel):
@@ -152,7 +169,8 @@ class RunConfig(BaseModel):
         unknown = sorted(set(self.components) - set(SLOT_KIND))
         if unknown:
             raise ValueError(f"未知的组件位置: {unknown}，可用: {sorted(SLOT_KIND)}")
-        missing = [s for s in REQUIRED_SLOTS if s not in self.components]
+        missing = [s for s in REQUIRED_SLOTS if s not in self.components
+                   and not (s == "proposer" and self.loop.self_propose)]
         if missing:
             raise ValueError(f"缺少组件: {missing}")
         if "memory" not in self.components and not self.evolvables:
