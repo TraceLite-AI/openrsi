@@ -1,0 +1,57 @@
+# 实验手册第 1 步（跑通）：只改 agent 代码、不训权重，题少、代数少、用便宜模型。还没在真机上跑过。
+# 把 /path/to/... 换成你自己的路径，然后：
+#
+#   export OPENAI_API_KEY=...
+#   anyrsi run examples/rsihub_weights/anyrsi.step1.yaml
+#   anyrsi log examples/rsihub_weights/anyrsi.step1.yaml
+#
+# 第 2 步（测噪声）用同一份配置：python benchmarks/noise/noise.py examples/rsihub_weights/anyrsi.step1.yaml --repeats 3
+#
+# 待确认：mini-swe-agent 在容器里调用 API 模型时怎么拿到 key。下面用 Harbor 的 --ae 把 key 传进容器；
+# 如果你的 Harbor 版本会自动透传宿主机环境变量，可以去掉那一项。
+protocol: anyrsi/0.4
+name: rsihub-tb2-step1
+
+components:
+  env:
+    python: "anyrsi_rsihub:RSIHubTaskEnv"
+    with:
+      dataset: /path/to/RSIHub/.evolve-assets/terminal-bench-2.0/raw/terminal-bench
+      seed: 0
+      train_per_round: 5          # 每代只练 5 道
+  agent:
+    python: "anyrsi_rsihub:HarborAgent"
+    with:
+      repo: .anyrsi/harness
+      model: openai/gpt-5.4-mini  # 做题的模型（便宜的先跑通）
+      command: [uv, run, --project, /path/to/RSIHub, --frozen, harbor, run, -p, "{dataset}", --include-task-name, "{task}",
+                --job-name, "{job}", --jobs-dir, "{jobs_dir}", --n-attempts, "1", -n, "1", -y, -q]
+      agent_args: [--agent-import-path, "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent",
+                   --model, "{model}"]
+      extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_API_KEY=REPLACE_WITH_KEY_OR_REMOVE"]
+      env: [DOCKER_HOST, OPENAI_API_KEY]
+      timeout: 3600
+  judge: {python: "anyrsi_rsihub:HarborRewardJudge"}
+  proposer:
+    python: "anyrsi_llm:CodeRewriter"
+    with: {base_url: "https://api.openai.com/v1", model: gpt-5.4-mini, api_key_env: OPENAI_API_KEY, max_files: 2}
+  algorithm: {python: "anyrsi_algorithm:GreedyAlgorithm", with: {max_generations: 2, patience: 2}}
+  gate:      {python: "anyrsi_gate:HoldoutGate", with: {max_task_regressions: 2}}
+  guard:     {python: "anyrsi_guard:PolicyGuard"}
+  lineage:   {python: "anyrsi_lineage:LineageStore", with: {path: .anyrsi/step1/lineage.jsonl}}
+
+evolvables:
+  harness:
+    python: "anyrsi_harness:HarnessEvolvable"
+    with:
+      repo: .anyrsi/harness
+      template: /path/to/mini-swe-agent    # git clone https://github.com/SWE-agent/mini-swe-agent && git checkout 388da74
+      mutable: ["src/minisweagent/config/mini.yaml", "src/minisweagent/agents/default.py"]
+
+loop:
+  max_patches: 1
+  holdout_limit: 8                # 第 1 步只用 8 道考试题；第 2 步测噪声时去掉这一行，用全部 19 道
+
+# 第 3 步（对比）在 loop 下加：
+#   group: {size: 2, strategy: merge, atomize: true, max_atoms: 6, confirm_fraction: 0}
+# 普通循环那组不加，把 max_generations 调到两组调用次数差不多。

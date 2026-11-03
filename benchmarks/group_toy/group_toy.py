@@ -69,6 +69,7 @@ START = {s: (WORST[s] if i % 2 == 0 else "neutral") for i, s in enumerate(SLOTS)
 def val(slot: str, label: str) -> float:
     return -VALUE[label] if slot in FLIPPED else VALUE[label]
 SET = re.compile(r"\b(s\d+)=(good|neutral|bad)\b")
+REPLACE = re.compile(r"\breplace (s\d+): (good|neutral|bad)\b")
 SYNTHETIC = "synthetic toy，已知最优解，非 benchmark"
 
 
@@ -224,6 +225,11 @@ class ToyProposer(Proposer):
                 sign = 1 if text.startswith("BETTER") else -1 if text.startswith("WORSE") else 0
                 for k, v in SET.findall(text):
                     score[(k, v)] = score.get((k, v), 0) + sign
+        mom = (request.hints or {}).get("momentum") or {}  # 方向动量：helped 沿着走，hurt 避开
+        for key, sign in (("helped", 1), ("hurt", -1)):
+            for text in mom.get(key) or []:
+                for k, v in set(REPLACE.findall(str(text))) | set(SET.findall(str(text))):
+                    score[(k, v)] = score.get((k, v), 0) + sign
         return score
 
     def _one(self, request: ProposalRequest) -> Patch | None:
@@ -290,7 +296,13 @@ def write_config(base: Path, arm: str, seed: int, *, q: float = 0.6, collateral:
                                   "with": {"target": "improver", "path": "state/improver"}}
         loop["improver_feedback"] = {"target": "improver", "shuffle": fb == "fb-shuffled"}
     arm = base_arm
-    if arm != "A":
+    if arm == "grad":  # 拆小合并：每个改法拆成单条改动逐条测，变好的合并成一步
+        loop["group"] = {"size": size, "strategy": "merge", "confirm_fraction": 0.5, "atomize": True,
+                         "max_atoms": 4 * size}
+    elif arm == "mom":  # 拆小合并 + 方向动量
+        loop["group"] = {"size": size, "strategy": "merge", "confirm_fraction": 0.5, "atomize": True,
+                         "max_atoms": 4 * size, "momentum": {"decay": 0.7, "max_items": 6, "explore": 1}}
+    elif arm != "A":
         loop["group"] = {"size": size, "strategy": arm if arm != "paired" else "parent_paired",
                          "confirm_fraction": 0.5}
     if arm == "training_free":

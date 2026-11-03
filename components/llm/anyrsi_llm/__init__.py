@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atexit
 import hashlib
+import http.client
 import json
 import os
 import signal
@@ -24,25 +25,79 @@ from typing import Any
 
 from anyrsi import Agent, Attribution, ComponentError, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 
-def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float = 0.0,
+class LLMFatalError(ComponentError):
+    """不可恢复的接口错误（key 无效、额度用完、模型不存在）：组件不吞掉它，整个运行停下来报错，
+    免得每次调用都失败、却空跑完所有代、最后只报 0 分。"""
+
+
+def _fatal(code: int, detail: str) -> bool:
+    return code in (401, 403, 404) or "insufficient_quota" in detail or "no credits" in detail.lower()
+
+
+# 有的模型不接受某些参数（比如新的推理模型要 max_completion_tokens、只允许默认 temperature）。
+# 遇到这类 400 报错时改写参数重试一次，并按 (base_url, model) 记住，之后直接用改写后的参数。
+_QUIRKS: dict[tuple[str, str], set[str]] = {}
+
+
+def _apply_quirks(body: dict[str, Any], quirks: set[str]) -> dict[str, Any]:
+    body = dict(body)
+    if "max_completion_tokens" in quirks and "max_tokens" in body:
+        body["max_completion_tokens"] = body.pop("max_tokens")
+    if "no_temperature" in quirks:
+        body.pop("temperature", None)
+    if "no_seed" in quirks:
+        body.pop("seed", None)
+    return body
+
+
+def _quirk_for(error: str) -> str | None:
+    if "max_tokens" in error and "max_completion_tokens" in error:
+        return "max_completion_tokens"
+    if "temperature" in error and ("Unsupported" in error or "not supported" in error):
+        return "no_temperature"
+    if "seed" in error and ("Unsupported" in error or "not supported" in error):
+        return "no_seed"
+    return None
+
+
+def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float | None = 0.0,
          max_tokens: int = 512, timeout: float = 300.0, api_key: str | None = None,
          extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    """调用 /chat/completions，返回 {"text", "usage", "finish_reason"}。"""
-    body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens,
-            **(extra or {})}
-    req = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json",
-                                          **({"Authorization": f"Bearer {api_key}"} if api_key else {})})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise ComponentError(f"LLM 接口返回 {e.code}：{e.read()[:500]!r}") from e
-    except (urllib.error.URLError, TimeoutError) as e:
-        raise ComponentError(f"连不上 LLM 接口 {base_url}：{e}") from e
+    """调用 /chat/completions，返回 {"text", "usage", "finish_reason"}。temperature 为 None 时不传。"""
+    body: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens, **(extra or {})}
+    if temperature is not None:
+        body["temperature"] = temperature
+    key = (base_url, model)
+    transient = 0
+    for _ in range(7):
+        sent = _apply_quirks(body, _QUIRKS.get(key, set()))
+        req = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(sent).encode(),
+                                     headers={"Content-Type": "application/json",
+                                              **({"Authorization": f"Bearer {api_key}"} if api_key else {})})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = json.loads(r.read())
+            break
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:500]
+            text = detail.decode("utf-8", "replace")
+            if _fatal(e.code, text):
+                raise LLMFatalError(f"LLM 接口返回 {e.code}，无法继续：{text[:300]}") from e
+            quirk = _quirk_for(text) if e.code == 400 else None
+            if quirk is None or quirk in _QUIRKS.get(key, set()):
+                raise ComponentError(f"LLM 接口返回 {e.code}：{detail!r}") from e
+            _QUIRKS.setdefault(key, set()).add(quirk)
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            # 网络抖动（连接被重置、超时）重试两次，再不行才报错
+            transient += 1
+            if transient > 2:
+                raise ComponentError(f"连不上 LLM 接口 {base_url}：{e}") from e
+            time.sleep(2 * transient)
+    else:
+        raise ComponentError(f"LLM 接口 {base_url} 参数改写多次仍被拒绝")
     choice = data["choices"][0]
     return {"text": choice["message"].get("content") or "", "usage": data.get("usage", {}),
             "finish_reason": choice.get("finish_reason")}
@@ -168,6 +223,8 @@ class ChatAgent(Agent):
                                                    {"role": "user", "content": question}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key, extra=seed_extra(task))
+        except LLMFatalError:
+            raise
         except ComponentError as e:
             return Trajectory(id=f"traj-{task.id}-{snapshot_id}-error", task_id=task.id, snapshot_id=snapshot_id,
                               output=None, steps=[Step(id="s0", type="observation", content=str(e), is_error=True)],
@@ -298,6 +355,8 @@ class StrategyRewriter(Proposer):
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
+        except LLMFatalError:
+            raise
         except ComponentError:
             return []
         text = out["text"].strip().strip("`").strip()
@@ -357,6 +416,8 @@ class PromptRewriter(Proposer):
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
+        except LLMFatalError:
+            raise
         except ComponentError:
             return []
         text = out["text"].strip().strip("`").strip()
@@ -479,6 +540,8 @@ class CodeRewriter(Proposer):
                                                    {"role": "user", "content": user}],
                        temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
                        api_key=self.api_key)
+        except LLMFatalError:
+            raise
         except ComponentError:
             return []
         obj = _json_object(out["text"])
@@ -510,5 +573,46 @@ class CodeRewriter(Proposer):
                       rationale=rationale)]
 
 
-__all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context",
+PATCH_SYSTEM = "You are a helpful assistant that improves other AI assistants by editing their configuration."
+
+
+class PatchProposer(Proposer):
+    """用 LLM 出结构化补丁：题目和 loop.self_propose 的"改进你自己"完全一样（anyrsi.self_improve.build_task），
+    但由一个独立的 LLM（普通助手身份，不带被进化 agent 的系统提示）来回答。回答是 JSON 补丁，可以有多条操作，
+    适合配合 loop.group.atomize 拆开测。with: base_url、model、temperature、max_tokens、timeout、api_key_env、system"""
+
+    name = "anyrsi/patch-proposer"
+    version = __version__
+
+    def __init__(self, base_url: str, model: str = "policy", temperature: float | None = 0.7, max_tokens: int = 2000,
+                 timeout: float = 300.0, api_key_env: str | None = None, system: str = PATCH_SYSTEM):
+        self.base_url, self.model, self.system = base_url, model, system
+        self.temperature, self.max_tokens, self.timeout = temperature, max_tokens, timeout
+        self.api_key = os.environ.get(api_key_env) if api_key_env else None
+        self._n = 0
+
+    def propose(self, request: ProposalRequest) -> list[Patch]:
+        from anyrsi.self_improve import build_task, parse_patch
+
+        out: list[Patch] = []
+        for _ in range(request.max_patches):
+            self._n += 1
+            task = build_task(request, gen=0, index=self._n)
+            try:
+                reply = chat(self.base_url, self.model, [{"role": "system", "content": self.system},
+                                                         {"role": "user", "content": task_text(task)}],
+                             temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
+                             api_key=self.api_key)
+            except LLMFatalError:
+                raise
+            except ComponentError:
+                continue
+            patch = parse_patch(reply["text"], request, self.model)
+            if patch is not None:
+                out.append(patch.model_copy(update={"proposer_ref": self.ref}))
+        return out
+
+
+__all__ = ["ChatAgent", "CodeRewriter", "LLMFatalError", "ManagedServer", "PatchProposer", "PromptRewriter", "StrategyRewriter",
+           "attribution_context",
            "chat", "render_prompt", "seed_extra", "strategy_notes", "task_text"]

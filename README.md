@@ -32,6 +32,9 @@
 
 ## News
 
+- **2026-11** · Direction momentum (`loop.group.momentum`): directions verified on the exam (which edits helped, on which task tags and rubric items, and which hurt) are handed to the proposer with decay, keeping one unguided proposal per generation as a control. On gpt-4o-mini it lowered the fresh-task score (0.58 → 0.40–0.44, lower in all 9 runs): guided edits are only slightly worse one by one, but guided proposals are less diverse. On gpt-6.1-terra it made no difference (0.93 vs 0.94). Text advice is not a good way to pass direction to the proposer. Runs now stop on quota or auth errors instead of silently scoring zero.
+- **2026-11** · Gradient-like direction finding (`loop.group.atomize` + `merge` strategy): each proposal is split into single edits, each edit is measured against the parent on the same exam tasks (a finite difference), and every edit that helps is merged into one step. On a toy problem a very weak proposer goes from 0.61 to 0.81 (best 0.85). On a real weak LLM (gpt-4o-mini, easy secret-ops) it beats the plain loop by +0.10 on fresh tasks at equal cost, as long as the exam is not split in halves; when the model almost never proposes the right change (hard version), it does not help. New `anyrsi_llm:PatchProposer`; `chat()` retries dropped connections.
+- **2026-11** · Self-proposal tested on real LLMs (gpt-6.1-terra / gpt-6.1-sol / gpt-4o-mini): `loop.self_propose` works end to end and matches a separate prompt rewriter (0.04 → about 0.9 on the hard secret-ops task). But with the prompt as the only thing evolving, a stronger agent version does not write better edits: the edit quality depends on the model, not on the evolved prompt. Recursion needs the model itself (weights) to improve. See [benchmarks/self_propose_llm](benchmarks/self_propose_llm/README.md). The LLM components now handle models that reject `max_tokens` or a custom `temperature`.
 - **2026-11** · The agent proposes edits to itself (`loop.self_propose`): instead of a separate proposer, "improve yourself" is given to the current agent version as a task, so as the agent gets better, so do its edits. On a toy problem where a stronger agent writes better edits, the normal loop ends 0.08 higher than with a fixed-skill proposer and the gap widens in the second half; in group mode the gain is small and not significant.
 - **2026-11** · Proposer feedback (`loop.improver_feedback`): each generation, which edits did better or worse on the exam is written back into the proposer's strategy notes, so the proposer improves too. On a toy problem the proposer's rate of good edits rises by 11–13 percentage points, but improvement does not accelerate yet.
 - **2026-11** · Group proposals (`loop.group`): the proposer makes a group of candidates; the parent and every candidate take the same exam (holdout) tasks with a shared seed per task; half of the exam picks, the other half confirms. The group-advantage rule is pluggable: built-in parent-paired, GRPO-style, best-of-N and Training-Free-GRPO-style, or your own class with the same interface. On a toy problem the final score matches the current loop while harmful accepts drop from 6–8% to 0; see [Experiments](#6-group-proposals-toy-problem-not-a-benchmark).
@@ -329,13 +332,34 @@ Values are the true pass rate of the final version. The last three match A (diff
 | The agent itself | 0.758 | 0.717 |
 | Always-strong proposer (reference) | — | 0.808 |
 
-In the normal loop self-proposal ends +0.080 ± 0.042 higher (z 1.9) and gains more in the second half than the fixed proposer (+0.051, z 1.7): improvement accelerates. In group mode the difference is +0.019 ± 0.035 (not significant): five exam passes per generation leave few generations for the compounding to show. The link between agent skill and edit skill is set by the toy; whether a real LLM agent has it must be measured.
+In the normal loop self-proposal ends +0.080 ± 0.042 higher (z 1.9) and gains more in the second half than the fixed proposer (+0.051, z 1.7): improvement accelerates. In group mode the difference is +0.019 ± 0.035 (not significant): five exam passes per generation leave few generations for the compounding to show. The link between agent skill and edit skill is set by the toy. On real LLMs ([benchmarks/self_propose_llm](benchmarks/self_propose_llm/README.md)) it holds across models (gpt-6.1 edits are almost always right, gpt-4o-mini edits almost never help) but not across prompt versions of the same model: the current version, the starting version and a plain assistant write equally good edits at every level. In a full loop, self-proposal and a separate prompt rewriter both reach about 0.9 with gpt-6.1 and stay near 0.05 with gpt-4o-mini.
+
+### 7. Finding a direction with a weak proposer (atomize + merge)
+
+Like a zeroth-order gradient: split each proposal into single edits, measure each against the parent on the same exam tasks with the same seed, and take every edit that helps in one merged step (`loop.group.atomize: true`, `strategy: merge`). Toy ([benchmarks/group_toy](benchmarks/group_toy/README.md)), 10 seeds, final true pass rate (best 0.85):
+
+| Proposer | Current loop | Best-of-N | Atomize + merge |
+|---|---|---|---|
+| Good | 0.788 | 0.762 | **0.837** |
+| Poor | 0.720 | 0.706 | **0.823** |
+| Very weak | 0.612 | 0.648 | **0.809** |
+
+Real LLM ([benchmarks/self_propose_llm](benchmarks/self_propose_llm/README.md)), gpt-4o-mini, about 2000 agent calls per run, 3 seeds, scored on 48 fresh tasks:
+
+| | Easy version | Hard version |
+|---|---|---|
+| Current loop | 0.47 | **0.13** |
+| Best-of-N | 0.45 | 0.15 |
+| Atomize + merge, exam split in halves | 0.33 | 0.06 |
+| **Atomize + merge, no split** | **0.58** | 0.08 |
+
+When the weak model sometimes proposes the right change, measuring single edits finds the direction (+0.10 over the current loop, higher on every seed). Each rule here affects only a few exam tasks, so splitting the exam in halves leaves too few relevant tasks to confirm a gain; use `confirm_fraction: 0` or a larger exam. When the model almost never proposes the right change (2 of 246 rules correct on the hard version), measurement cannot help and more generations do better. Handing the verified directions to the proposer as text (`loop.group.momentum`) lowered gpt-4o-mini's score (0.58 → 0.40–0.44 on the easy version) and made no difference for gpt-6.1-terra.
 
 ## Project Status
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 341 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 357 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 

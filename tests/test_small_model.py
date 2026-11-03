@@ -164,6 +164,7 @@ def _wait(port: int) -> None:
 @pytest.mark.parametrize("manifest,component", [
     ("rsi-component.yaml", lambda: ChatAgent(base_url="http://127.0.0.1:9/v1")),
     ("rsi-component.rewriter.yaml", lambda: PromptRewriter(base_url="http://127.0.0.1:9/v1")),
+    ("rsi-component.patch-proposer.yaml", lambda: __import__("anyrsi_llm").PatchProposer(base_url="http://127.0.0.1:9/v1")),
 ])
 def test_llm_manifests_match(manifest, component):
     from anyrsi import build_server, connect, load_manifest

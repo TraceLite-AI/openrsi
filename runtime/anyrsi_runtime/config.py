@@ -49,6 +49,20 @@ class ComponentSpec(BaseModel):
         return self
 
 
+class MomentumConfig(BaseModel):
+    """方向动量（loop.group.momentum）：把组里测出来的方向交给算子（提案器 / self_propose 时的 agent）。
+    考试上确认过的小改动记为"有用的方向"，测出来变差的记为"有害的方向"，连同它让哪些 rubric、哪类题（task.tags）
+    变好变差；每过一代权重乘 decay。每代把权重最高的几条放进提案请求的 hints["momentum"]，算子沿好方向继续提、避开坏方向。
+    每代有 explore 个改法不给方向（探索，也是对照：报告里比较有方向和没方向的改法哪个好）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decay: float = Field(default=0.7, gt=0, le=1, description="每过一代，旧方向的权重乘这个数")
+    max_items: int = Field(default=6, ge=1, description="每次给算子看几条有用的方向（有害的方向同样最多这么多）")
+    explore: int = Field(default=1, ge=0, description="每代几个改法不给方向（探索 / 对照）")
+    negative: bool = Field(default=True, description="是否也告诉算子哪些方向变差了")
+
+
 class GroupConfig(BaseModel):
     """组提案：一次出一组候选，在考试题上算组内优势（见 anyrsi_runtime.group）。写了 loop.group 才启用；
     启用后普通的解题侧代都按组来做（判别器代、元层代不变）。"""
@@ -69,6 +83,9 @@ class GroupConfig(BaseModel):
     common_seed: bool = Field(default=True, description="同一代同一道题给所有版本同一个 rollout_seed（公共随机数）")
     experience_target: str | None = Field(default=None,
                                           description="training_free 策略写经验的可进化体（memory 之类）")
+    atomize: bool = Field(default=False, description="把每个改法拆成一条条最小改动，分别在考试题上测（配合 merge 策略）")
+    max_atoms: int = Field(default=16, ge=1, description="atomize 时一代最多测几条小改动")
+    momentum: MomentumConfig | None = Field(default=None, description="把测出来的方向交给算子（方向动量）")
 
 
 class ImproverFeedbackConfig(BaseModel):
