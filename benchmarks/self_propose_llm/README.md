@@ -9,8 +9,8 @@
 
 ```bash
 export OPENAI_API_KEY=...
-python benchmarks/self_propose_llm/probe.py --hard --model gpt-6.1-terra --levels 0 2 4 6 --samples 10
-python benchmarks/self_propose_llm/loop_llm.py --model gpt-6.1-terra --seeds 0 1 2 --generations 8
+python benchmarks/self_propose_llm/probe.py --hard --model gpt-5.4-mini --levels 0 2 4 6 --samples 10
+python benchmarks/self_propose_llm/loop_llm.py --model gpt-5.4-mini --seeds 0 1 2 --generations 8
 ```
 
 原始结果在 `results/`（每个改法的原文、解析结果和真实效果）。

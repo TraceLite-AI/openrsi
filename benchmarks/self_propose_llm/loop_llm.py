@@ -5,7 +5,7 @@
     self      当前版本的 agent 收到"改进你自己"的题，回一个 JSON 补丁（可以加、改、删提示段落）
     rewriter  anyrsi_llm:PromptRewriter，同一个模型以"提示改写器"的身份重写整段系统提示
 
-    python benchmarks/self_propose_llm/loop_llm.py --model gpt-6.1-terra --seeds 0 1 2 --generations 8
+    python benchmarks/self_propose_llm/loop_llm.py --model gpt-5.4-mini --seeds 0 1 2 --generations 8
 """
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gpt-6.1-terra")
+    ap.add_argument("--model", default="gpt-5.4-mini")  # 先用便宜的模型
     ap.add_argument("--api-key-env", default="OPENAI_API_KEY")
     ap.add_argument("--arms", nargs="+", default=["self", "rewriter"])
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])

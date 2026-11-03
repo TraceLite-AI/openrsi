@@ -172,7 +172,7 @@ def apply(state: list[dict[str, Any]], ops: list[dict[str, Any]]) -> list[dict[s
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-url", default="https://api.openai.com/v1")
-    ap.add_argument("--model", default="gpt-6.1-terra")
+    ap.add_argument("--model", default="gpt-5.4-mini")  # 先用便宜的模型
     ap.add_argument("--api-key-env", default="OPENAI_API_KEY")
     ap.add_argument("--levels", type=int, nargs="+", default=[0, 3, 6])
     ap.add_argument("--samples", type=int, default=6)
