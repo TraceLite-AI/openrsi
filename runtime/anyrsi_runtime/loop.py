@@ -820,8 +820,10 @@ class Runner:
                     break
                 guided = hint is not None and i >= mom.explore
                 hints = {**base_hints, "group_index": i, "sample": i + 1, **({"momentum": hint} if guided else {})}
+                # 还没有方向可给的代记为 no_hint，不算进探索组（否则第 1 代这种最容易涨分的代会让对照偏高）
+                label = "guided" if guided else "explore" if hint is not None else "no_hint"
                 await take(await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints, 1), pg),
-                           "guided" if guided else "explore")
+                           label)
             await self.checkout(pg)
             return out
         tries = 0

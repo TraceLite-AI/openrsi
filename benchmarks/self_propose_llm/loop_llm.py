@@ -152,6 +152,7 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
     cfg = load_config(write_config(base, arm, seed, model, key_env, generations, size, easy, confirm))
     curve: list[float] = []
     labels: dict[str, list[float]] = {}
+    members_log: list[dict[str, Any]] = []
     calls_curve: list[int] = []
     async with Wiring(cfg) as w:
         agent = w.components["agent"]
@@ -181,6 +182,8 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
             for m in (report.group or {}).get("members", []):
                 if m.get("advantage") is not None:
                     labels.setdefault(m.get("direction") or "other", []).append(m["advantage"])
+                    members_log.append({"generation": report.generation, "label": m.get("direction"),
+                                        "advantage": m["advantage"]})
 
         runner.on_generation = track
         await runner.run()
@@ -198,7 +201,7 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
             "calls_curve": calls_curve,
             "by_label": {k: {"n": len(v), "mean_advantage": sum(v) / len(v), "improved": sum(x > 0 for x in v)}
                          for k, v in labels.items()},
-            "final_prompt": [d["text"] for d in prompt]}
+            "members": members_log, "final_prompt": [d["text"] for d in prompt]}
 
 
 def main() -> None:

@@ -66,8 +66,11 @@ def test_loop_hands_verified_directions_to_the_proposer(tmp_path):
     guided = [h for h in seen if "momentum" in h]
     assert guided and all(h["group_index"] >= 1 for h in guided)
     assert any(h["group_index"] == 0 and "momentum" not in h for h in seen)
-    labels = {m["direction"] for g in groups for m in g["members"]}
-    assert labels <= {"guided", "explore"} and "guided" in labels
+    labels = [{m["direction"] for m in g["members"]} for g in groups]
+    assert all(ls <= {"guided", "explore", "no_hint"} for ls in labels)
+    assert labels[0] == {"no_hint"}  # 第 1 代还没有方向，不算进对照
+    assert any("guided" in ls and "explore" in ls for ls in labels)
+    assert all("no_hint" not in ls or ls == {"no_hint"} for ls in labels)
     # 有用的方向只来自通过准入的那一步
     accepted_text = {op["item"]["id"] + ": " + op["item"]["text"] for e in log if e.status == "accepted" for op in e.patch.ops}
     helped = [d for d in runner.ledger.items if d.helped]
