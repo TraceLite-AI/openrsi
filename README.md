@@ -32,6 +32,7 @@
 
 ## News
 
+- **2026-11** · Self-proposal tested on real LLMs (gpt-6.1-terra / gpt-6.1-sol / gpt-4o-mini): `loop.self_propose` works end to end and matches a separate prompt rewriter (0.04 → about 0.9 on the hard secret-ops task). But with the prompt as the only thing evolving, a stronger agent version does not write better edits: the edit quality depends on the model, not on the evolved prompt. Recursion needs the model itself (weights) to improve. See [benchmarks/self_propose_llm](benchmarks/self_propose_llm/README.md). The LLM components now handle models that reject `max_tokens` or a custom `temperature`.
 - **2026-11** · The agent proposes edits to itself (`loop.self_propose`): instead of a separate proposer, "improve yourself" is given to the current agent version as a task, so as the agent gets better, so do its edits. On a toy problem where a stronger agent writes better edits, the normal loop ends 0.08 higher than with a fixed-skill proposer and the gap widens in the second half; in group mode the gain is small and not significant.
 - **2026-11** · Proposer feedback (`loop.improver_feedback`): each generation, which edits did better or worse on the exam is written back into the proposer's strategy notes, so the proposer improves too. On a toy problem the proposer's rate of good edits rises by 11–13 percentage points, but improvement does not accelerate yet.
 - **2026-11** · Group proposals (`loop.group`): the proposer makes a group of candidates; the parent and every candidate take the same exam (holdout) tasks with a shared seed per task; half of the exam picks, the other half confirms. The group-advantage rule is pluggable: built-in parent-paired, GRPO-style, best-of-N and Training-Free-GRPO-style, or your own class with the same interface. On a toy problem the final score matches the current loop while harmful accepts drop from 6–8% to 0; see [Experiments](#6-group-proposals-toy-problem-not-a-benchmark).
@@ -329,13 +330,13 @@ Values are the true pass rate of the final version. The last three match A (diff
 | The agent itself | 0.758 | 0.717 |
 | Always-strong proposer (reference) | — | 0.808 |
 
-In the normal loop self-proposal ends +0.080 ± 0.042 higher (z 1.9) and gains more in the second half than the fixed proposer (+0.051, z 1.7): improvement accelerates. In group mode the difference is +0.019 ± 0.035 (not significant): five exam passes per generation leave few generations for the compounding to show. The link between agent skill and edit skill is set by the toy; whether a real LLM agent has it must be measured.
+In the normal loop self-proposal ends +0.080 ± 0.042 higher (z 1.9) and gains more in the second half than the fixed proposer (+0.051, z 1.7): improvement accelerates. In group mode the difference is +0.019 ± 0.035 (not significant): five exam passes per generation leave few generations for the compounding to show. The link between agent skill and edit skill is set by the toy. On real LLMs ([benchmarks/self_propose_llm](benchmarks/self_propose_llm/README.md)) it holds across models (gpt-6.1 edits are almost always right, gpt-4o-mini edits almost never help) but not across prompt versions of the same model: the current version, the starting version and a plain assistant write equally good edits at every level. In a full loop, self-proposal and a separate prompt rewriter both reach about 0.9 with gpt-6.1 and stay near 0.05 with gpt-4o-mini.
 
 ## Project Status
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 341 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 343 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 

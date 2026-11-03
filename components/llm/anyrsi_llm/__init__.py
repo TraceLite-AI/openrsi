@@ -24,25 +24,62 @@ from typing import Any
 
 from anyrsi import Agent, Attribution, ComponentError, Item, Patch, ProposalRequest, Proposer, Step, Task, Trajectory
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 
-def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float = 0.0,
+# 有的模型不接受某些参数（比如新的推理模型要 max_completion_tokens、只允许默认 temperature）。
+# 遇到这类 400 报错时改写参数重试一次，并按 (base_url, model) 记住，之后直接用改写后的参数。
+_QUIRKS: dict[tuple[str, str], set[str]] = {}
+
+
+def _apply_quirks(body: dict[str, Any], quirks: set[str]) -> dict[str, Any]:
+    body = dict(body)
+    if "max_completion_tokens" in quirks and "max_tokens" in body:
+        body["max_completion_tokens"] = body.pop("max_tokens")
+    if "no_temperature" in quirks:
+        body.pop("temperature", None)
+    if "no_seed" in quirks:
+        body.pop("seed", None)
+    return body
+
+
+def _quirk_for(error: str) -> str | None:
+    if "max_tokens" in error and "max_completion_tokens" in error:
+        return "max_completion_tokens"
+    if "temperature" in error and ("Unsupported" in error or "not supported" in error):
+        return "no_temperature"
+    if "seed" in error and ("Unsupported" in error or "not supported" in error):
+        return "no_seed"
+    return None
+
+
+def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperature: float | None = 0.0,
          max_tokens: int = 512, timeout: float = 300.0, api_key: str | None = None,
          extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    """调用 /chat/completions，返回 {"text", "usage", "finish_reason"}。"""
-    body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens,
-            **(extra or {})}
-    req = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json",
-                                          **({"Authorization": f"Bearer {api_key}"} if api_key else {})})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise ComponentError(f"LLM 接口返回 {e.code}：{e.read()[:500]!r}") from e
-    except (urllib.error.URLError, TimeoutError) as e:
-        raise ComponentError(f"连不上 LLM 接口 {base_url}：{e}") from e
+    """调用 /chat/completions，返回 {"text", "usage", "finish_reason"}。temperature 为 None 时不传。"""
+    body: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens, **(extra or {})}
+    if temperature is not None:
+        body["temperature"] = temperature
+    key = (base_url, model)
+    for _ in range(4):
+        sent = _apply_quirks(body, _QUIRKS.get(key, set()))
+        req = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(sent).encode(),
+                                     headers={"Content-Type": "application/json",
+                                              **({"Authorization": f"Bearer {api_key}"} if api_key else {})})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = json.loads(r.read())
+            break
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:500]
+            quirk = _quirk_for(detail.decode("utf-8", "replace")) if e.code == 400 else None
+            if quirk is None or quirk in _QUIRKS.get(key, set()):
+                raise ComponentError(f"LLM 接口返回 {e.code}：{detail!r}") from e
+            _QUIRKS.setdefault(key, set()).add(quirk)
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise ComponentError(f"连不上 LLM 接口 {base_url}：{e}") from e
+    else:
+        raise ComponentError(f"LLM 接口 {base_url} 参数改写多次仍被拒绝")
     choice = data["choices"][0]
     return {"text": choice["message"].get("content") or "", "usage": data.get("usage", {}),
             "finish_reason": choice.get("finish_reason")}
