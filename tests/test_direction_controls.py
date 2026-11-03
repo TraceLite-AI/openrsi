@@ -117,3 +117,12 @@ def test_shared_panel_compares_whole_best_atom_and_merge(monkeypatch):
     assert pick(parent, [parent, parent], [parent, parent]) == {"whole": None, "best_atom": None, "merge": []}
     with pytest.raises(ValueError):
         pick(parent, [parent, first], [first, {"x": 0.}])
+
+def test_template_forwards_only_an_environment_reference():
+    import yaml
+
+    path = Path(__file__).resolve().parents[1]/'examples/rsihub_weights/anyrsi.step1.yaml'
+    agent = yaml.safe_load(path.read_text())['components']['agent']['with']
+    assert 'ANYRSI_HARBOR_API_KEY' in agent['env']
+    argv = [v.format(repo='/tmp/repo') for v in agent['extra_args']]
+    assert 'OPENAI_API_KEY=${ANYRSI_HARBOR_API_KEY}' in argv

@@ -29,7 +29,7 @@ components:
                 --job-name, "{job}", --jobs-dir, "{jobs_dir}", --n-attempts, "1", -n, "1", -y, -q]
       agent_args: [--agent-import-path, "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent",
                    --model, "{model}"]
-      extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_API_KEY=${ANYRSI_HARBOR_API_KEY}"]
+      extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_API_KEY=${{ANYRSI_HARBOR_API_KEY}}"]
       env: [DOCKER_HOST, ANYRSI_HARBOR_API_KEY]
       timeout: 3600
   judge: {python: "anyrsi_rsihub:HarborRewardJudge"}
