@@ -290,7 +290,10 @@ def write_config(base: Path, arm: str, seed: int, *, q: float = 0.6, collateral:
                                   "with": {"target": "improver", "path": "state/improver"}}
         loop["improver_feedback"] = {"target": "improver", "shuffle": fb == "fb-shuffled"}
     arm = base_arm
-    if arm != "A":
+    if arm == "grad":  # 拆小合并：每个改法拆成单条改动逐条测，变好的合并成一步
+        loop["group"] = {"size": size, "strategy": "merge", "confirm_fraction": 0.5, "atomize": True,
+                         "max_atoms": 4 * size}
+    elif arm != "A":
         loop["group"] = {"size": size, "strategy": arm if arm != "paired" else "parent_paired",
                          "confirm_fraction": 0.5}
     if arm == "training_free":

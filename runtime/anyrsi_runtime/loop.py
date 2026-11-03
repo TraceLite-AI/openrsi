@@ -63,7 +63,7 @@ from anyrsi.types import canonical_json, for_agent
 
 from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
-from .group import Member, lesson_patch, load_strategy, rollout_seed, split_tasks
+from .group import Member, atomize, lesson_patch, load_strategy, merge_patches, rollout_seed, split_tasks
 from .self_propose import build_task, parse_patch
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
@@ -752,33 +752,43 @@ class Runner:
 
     async def _group_members(self, parent: str, pg: Genome, episodes: list[Episode], attributions: list[Attribution],
                              states: dict[str, Any]) -> list[tuple[Genome, Patch, str, str | None]]:
-        """凑一组候选：先按方向（directions 模式），再多采样补足到 G 个。重复、越界、被护栏或可进化体拒绝的不算。"""
+        """凑一组候选：先按方向（directions 模式），再多采样补足到 G 个。重复、越界、被护栏或可进化体拒绝的不算。
+        atomize 时 G 是改法的个数，每个改法拆成一条条小改动，各自是一个组员（最多 max_atoms 个）。"""
         g = self.cfg.group
         solver = self._group_solver()
         out: list[tuple[Genome, Patch, str, str | None]] = []
         seen: set[str] = set()
         improver = await self._improver_hint(pg)
+        cap = g.max_atoms if g.atomize else g.size
+        got = [0]  # 收到的改法个数（atomize 时用）
+
+        def enough() -> bool:
+            return len(out) >= cap or (got[0] if g.atomize else len(out)) >= g.size
 
         async def take(patches: list[Patch], direction: str | None) -> None:
-            for patch in patches:
-                if len(out) >= g.size:
+            for whole in patches:
+                if enough():
                     return
-                t = solver[0] if len(solver) == 1 else patch.target
+                t = solver[0] if len(solver) == 1 else whole.target
                 if t not in solver:
                     continue
-                patch = patch.model_copy(update={"target": self.targets[t].info.target, "base_snapshot": pg[t]})
-                key = content_hash([t, patch.ops])
-                if key in seen:
-                    continue
-                seen.add(key)
-                if await self._guard_blocks(patch, self.targets[t].info):
-                    continue
-                await self.checkout(pg)
-                try:
-                    snap = await self.targets[t].facade.apply(patch)
-                except (ToolCallError, ComponentError, ValueError, KeyError):
-                    continue
-                out.append(({**pg, t: snap.id}, patch, t, direction))
+                got[0] += 1
+                for patch in atomize(whole) if g.atomize else [whole]:
+                    if len(out) >= cap:
+                        return
+                    patch = patch.model_copy(update={"target": self.targets[t].info.target, "base_snapshot": pg[t]})
+                    key = content_hash([t, patch.ops])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    if await self._guard_blocks(patch, self.targets[t].info):
+                        continue
+                    await self.checkout(pg)
+                    try:
+                        snap = await self.targets[t].facade.apply(patch)
+                    except (ToolCallError, ComponentError, ValueError, KeyError):
+                        continue
+                    out.append(({**pg, t: snap.id}, patch, t, direction))
 
         base_hints: dict[str, Any] = {"role": "solver", "group_size": g.size, **({"improver": improver} if improver else {})}
         if g.proposals == "directions":
@@ -795,9 +805,9 @@ class Runner:
                 await take(await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints, 1),
                                                pg), name)
         tries = 0
-        while len(out) < g.size and tries < 2 * g.size:
+        while not enough() and tries < 2 * g.size:
             tries += 1
-            want = g.size - len(out)
+            want = g.size - (got[0] if g.atomize else len(out))
             hints = {**base_hints, "group_index": len(out), "sample": tries}
             patches = await self._propose(self._proposal(parent, pg, episodes, attributions, states, hints,
                                                          want if tries == 1 else 1), pg)
@@ -877,6 +887,18 @@ class Runner:
                 return await reject(decision.reason)
             genome, patch, t, direction = members[decision.chosen]
             m, scores = results[decision.chosen]
+            merge = [i for i in getattr(decision, "merge", None) or [] if members[i][2] == t]
+            if len(merge) > 1:  # 合并型策略：所有变好的方向一起走一步（只合并改同一个可进化体的）
+                patch = merge_patches([members[i][1] for i in merge])
+                await self.checkout(pg)
+                try:
+                    snap = await self.targets[t].facade.apply(patch)
+                except (ToolCallError, ComponentError, ValueError, KeyError) as e:
+                    return await reject(f"合并的改动应用不上：{e}")
+                genome = {**pg, t: snap.id}
+                m, _ = await self.score(tasks, genome, "holdout")
+                scores = dict(self.last_task_scores)
+                report.group["merged"] = merge
         else:
             if not decision.lessons:
                 return await reject(decision.reason)

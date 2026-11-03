@@ -22,6 +22,13 @@
   best_of_n         选选择半上平均分最高的那个（不做检验，偏差交给确认半纠正）
   training_free     Training-Free GRPO 式：不选版本，把组内谁好谁差总结成经验条目，写进记忆类可进化体
                     （loop.group.experience_target），新的记忆版本再走确认半准入
+  merge             零阶"梯度"一步：每个候选的优势 = 候选分 − 父版本分（有限差分：往这个方向走一小步，分数变了多少），
+                    把所有优势为正（且 z 够大）的候选合并成一步一起走，而不是只挑一个。配合 loop.group.atomize
+                    （把每个改法拆成一条条最小改动分别测）使用：提案器出的改法里对的部分和错的部分被分开，
+                    弱提案器"偶尔对"的那部分也能被测出来留下。step 是一步最多合并几条（步长）
+
+拆分与合并：atomize(patch) 把一个补丁拆成每条操作一个的小补丁；merge_patches(patches) 按顺序合并，
+同一个条目只保留第一条（策略按优势从高到低排好序，冲突时留优势高的）。
 """
 from __future__ import annotations
 
@@ -88,6 +95,7 @@ class Decision:
     advantage: list[float] = field(default_factory=list)  # 每个候选的平均优势
     z: list[float] = field(default_factory=list)
     lessons: list[Item] = field(default_factory=list)      # 经验型策略要写进记忆的条目
+    merge: list[int] = field(default_factory=list)         # 合并型策略：要合并成一步的候选（按优势从高到低）
 
 
 class GroupStrategy:
@@ -250,6 +258,76 @@ class TrainingFreeGRPO(GroupStrategy):
 BUILTIN = {"parent_paired": ParentPaired, "grpo": GRPO, "best_of_n": BestOfN, "training_free": TrainingFreeGRPO}
 
 
+class MergePositive(GroupStrategy):
+    """零阶"梯度"一步：优势 = 候选分 − 父版本分（逐题配对，即有限差分）；把平均优势 > min_adv 且 z ≥ min_z 的候选
+    按优势从高到低取最多 step 个，合并成一步（Decision.merge）。合并后的版本再交给确认半准入。"""
+
+    name = "merge"
+    merges = True
+
+    def __init__(self, step: int = 8, min_z: float = 0.0, min_adv: float = 0.0):
+        if step < 1:
+            raise ValueError("merge 的 step 至少是 1")
+        self.step, self.min_z, self.min_adv = step, min_z, min_adv
+
+    def advantages(self, parent: dict[str, float], members: list[Member]) -> list[dict[str, float]]:
+        return [{t: m.scores[t] - parent[t] for t in parent} for m in members]
+
+    def decide(self, parent: dict[str, float], members: list[Member], alpha: float) -> Decision:
+        adv = self.advantages(parent, members)
+        stats = [mean_z(list(a.values())) for a in adv]
+        means, zs = [s[0] for s in stats], [s[1] for s in stats]
+        good = sorted((i for i in range(len(members)) if means[i] > self.min_adv and zs[i] >= self.min_z),
+                      key=lambda i: (-means[i], -zs[i], i))[: self.step]
+        if not good:
+            best = max(range(len(members)), key=lambda i: (means[i], zs[i]))
+            return Decision(None, f"没有往好的方向（最好的 {means[best]:+.3f}，z = {zs[best]:.2f}）", means, zs)
+        return Decision(good[0], f"{len(good)} 个方向变好，合并成一步（{', '.join(f'{means[i]:+.3f}' for i in good)}）",
+                        means, zs, merge=good)
+
+    def summary(self) -> dict[str, Any]:
+        return {"strategy": self.name, "step": self.step, "min_z": self.min_z, "min_adv": self.min_adv}
+
+
+BUILTIN["merge"] = MergePositive
+
+
+def op_key(op: dict[str, Any]) -> str:
+    """一条操作改的是哪个条目：item.id / item_id / id，都没有时用整条操作的内容。"""
+    item = op.get("item") if isinstance(op.get("item"), dict) else {}
+    key = item.get("id") or op.get("item_id") or op.get("id") or op.get("path")
+    return str(key) if key else hashlib.sha256(repr(sorted(op.items())).encode()).hexdigest()[:16]
+
+
+def _describe(op: dict[str, Any]) -> str:
+    item = op.get("item") if isinstance(op.get("item"), dict) else {}
+    text = str(item.get("text") or "").replace("\n", " ")
+    return f"{op.get('op', '?')} {op_key(op)}" + (f": {text[:120]}" if text else "")
+
+
+def atomize(patch: Patch) -> list[Patch]:
+    """把补丁拆成每条操作一个的小补丁。只有一条操作时原样返回。"""
+    if len(patch.ops) <= 1:
+        return [patch]
+    return [patch.model_copy(update={"ops": [op], "rationale": f"{_describe(op)} (part {i + 1}/{len(patch.ops)} of: "
+                                                              f"{(patch.rationale or '')[:200]})"})
+            for i, op in enumerate(patch.ops)]
+
+
+def merge_patches(patches: list[Patch]) -> Patch:
+    """按顺序合并几个改同一个可进化体的补丁；同一个条目只保留第一条操作。"""
+    seen: set[str] = set()
+    ops: list[dict[str, Any]] = []
+    for p in patches:
+        for op in p.ops:
+            k = op_key(op)
+            if k not in seen:
+                seen.add(k)
+                ops.append(op)
+    return patches[0].model_copy(update={"ops": ops, "rationale": " | ".join(_describe(op) for op in ops)[:1000],
+                                         "proposer_ref": patches[0].proposer_ref})
+
+
 def load_strategy(spec: str | dict[str, Any]) -> GroupStrategy:
     """strategy: 内置名字，或 {name: …, with: {…}}，或 {python: "module:Class", with: {…}}。"""
     if isinstance(spec, str):
@@ -273,5 +351,6 @@ def lesson_patch(target: str, base: str, lessons: list[Item], existing: set[str]
     return Patch(target=target, base_snapshot=base, ops=ops, rationale=f"group experience: {len(lessons)} lessons")
 
 
-__all__ = ["BUILTIN", "BestOfN", "Decision", "GRPO", "GroupStrategy", "Member", "ParentPaired", "TrainingFreeGRPO",
-           "lesson_patch", "load_strategy", "mean_z", "rollout_seed", "split_tasks", "z_threshold"]
+__all__ = ["BUILTIN", "BestOfN", "Decision", "GRPO", "GroupStrategy", "Member", "MergePositive", "ParentPaired",
+           "TrainingFreeGRPO", "atomize", "lesson_patch", "load_strategy", "mean_z", "merge_patches", "op_key",
+           "rollout_seed", "split_tasks", "z_threshold"]

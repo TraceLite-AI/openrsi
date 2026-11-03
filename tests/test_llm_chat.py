@@ -80,3 +80,40 @@ def test_normal_models_get_params_unchanged_and_other_errors_raise():
         assert len(seen) == 1
     finally:
         srv.shutdown()
+
+
+def test_transient_network_errors_are_retried(monkeypatch):
+    import urllib.request
+
+    calls = []
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}).encode()
+
+    def flaky(req, timeout=None):
+        calls.append(1)
+        if len(calls) < 3:
+            raise ConnectionResetError(104, "Connection reset by peer")
+        return Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(anyrsi_llm.time, "sleep", lambda s: None)
+    assert chat("http://x/v1", "m", [{"role": "user", "content": "hi"}])["text"] == "ok" and len(calls) == 3
+
+    calls.clear()
+
+    def down(req, timeout=None):
+        calls.append(1)
+        raise ConnectionResetError(104, "Connection reset by peer")
+
+    monkeypatch.setattr(urllib.request, "urlopen", down)
+    with pytest.raises(ComponentError, match="连不上"):
+        chat("http://x/v1", "m", [{"role": "user", "content": "hi"}])
+    assert len(calls) == 3

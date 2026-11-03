@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atexit
 import hashlib
+import http.client
 import json
 import os
 import signal
@@ -61,7 +62,8 @@ def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperatu
     if temperature is not None:
         body["temperature"] = temperature
     key = (base_url, model)
-    for _ in range(4):
+    transient = 0
+    for _ in range(7):
         sent = _apply_quirks(body, _QUIRKS.get(key, set()))
         req = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(sent).encode(),
                                      headers={"Content-Type": "application/json",
@@ -76,8 +78,12 @@ def chat(base_url: str, model: str, messages: list[dict[str, str]], *, temperatu
             if quirk is None or quirk in _QUIRKS.get(key, set()):
                 raise ComponentError(f"LLM 接口返回 {e.code}：{detail!r}") from e
             _QUIRKS.setdefault(key, set()).add(quirk)
-        except (urllib.error.URLError, TimeoutError) as e:
-            raise ComponentError(f"连不上 LLM 接口 {base_url}：{e}") from e
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            # 网络抖动（连接被重置、超时）重试两次，再不行才报错
+            transient += 1
+            if transient > 2:
+                raise ComponentError(f"连不上 LLM 接口 {base_url}：{e}") from e
+            time.sleep(2 * transient)
     else:
         raise ComponentError(f"LLM 接口 {base_url} 参数改写多次仍被拒绝")
     choice = data["choices"][0]
@@ -547,5 +553,44 @@ class CodeRewriter(Proposer):
                       rationale=rationale)]
 
 
-__all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PromptRewriter", "StrategyRewriter", "attribution_context",
+PATCH_SYSTEM = "You are a helpful assistant that improves other AI assistants by editing their configuration."
+
+
+class PatchProposer(Proposer):
+    """用 LLM 出结构化补丁：题目和 loop.self_propose 的"改进你自己"完全一样（anyrsi.self_improve.build_task），
+    但由一个独立的 LLM（普通助手身份，不带被进化 agent 的系统提示）来回答。回答是 JSON 补丁，可以有多条操作，
+    适合配合 loop.group.atomize 拆开测。with: base_url、model、temperature、max_tokens、timeout、api_key_env、system"""
+
+    name = "anyrsi/patch-proposer"
+    version = __version__
+
+    def __init__(self, base_url: str, model: str = "policy", temperature: float | None = 0.7, max_tokens: int = 2000,
+                 timeout: float = 300.0, api_key_env: str | None = None, system: str = PATCH_SYSTEM):
+        self.base_url, self.model, self.system = base_url, model, system
+        self.temperature, self.max_tokens, self.timeout = temperature, max_tokens, timeout
+        self.api_key = os.environ.get(api_key_env) if api_key_env else None
+        self._n = 0
+
+    def propose(self, request: ProposalRequest) -> list[Patch]:
+        from anyrsi.self_improve import build_task, parse_patch
+
+        out: list[Patch] = []
+        for _ in range(request.max_patches):
+            self._n += 1
+            task = build_task(request, gen=0, index=self._n)
+            try:
+                reply = chat(self.base_url, self.model, [{"role": "system", "content": self.system},
+                                                         {"role": "user", "content": task_text(task)}],
+                             temperature=self.temperature, max_tokens=self.max_tokens, timeout=self.timeout,
+                             api_key=self.api_key)
+            except ComponentError:
+                continue
+            patch = parse_patch(reply["text"], request, self.model)
+            if patch is not None:
+                out.append(patch.model_copy(update={"proposer_ref": self.ref}))
+        return out
+
+
+__all__ = ["ChatAgent", "CodeRewriter", "ManagedServer", "PatchProposer", "PromptRewriter", "StrategyRewriter",
+           "attribution_context",
            "chat", "render_prompt", "seed_extra", "strategy_notes", "task_text"]

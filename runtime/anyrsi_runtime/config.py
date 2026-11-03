@@ -69,6 +69,8 @@ class GroupConfig(BaseModel):
     common_seed: bool = Field(default=True, description="同一代同一道题给所有版本同一个 rollout_seed（公共随机数）")
     experience_target: str | None = Field(default=None,
                                           description="training_free 策略写经验的可进化体（memory 之类）")
+    atomize: bool = Field(default=False, description="把每个改法拆成一条条最小改动，分别在考试题上测（配合 merge 策略）")
+    max_atoms: int = Field(default=16, ge=1, description="atomize 时一代最多测几条小改动")
 
 
 class ImproverFeedbackConfig(BaseModel):
