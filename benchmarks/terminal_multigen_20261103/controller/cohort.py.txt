@@ -1,0 +1,16 @@
+"""Single continuation attached to the completed common baseline."""
+import json,time,os,sys
+from trials import N,write
+from run import multigen
+k=json.load(sys.stdin)['key']
+try:
+ for _ in range(2880):
+  if (N/'root-error.json').exists():raise RuntimeError('root preflight/evaluation failed')
+  if (N/'root-complete.json').exists() and (N/'test-ok.json').exists() and (N/'protocol.json').exists():break
+  time.sleep(10)
+ else:raise RuntimeError('root/config deadline reached')
+ p=json.loads((N/'protocol.json').read_text());assert p['generations'] in [5,10] and isinstance(p['native_reference'],bool)
+ write('locked-protocol.json',p)
+ multigen(k,p['generations'],p['native_reference'])
+except BaseException as e:
+ write('error.json',{'at':time.time(),'type':type(e).__name__,'message':str(e).replace(k,'[redacted]')[:900]});raise

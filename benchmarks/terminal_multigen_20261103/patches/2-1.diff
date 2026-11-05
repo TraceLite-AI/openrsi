@@ -1,0 +1,18 @@
+diff --git a/target/src/minisweagent/config/mini.yaml b/target/src/minisweagent/config/mini.yaml
+index 8b72f71..337d99a 100644
+--- a/target/src/minisweagent/config/mini.yaml
++++ b/target/src/minisweagent/config/mini.yaml
+@@ -9,11 +9,12 @@ agent:
+     ## Recommended Workflow
+ 
+     This workflow should be done step-by-step so that you can iterate on your changes and any possible problems.
++    When a result depends on external data, check that the source, version, date, and scope match the request before using it.
+ 
+     1. Analyze the codebase by finding and reading relevant files
+     2. Create a script to reproduce the issue
+     3. Edit the source code to resolve the issue
+-    4. Verify your fix works by running your script again
++    4. Verify the result using the requested invocation and inspect the actual outputs. When paths or working directories matter, also test from a neutral directory rather than assuming the caller's current directory.
+     5. Test edge cases to ensure your fix is robust
+     6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+        Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>

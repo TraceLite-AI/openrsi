@@ -1,0 +1,19 @@
+diff --git a/target/src/minisweagent/config/mini.yaml b/target/src/minisweagent/config/mini.yaml
+index 8b72f71..dadb79a 100644
+--- a/target/src/minisweagent/config/mini.yaml
++++ b/target/src/minisweagent/config/mini.yaml
+@@ -13,11 +13,13 @@ agent:
+     1. Analyze the codebase by finding and reading relevant files
+     2. Create a script to reproduce the issue
+     3. Edit the source code to resolve the issue
+-    4. Verify your fix works by running your script again
++    4. Verify the final artifact through the requested interface, using multiple representative inputs and an independent expected result where possible. Repeat verification after the last edit.
+     5. Test edge cases to ensure your fix is robust
+     6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+        Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+ 
++    Before submission, inspect required output files as bytes and check their exact format, including escaping and line endings.
++
+     ## Command Execution Rules
+ 
+     You are operating in an environment where

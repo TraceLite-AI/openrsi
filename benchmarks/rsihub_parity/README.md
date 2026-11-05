@@ -105,3 +105,7 @@ python benchmarks/rsihub_parity/compare.py $RSIHUB
 
 1. 如果差别明显、预算允许，扩到其他方法（AHE、GEPA、A-Evolve）、Codex 目标 agent 和 τ³ Banking（Harbor 里的 `sierra-research/tau3-bench` banking 部分，97 题，划分 50 / 20 / 27）。
 2. 做法 B：AnyRSI 自己的运行时通过 Harbor 跑同样的基准和划分。
+
+## 另行运行的实验及失效说明（2026-11-05）
+
+本文件描述的原生 baseline／AnyRSI 算子对照仍未完成。另一次本地三策略、Terra、5 代、50／19／20 的实验使用了 RSIHub 原生评分接口，但事后发现大量 verifier 启动失败被计作零分，不能用于填充上述性能表。[完整审计](../terminal_multigen_20261103/README.zh-CN.md)保留原始分数并说明撤回的结论；没有用修改后的分母制造“修正成绩”。

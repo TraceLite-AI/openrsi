@@ -431,3 +431,7 @@ AnyRSI 基于 [Model Context Protocol](https://modelcontextprotocol.io)，借鉴
 ## 许可证
 
 [Apache License 2.0](LICENSE)
+
+### 实验审计记录（2026-11-05）
+
+一次使用 AnyRSI 选择组件与 RSIHub 原生评分接口的 Terminal-Bench 五代实验已完成，但评分器启动故障使其不能用于比较方法优劣。[实验记录](benchmarks/terminal_multigen_20261103/README.zh-CN.md)保留原始成绩、全部候选补丁、逐试次审计和离线一致性检查。这些结果不能替代尚未运行的标准 RSIHub parity 配方，也不构成性能提升证据。

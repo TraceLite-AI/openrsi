@@ -1,0 +1,94 @@
+{
+  "verifier_runtime": {
+    "env": {
+      "UV_CACHE_DIR": "/opt/evolve/uv/cache",
+      "UV_LINK_MODE": "copy",
+      "UV_PYTHON": "3.12",
+      "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python"
+    }
+  },
+  "uv_mounts": [
+    {
+      "target": "/opt/evolve/uv/cache",
+      "read_only": false,
+      "source_role": "shared interpreter/cache directory"
+    },
+    {
+      "target": "/opt/evolve/uv/python",
+      "read_only": true,
+      "source_role": "shared interpreter/cache directory"
+    }
+  ],
+  "tasks": {
+    "mteb-retrieve": {
+      "sha256": "404ce42339d0b4df9912282a16f7c875ebc2453d40a9312b671f356208238215",
+      "bootstrap_lines": [
+        "  -w pytest==8.4.1 \\",
+        "  -w pytest-json-ctrf==0.3.5 \\",
+        "  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA",
+        "  echo 1 > /logs/verifier/reward.txt",
+        "  echo 0 > /logs/verifier/reward.txt"
+      ]
+    },
+    "polyglot-rust-c": {
+      "sha256": "4770437ea96c3cc84684b4f99d55fb148fcac09f9ea1e8ef49de487716e6c334",
+      "bootstrap_lines": [
+        "  -w pytest==8.4.1 \\",
+        "  -w pytest-json-ctrf==0.3.5 \\",
+        "  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA",
+        "  echo 1 > /logs/verifier/reward.txt",
+        "  echo 0 > /logs/verifier/reward.txt"
+      ]
+    },
+    "prove-plus-comm": {
+      "sha256": "4770437ea96c3cc84684b4f99d55fb148fcac09f9ea1e8ef49de487716e6c334",
+      "bootstrap_lines": [
+        "  -w pytest==8.4.1 \\",
+        "  -w pytest-json-ctrf==0.3.5 \\",
+        "  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA",
+        "  echo 1 > /logs/verifier/reward.txt",
+        "  echo 0 > /logs/verifier/reward.txt"
+      ]
+    },
+    "portfolio-optimization": {
+      "sha256": "25d5d5008edeab93d730b44f723687d2b08978f9f53750f62af8aeb1ecae90c6",
+      "bootstrap_lines": [
+        "  -w pytest==8.4.1 \\",
+        "  -w pytest-json-ctrf==0.3.5 \\",
+        "  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA",
+        "  echo 1 > /logs/verifier/reward.txt",
+        "  echo 0 > /logs/verifier/reward.txt"
+      ]
+    },
+    "gcode-to-text": {
+      "sha256": "4770437ea96c3cc84684b4f99d55fb148fcac09f9ea1e8ef49de487716e6c334",
+      "bootstrap_lines": [
+        "  -w pytest==8.4.1 \\",
+        "  -w pytest-json-ctrf==0.3.5 \\",
+        "  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA",
+        "  echo 1 > /logs/verifier/reward.txt",
+        "  echo 0 > /logs/verifier/reward.txt"
+      ]
+    }
+  },
+  "forwarding": [
+    {
+      "line": 346,
+      "text": "      *=*) set -- \"$@\" --ae \"$evaluator_runtime_entry\" --ve \"$evaluator_runtime_entry\" ;;"
+    },
+    {
+      "line": 374,
+      "text": "      UV_OFFLINE=*) set -- \"$@\" --ae \"$runtime_entry\" ;;"
+    },
+    {
+      "line": 375,
+      "text": "      *) set -- \"$@\" --ae \"$runtime_entry\" --ve \"$runtime_entry\" ;;"
+    }
+  ],
+  "host_interpreters": [
+    "cpython-3.12.16-linux-x86_64-gnu",
+    ".temp",
+    "cpython-3.12-linux-x86_64-gnu"
+  ],
+  "requested_test_python": "3.13 (uvx -p 3.13; initial-train/mteb-retrieve/tests/test.sh)"
+}

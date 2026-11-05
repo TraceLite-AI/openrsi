@@ -1,0 +1,32 @@
+from pathlib import Path
+import hashlib,json,os,subprocess,time
+N=Path('${RUN_ROOT}')
+def write(name,obj):
+ p=N/name;p.parent.mkdir(exist_ok=True,parents=True);tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(obj,indent=2,ensure_ascii=False));os.replace(tmp,p)
+def native(W,args,label,env):
+ assert os.statvfs('/').f_bavail*os.statvfs('/').f_frsize>5*1024**3 and os.statvfs('/data3').f_bavail*os.statvfs('/data3').f_frsize>35*1024**3
+ key=env['OPENAI_API_KEY'].encode()
+ with (N/(label+'.log')).open('xb') as log:
+  p=subprocess.Popen([str(W/'evolve'),*map(str,args)],cwd=W,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+  write('active-stage.json',{'label':label,'pid':p.pid,'started':time.time()})
+  for line in p.stdout: log.write(line.replace(key,b'[REDACTED]'));log.flush()
+  rc=p.wait()
+ if rc: raise RuntimeError(f'{label}: native exit {rc}')
+def record(W,sid):
+ rows=[json.loads(l) for l in (W/'archive.jsonl').read_text().splitlines()]
+ row=next(r for r in reversed(rows) if r.get('_evolve_mechanism_eval') and r.get('genid')==sid)
+ if row.get('status')!='complete':raise RuntimeError('Invalid canonical evaluation: '+str(row.get('status')))
+ assert row['candidate_commit']==subprocess.check_output(['git','-C',str(W),'rev-parse','gen/'+sid],text=True).strip()
+ art=W/row['artifacts']['path'];assert hashlib.sha256(art.read_bytes()).hexdigest()==row['artifacts']['sha256']
+ manifest=json.loads(art.read_text());jobs=Path(manifest['jobs_dir']);usage={};stats={}
+ for t in manifest['trials']:
+  task=t['task_name'];v=row['task_vector']['tasks'][task]['trials'];assert len(v)==1
+  trace=next((f for f in t['files'] if f['path'].endswith('/agent/mini-swe-agent.trajectory.json')),None)
+  calls=None
+  if trace:
+   p=jobs/trace['path'];assert hashlib.sha256(p.read_bytes()).hexdigest()==trace['sha256']
+   calls=json.loads(p.read_text()).get('info',{}).get('model_stats',{}).get('api_calls')
+  u=(json.loads((jobs/Path(trace['path']).parent.parent/'result.json').read_text()).get('agent_result') or {}) if trace and (jobs/Path(trace['path']).parent.parent/'result.json').is_file() else {}
+  usage[task]={'api_calls':calls,'estimated_usd':t.get('cost_usd'),'input_tokens':u.get('n_input_tokens'),'output_tokens':u.get('n_output_tokens')}
+  stats[task]={'reward':v[0].get('reward'),'status':v[0].get('status'),'exception':v[0].get('exception_type')}
+ return {'snapshot':row['candidate_commit'],'manifest':str(art),'sha256':row['artifacts']['sha256'],'score':row['score'],'tasks':stats,'usage':usage}

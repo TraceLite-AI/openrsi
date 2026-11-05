@@ -1,0 +1,247 @@
+"""Epoch controller. Separate RSIHub workspaces score disjoint role pools. No sealed scoring before freeze."""
+from pathlib import Path
+import hashlib,itertools,io,json,os,shutil,subprocess,sys,tarfile,tempfile,time,tomllib
+from statistics import fmean
+import yaml
+from trials import N,write,native,record
+
+O=Path('${RSIHUB_RUNTIME_ROOT}')
+B=Path('${DATASET_RUNTIME_ROOT}')
+BASE=Path('${ANYRSI_PREPARATION_ROOT}')
+R=BASE/'source'
+sys.path.insert(0,str(R/'benchmarks/self_propose_llm'))
+sys.path.insert(0,str(R/'benchmarks/terminal_directions'))
+from request_budget import RequestBudget
+from policy import pick
+from anyrsi import Patch
+from anyrsi_llm import chat,request_observer
+from anyrsi_llm.line_hunks import line_hunks
+from anyrsi_guard import PolicyGuard
+from anyrsi_runtime.group import merge_patches
+from anyrsi_rsihub.harbor import atif_steps
+
+PATHS=('src/minisweagent/config/mini.yaml','src/minisweagent/agents/default.py')
+def git(w,*args):
+ return subprocess.check_output(['git','-C',str(w),*args],text=True).strip()
+def trees(w,sid):return tuple(git(w,'rev-parse','gen/'+sid+':'+p) for p in ('target','operators'))
+def tagged(w,sid):return subprocess.run(['git','-C',str(w),'show-ref','--verify','--quiet','refs/tags/gen/'+sid]).returncode==0
+def clean(r):return {t for t,d in r['tasks'].items() if d['status']=='benchmark_complete' and not d['exception'] and isinstance(d['reward'],(float,int))}
+def positive(new,base):
+ keys=clean(new)&clean(base)
+ if len(keys)<16:raise RuntimeError('fewer than 16 common clean gate tasks')
+ return sum(new['tasks'][k]['reward']-base['tasks'][k]['reward'] for k in keys)>0
+def stage(**values):write('stage.json',{'at':time.time(),**values})
+def preflight_data(w,rc,role):
+ expected=json.loads((N/'splits.json').read_text())
+ names=sorted(sum(expected.values(),[])) if role=='full' else sorted(expected[role])
+ assert sorted(rc['tasks'])==names and len(clean(rc))>=0.8*len(names),('incomplete task identity or coverage',role)
+def score(w,sid,role,label,env,force=False):
+ stage(stage='score',role=role,sid=sid,label=label,workspace=str(w))
+ if sid=='0' and not force:
+  native(w,['run',w,'--max-generations','0'],label,env)
+ else:
+  native(w,['eval',w,sid]+(['--force'] if force else []),label,env)
+  if sid!='0':
+   parent=next(r['parent'] for line in reversed((w/'archive.jsonl').read_text().splitlines()) if (r:=json.loads(line)).get('genid')==sid and r.get('parent') is not None)
+   native(w,['finalize',w,sid,'--parent',parent],label+'-finalize',env)
+ native(w,['verify',w],label+'-verify',env)
+ rc=record(w,sid);preflight_data(w,rc,role);write('receipts/'+label+'.json',rc);return rc
+def fork(w,parent,sid,env):
+ child=w/'runs/worktrees'/('gen-'+sid)
+ native(w,['fork',w,parent,child],w.name+'-fork-'+sid,env)
+ return child
+def finish(w,child,parent,sid,env):
+ native(w,['surface-check',child,'--parent',parent],w.name+'-surface-'+sid,env)
+ native(w,['operator','run',w,'validate','--genid',sid,'--parent',parent,'--checkout',child],w.name+'-validate-'+sid,env)
+ native(w,['commit',w,child,'--parent',parent,'--genid',sid],w.name+'-commit-'+sid,env)
+def transfer(src,dst,parent,sid,env):
+ if tagged(dst,sid):
+  assert trees(src,sid)==trees(dst,sid);return
+ assert trees(src,parent)==trees(dst,parent),'different parent code'
+ diff=subprocess.check_output(['git','-C',str(src),'diff','--binary','gen/'+parent,'gen/'+sid,'--','target','operators'])
+ child=fork(dst,parent,sid,env);subprocess.run(['git','-C',str(child),'apply','--binary','-'],input=diff,check=True)
+ finish(dst,child,parent,sid,env);assert trees(src,sid)==trees(dst,sid)
+def filedata(w,sid,path):
+ return subprocess.check_output(['git','-C',str(w),'show','gen/'+sid+':target/'+path]).decode()
+def applies(ops,src):
+ if not ops or not PolicyGuard().inspect(Patch(target='harness',ops=ops)).allowed:return False
+ with tempfile.TemporaryDirectory(dir=N) as tmp:
+  root=Path(tmp)
+  for path,raw in src.items():f=root/path;f.parent.mkdir(parents=True,exist_ok=True);f.write_text(raw)
+  for op in ops:
+   if op.get('op')!='diff' or op.get('path') not in PATHS:return False
+   if subprocess.run(['git','apply','--whitespace=nowarn','-'],input=op['unified'],text=True,cwd=root,capture_output=True).returncode:return False
+  try:
+   assert isinstance(yaml.safe_load((root/PATHS[0]).read_text())['agent'],dict)
+   compile((root/PATHS[1]).read_text(),PATHS[1],'exec')
+  except (SyntaxError,ValueError,AssertionError,KeyError,TypeError,yaml.YAMLError):return False
+  return True
+def freeze_pool(train,parent,rc,epoch,env):
+ group=f'g{epoch}-p{parent}';base=N/'pool'/group;base.mkdir(parents=True)
+ a=json.loads(Path(rc['manifest']).read_text());assert hashlib.sha256(Path(rc['manifest']).read_bytes()).hexdigest()==rc['sha256']
+ episodes=[]
+ for t in sorted(a['trials'],key=lambda x:x['task_name']):
+  name=t['task_name'];entry=rc['tasks'][name];tail=[]
+  if name in clean(rc) and entry['reward']<1:
+   for f in t['files']:
+    if f['path'].endswith('/agent/trajectory.json'):
+     path=Path(a['jobs_dir'])/f['path'];assert hashlib.sha256(path.read_bytes()).hexdigest()==f['sha256']
+     st,_=atif_steps(json.loads(path.read_text()));tail=[str(z.model_dump(mode='json'))[-300:] for z in st[-3:]]
+  episodes.append({'train_task':name,'score':entry['reward'],'status':entry['status'],'exception':entry['exception'],
+    'instruction':(N/'data-train'/name/'instruction.md').read_text()[:450] if tail else None,'last_steps':tail})
+ assert len(episodes)==50
+ if not any(x['last_steps'] for x in episodes):
+  write('pool/'+group+'/outcome.json',{'status':'no_train_failure_signal'});return None
+ src={p:filedata(train,parent,p) for p in PATHS}
+ meter=RequestBudget(8,base/'requests.jsonl');mark=request_observer.set(meter)
+ atoms=[];why=[];identity=set();chosen=None
+ system='Propose up to four small, independent general agent improvements, each supported by training failures. Use only train evidence and original files. No task-specific solutions, benchmark shortcuts, credential, budget or evaluator changes. JSON only: {"edits":[{"path":"...","before":"unique exact original substring","after":"replacement","reason":"evidence and prediction"}]}. Keep whitespace exact; keep each edit one hunk of <=12 added plus removed lines; prefer distinct positions. If evidence is insufficient, say so.'
+ try:
+  for attempt in range(6):
+   if meter.report()['search_used']>=8:break
+   out=chat('https://api.openai.com/v1','gpt-6.1-terra',[{'role':'system','content':system},{'role':'user','content':json.dumps({'originals':src,'train_only':episodes,'already_kept':why})}],temperature=None,max_tokens=8000,api_key=env['OPENAI_API_KEY'])
+   txt=out['text'];write(f'pool/{group}/reply-{attempt}.json',{'response':txt,'usage':out.get('usage')})
+   try:d=json.loads(txt.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip())
+   except ValueError:d={}
+   for e in d.get('edits',[]) if isinstance(d,dict) and isinstance(d.get('edits'),list) else []:
+    if not isinstance(e,dict):continue
+    path=e.get('path');before=e.get('before');after=e.get('after')
+    if path not in src or not isinstance(before,str) or not isinstance(after,str) or not before.strip() or src[path].count(before)!=1 or before==after or not e.get('reason'):continue
+    try:op=line_hunks(path,src[path],src[path].replace(before,after,1),12)
+    except ValueError:continue
+    if len(op)!=1 or not applies(op,src):continue
+    digest=hashlib.sha256(op[0]['unified'].encode()).hexdigest()
+    if digest in identity:continue
+    identity.add(digest);atoms+=op;why.append({'path':path,'before':before[:200],'reason':str(e['reason'])[:300]})
+   for a,b,c,d in itertools.combinations(atoms,4):
+    ordered=sorted([a,b,c,d],key=lambda o:hashlib.sha256(o['unified'].encode()).hexdigest())[:2]
+    if not applies(ordered,src):continue
+    for u,v in [([a,b],[c,d]),([a,c],[b,d]),([a,d],[b,c])]:
+     if applies(u,src) and applies(v,src):chosen=[u,v,[ordered[0]],[ordered[1]]];break
+    if chosen:break
+   if chosen:break
+ finally:request_observer.reset(mark);write('pool/'+group+'/budget.json',meter.report())
+ write('pool/'+group+'/outcome.json',{'parent':parent,'parent_trees':trees(train,parent),'train_receipt':rc['sha256'],'status':'frozen' if chosen else 'ineligible','ops':chosen,'reasons':why})
+ return chosen
+def patch_child(w,parent,sid,ops,env):
+ assert applies(ops,{p:filedata(w,parent,p) for p in PATHS})
+ child=fork(w,parent,sid,env)
+ for op in ops:subprocess.run(['git','-C',str(child),'apply','--directory=target','-'],input=op['unified'],text=True,check=True)
+ assert set(git(child,'diff','--name-only').splitlines()) <= {'target/'+p for p in PATHS}
+ finish(w,child,parent,sid,env)
+def deep_copy_version(src,dst,sid,dest_sid,env):
+ # Post-freeze only: materialize the complete selected target + operators under a fresh root.
+ child=fork(dst,'0',dest_sid,env)
+ for field in ('target','operators'):
+  shutil.rmtree(child/field)
+  archive=subprocess.check_output(['git','-C',str(src),'archive','gen/'+sid,field])
+  with tarfile.open(fileobj=io.BytesIO(archive)) as tar:tar.extractall(child,filter='data')
+ finish(dst,child,'0',dest_sid,env);assert trees(src,sid)==trees(dst,dest_sid)
+def make_workspace(name,role,env):
+ w=N/name
+ if w.exists():return w
+ recipe=N/('recipe-'+role)
+ if name.startswith('reference-'):
+  ref_recipe=N/('reference-recipe-'+role);shutil.copytree(recipe,ref_recipe)
+  f=ref_recipe/'evolve.yaml';cfg=yaml.safe_load(f.read_text());cfg['experiment']['max_generations']=json.loads((N/'protocol.json').read_text())['generations'];f.write_text(yaml.safe_dump(cfg,sort_keys=False));recipe=ref_recipe
+ subprocess.run([str(O/'source/.venv/bin/python'),'-m','evolve','init',str(w),'--recipe-path',str(recipe),'--dataset',str(N/('data-'+role)),'--seed',str(N/'seed')],cwd=O/'source',env=env,check=True)
+ return w
+def pool_seed_groups(lineages):
+ by={}
+ for name,path in lineages.items():by.setdefault(path[-1]['sid'],[]).append(name)
+ return by
+def metrics(r,parts):
+ return {k:{'pass_at_1':sum(float(r['tasks'][t]['reward'] or 0) for t in ts)/len(ts),'passed':sum((r['tasks'][t]['reward'] or 0)>=1 for t in ts),'scoreable':len(set(ts)&clean(r)),'total':len(ts)} for k,ts in parts.items()}
+def multigen(key,gens,baseline):
+ env=json.loads((N/'public-environment.json').read_text());env.update(OPENAI_API_KEY=key,OPENAI_BASE_URL='https://api.openai.com/v1')
+ train=N/'native-train';gate=N/'native-gate'
+ root_t=json.loads((N/'receipts/initial-train.json').read_text());root_g=json.loads((N/'receipts/initial-gate.json').read_text())
+ preflight_data(train,root_t,'train');preflight_data(gate,root_g,'gate')
+ assert trees(train,'0')==trees(gate,'0')
+ arms={k:[{'epoch':0,'sid':'0','score':root_g['score']}] for k in ('whole','best_atom','merge')}
+ parents={'0':None}
+ bt=bg=None
+ if baseline:
+  bt=make_workspace('reference-train','train',env);bg=make_workspace('reference-gate','gate',env)
+  assert trees(bt,'0')==trees(bg,'0')==trees(train,'0')
+  score(bt,'0','train','reference-root-train',env);b0=score(bg,'0','gate','reference-root-gate',env)
+  base_hist=[{'epoch':0,'sid':'0','score':b0['score'],'eligible':True}]
+ for epoch in range(1,gens+1):
+  # Freeze group membership before obtaining any scores in this epoch.
+  groups=pool_seed_groups(arms);counter=0
+  for parent,names in groups.items():
+   stage(stage='train_parent',epoch=epoch,arms=names,parent=parent)
+   if parent!='0' and not tagged(train,parent):transfer(gate,train,parents[parent],parent,env)
+   tr=root_t if epoch==1 else score(train,parent,'train',f'g{epoch}-p{parent}-train',env,force=parent=='0' or bool(any(json.loads(l).get('_evolve_mechanism_eval') and json.loads(l).get('genid')==parent for l in (train/'archive.jsonl').read_text().splitlines())))
+   gr=root_g if epoch==1 else score(gate,parent,'gate',f'g{epoch}-p{parent}-gate',env,force=True)
+   rows=freeze_pool(train,parent,tr,epoch,env)
+   if not rows:
+    for name in names:arms[name].append({'epoch':epoch,'parent':parent,'sid':parent,'accepted':False,'score':gr['score'],'reason':'no eligible pool','train_count':50})
+    continue
+   use=set(([0,1] if 'whole' in names else [])+([2,3] if any(a!='whole' for a in names) else []));bank={}
+   for i in sorted(use):
+    counter+=1;sid=f'{epoch}-{counter}';patch_child(gate,parent,sid,rows[i],env);parents[sid]=parent
+    bank[i]=(sid,score(gate,sid,'gate',f'g{epoch}-candidate-{sid}',env))
+   valid=set.intersection(clean(gr),*(clean(rc) for _,rc in bank.values()))
+   if len(valid)<16:raise RuntimeError('too few clean paired selection tasks')
+   base={t:gr['tasks'][t]['reward'] for t in valid}
+   vectors=[{t:bank[i][1]['tasks'][t]['reward'] for t in valid} if i in bank else base for i in range(4)]
+   choices=pick(base,vectors[:2],vectors[2:],step=2);nom={}
+   if 'whole' in names:nom['whole']=parent if choices['whole'] is None else bank[choices['whole']][0]
+   if 'best_atom' in names:nom['best_atom']=parent if choices['best_atom'] is None else bank[2+choices['best_atom']][0]
+   if 'merge' in names:
+    idx=choices['merge']
+    if not idx:nom['merge']=parent
+    elif len(idx)==1:nom['merge']=bank[2+idx[0]][0]
+    else:
+     # Only combine candidates measured in this epoch, on this exact parent.
+     merged=merge_patches([Patch(target='harness',ops=rows[2+i],base_snapshot=tr['snapshot']) for i in idx])
+     if applies(merged.ops,{p:filedata(gate,parent,p) for p in PATHS}):
+      counter+=1;sid=f'{epoch}-{counter}';patch_child(gate,parent,sid,merged.ops,env);parents[sid]=parent;nom['merge']=sid
+     else:
+      nom['merge']=parent
+      write(f'epochs/{epoch}-{parent}-merge-rejected.json',{'reason':'positive atoms conflict or fail guard; keep parent'})
+   write(f'epochs/{epoch}-{parent}-selection.json',{'parent':parent,'selection_tasks':sorted(valid),'nominees':nom})
+   confirmation=score(gate,parent,'gate',f'g{epoch}-p{parent}-confirm-parent',env,force=True)
+   confirm={}
+   for sid in sorted(set(nom.values())-{parent}):
+    # The merged tag may be newly committed, whereas a singleton was already scored.
+    confirm[sid]=score(gate,sid,'gate',f'g{epoch}-p{parent}-confirm-{sid}',env,force=any(x[0]==sid for x in bank.values()))
+   for name in names:
+    sid=nom[name];accepted=sid!=parent and positive(confirm[sid],confirmation);winner=sid if accepted else parent
+    r=confirm[sid] if accepted else confirmation
+    arms[name].append({'epoch':epoch,'parent':parent,'sid':winner,'nominee':sid,'accepted':accepted,'score':r['score'],'train_count':50,'gate_count':19,'target_tree':trees(gate,winner)[0]})
+  write(f'epochs/{epoch}-lineage.json',arms)
+  if baseline:
+   g=str(epoch)
+   native(bg,['operator','run',bg,'select','--genid',g],f'reference-{g}-select',env)
+   par=str(json.loads((bg/'runs'/f'gen-{g}'/'parents.json').read_text())['parents'][0])
+   score(bt,par,'train',f'reference-{g}-train-parent',env,force=True) if not(epoch==1 and par=='0') else None
+   child=fork(bt,par,g,env)
+   for op in ('rollout','analyze','mutate'):
+    native(bt,['operator','run',bt,op,'--genid',g,'--parent',par,'--checkout',child],f'reference-{g}-{op}',env)
+   finish(bt,child,par,g,env);transfer(bt,bg,par,g,env)
+   r=score(bg,g,'gate',f'reference-{g}-gate',env)
+   native_row={}
+   for l in (bg/'archive.jsonl').read_text().splitlines():
+    d=json.loads(l)
+    if d.get('genid')==g:native_row.update(d)
+   base_hist.append({'epoch':epoch,'sid':g,'parent':par,'score':r['score'],'eligible':native_row.get('valid_parent') is True})
+   write(f'epochs/{epoch}-reference.json',base_hist)
+ # Choose by gate only. Never inspect the final dataset for selection.
+ frozen={k:max(path,key=lambda r:r['score'])['sid'] for k,path in arms.items()}
+ if baseline:frozen['reference']=max((r for r in base_hist if r['eligible']),key=lambda r:r['score'])['sid']
+ write('frozen-winners.json',{'chosen_by':'highest recorded gate score; earliest on ties','versions':frozen,'epochs':gens,'lineages':arms})
+ stage(stage='post-freeze-full-eval',winners=frozen)
+ eval_full(env,gate,bg,frozen)
+
+def eval_full(env,gate,bg,frozen):
+ from final_scoring import finish as post_freeze
+ post_freeze(sys.modules[__name__],env,gate,bg,frozen)
+
+if __name__=='__main__':
+ key=json.load(sys.stdin)['key']
+ try:
+  plan=json.loads((N/'protocol.json').read_text());multigen(key,plan['generations'],plan['native_reference'])
+ except BaseException as e:
+  write('error.json',{'at':time.time(),'type':type(e).__name__,'message':str(e).replace(key,'[redacted]')[:900]});raise
