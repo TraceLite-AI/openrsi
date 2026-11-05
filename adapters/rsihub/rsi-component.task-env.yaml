@@ -1,6 +1,6 @@
 protocol: anyrsi/0.4
 name: anyrsi/rsihub-task-env
-version: 0.4.2
+version: 0.4.3
 description: RSIHub 的题库（Harbor 数据集）当环境。按 RSIHub splits._assign 的规则划分 train / gate / sealed，映射成 train / holdout / final；题目带内容哈希。
 kinds: [env]
 implements:
