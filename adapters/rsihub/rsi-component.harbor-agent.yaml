@@ -1,6 +1,6 @@
 protocol: anyrsi/0.4
 name: anyrsi/harbor-agent
-version: 0.4.2
+version: 0.4.3
 description: 每道题调一次 `harbor run`，把 result.json 和 agent/trajectory.json（ATIF）转成轨迹。被进化的 agent 代码经 PYTHONPATH 交给 Harbor；上下文里有权重条目时先启动或重启推理服务。
 kinds: [agent]
 implements:

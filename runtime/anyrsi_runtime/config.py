@@ -120,6 +120,10 @@ class LoopConfig(BaseModel):
                                    description="每隔几代做一次元层进化（improver、curriculum 类型的可进化体）；不填则元层不进化")
     meta_min_gain: float = Field(default=0.0, ge=0.0,
                                  description="元层候选的下游提升至少要比当前版本多多少才接受")
+    max_unscorable: float | None = Field(
+        default=0.2, ge=0.0, le=1.0,
+        description="一批题里无法评分（判分器自己没跑起来：必需的 rubric 项结果是 error）的比例超过它就停下报错；"
+                    "无法评分的题不算分、不参与准入、不交给提案器。None 表示只剔除、不报错")
     group: GroupConfig | None = Field(default=None, description="组提案：一组候选在考试题上比较，按策略选或写经验")
     self_propose: bool = Field(default=False,
                                description="agent 给自己出改法（递归改进）：解题侧的提案交给当前版本的 agent，"

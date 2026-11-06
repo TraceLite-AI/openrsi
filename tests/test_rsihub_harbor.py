@@ -377,3 +377,61 @@ def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+# ---------------------------------------------------------------- 判分器没跑起来、逐个测试用例
+
+
+def test_verifier_that_never_ran_tests_is_unscorable_not_zero(tmp_path):
+    from anyrsi_rsihub.harbor import read_verifier
+    from anyrsi_runtime.scoring import unscorable
+
+    ds = make_dataset(tmp_path / "ds")
+    task = RSIHubTaskEnv(str(ds)).tasks("holdout")[0]
+    (ds / task.id / "tests" / "broken_verifier").write_text("")
+    traj = harbor_agent(tmp_path, make_repo(tmp_path / "repo")).run(task, [], "s")
+    assert traj.metadata["harbor"]["reward"] == 0.0  # Harbor 自己记的是普通 0 分
+    trial = Path(traj.metadata["harbor"]["result_path"]).parent
+    info = read_verifier(trial)
+    assert info["started"] is False and "Read-only" in info["stdout_tail"] and info["tests"] == []
+    v = HarborRewardJudge().evaluate(task, traj, [])
+    assert v.rubric[0].id == "verifier_started" and v.rubric[0].result == "error" and v.rubric[0].required
+    assert "Read-only" in unscorable(v)
+    assert v.collected[0].content["tests_started"] is False
+    # 关掉检查时退回原来的行为：普通 0 分
+    off = HarborRewardJudge(require_tests_started=False).evaluate(task, traj, [])
+    assert unscorable(off) is None and not off.passed and off.score == 0.0
+
+
+def test_each_test_case_is_a_rubric_item_with_its_failure_message(tmp_path):
+    from anyrsi_runtime.scoring import unscorable
+
+    ds = make_dataset(tmp_path / "ds")
+    task = RSIHubTaskEnv(str(ds)).tasks("holdout")[0]
+    good = HarborRewardJudge().evaluate(task, harbor_agent(tmp_path, make_repo(tmp_path / "r1")).run(task, [], "a"), [])
+    assert good.passed and unscorable(good) is None
+    assert {r.id: r.result for r in good.rubric} == {"verifier_reward": "pass", "test:test_answer": "pass",
+                                                     "test:test_newline": "pass"}
+    traj = harbor_agent(tmp_path, make_repo(tmp_path / "r2", answer='"wrong"')).run(task, [], "b")
+    bad = HarborRewardJudge().evaluate(task, traj, [])
+    by = {r.id: r for r in bad.rubric}
+    assert not bad.passed and bad.score == 0.0 and by["test:test_answer"].result == "fail"
+    assert "expected" in by["test:test_answer"].note and not by["test:test_answer"].required
+    assert by["test:test_newline"].result == "pass" and "1/2" in by["verifier_reward"].note
+    assert HarborRewardJudge(score_by="tests").evaluate(task, traj, []).score == 0.5
+    with pytest.raises(ValueError):
+        HarborRewardJudge(score_by="nope")
+    # 提案器看到的"为什么错"里有具体测试的报错
+    from anyrsi.self_improve import build_task
+    req = ProposalRequest(target=EvolvableInfo(target="h", type="harness", head="x"), parent_snapshot="p", state=[],
+                          episodes=[Episode(task=task, trajectory=traj, verdict=bad)])
+    assert "AssertionError: expected" in build_task(req, gen=0, index=0).input["failures"][0]["why_wrong"]
+
+
+def test_ctrf_statuses_map_to_rubric_results():
+    j = HarborRewardJudge(max_tests=3, message_chars=10)
+    tests = [{"name": "a", "status": "passed"}, {"name": "b", "status": "failed", "message": "x" * 50},
+             {"name": "c", "status": "skipped"}, {"name": "d", "status": "failed"}]
+    out = j._tests({"tests": tests}, "ev")
+    assert [(r.id, r.result) for r in out] == [("test:a", "pass"), ("test:b", "fail"), ("test:c", "skip")]
+    assert out[1].note == "test b failed: " + "x" * 10  # 报错截短
