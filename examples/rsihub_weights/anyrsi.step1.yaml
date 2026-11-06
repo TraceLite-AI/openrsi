@@ -6,7 +6,8 @@
 #   anyrsi run examples/rsihub_weights/anyrsi.step1.yaml
 #   anyrsi log examples/rsihub_weights/anyrsi.step1.yaml
 #
-# 第 2 步（测噪声）用同一份配置：python benchmarks/noise/noise.py examples/rsihub_weights/anyrsi.step1.yaml --repeats 3
+# 跑之前先按 benchmarks/terminal_preflight/README.md 做：修判分环境 → 体检（preflight.py）→ 测噪声并挑考试题
+# （noise.py --split all + headroom.py，把挑出的 gate 列表填进下面 env 的 with）→ 再跑进化。
 #
 # 待确认：mini-swe-agent 在容器里调用 API 模型时怎么拿到 key。下面用 Harbor 的 --ae 把 key 传进容器；
 # 如果你的 Harbor 版本会自动透传宿主机环境变量，可以去掉那一项。
@@ -20,6 +21,7 @@ components:
       dataset: /path/to/RSIHub/.evolve-assets/terminal-bench-2.0/raw/terminal-bench
       seed: 0
       train_per_round: 5          # 每代只练 5 道
+      # gate: [...]               # headroom.py 挑出的考试题（能正常判分、起点 agent 又常做不出来的题）
   agent:
     python: "anyrsi_rsihub:HarborAgent"
     with:
@@ -32,7 +34,9 @@ components:
       extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_API_KEY=${{ANYRSI_HARBOR_API_KEY}}"]
       env: [DOCKER_HOST, ANYRSI_HARBOR_API_KEY]
       timeout: 3600
-  judge: {python: "anyrsi_rsihub:HarborRewardJudge"}
+  judge:
+    python: "anyrsi_rsihub:HarborRewardJudge"
+    with: {require_tests_started: true}   # 测试没开始就判"无法评分"，不记 0 分
   proposer:
     python: "anyrsi_llm:CodeRewriter"
     with: {base_url: "https://api.openai.com/v1", model: gpt-5.4-mini, api_key_env: OPENAI_API_KEY, max_files: 2, max_hunk_lines: 12}
@@ -51,7 +55,8 @@ evolvables:
 
 loop:
   max_patches: 1
-  holdout_limit: 8                # 第 1 步只用 8 道考试题；第 2 步测噪声时去掉这一行，用全部 19 道
+  holdout_limit: 8                # 第 1 步只用 8 道考试题；测噪声、挑考试题时去掉这一行
+  max_unscorable: 0.2             # 一批题里超过 20% 判分器没跑起来就停下报错
 
 # 第 3 步（对比）在 loop 下加：
 #   group: {size: 2, strategy: merge, atomize: true, max_atoms: 6, confirm_fraction: 0}

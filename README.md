@@ -32,6 +32,7 @@
 
 ## News
 
+- **2026-11** · Measurement safeguards for Terminal-Bench. A run where the verifier never reached its tests is now *unscorable*, not a zero: it is left out of scores, gate comparisons and proposals, and a batch with more than `loop.max_unscorable` (default 20%) of them stops the run. `HarborRewardJudge` reads `verifier/` (each test case in `ctrf.json` becomes a rubric item with its failure message). New [preflight check and gate-task selection](benchmarks/terminal_preflight/README.md): run the oracle and an empty agent before any model call, measure noise on train and gate tasks, and pick gate tasks the starting agent can be graded on but often fails. In the last five-generation run, none of the 19 gate tasks could show an improvement.
 - **2026-11** · Direction momentum (`loop.group.momentum`): directions verified on the exam (which edits helped, on which task tags and rubric items, and which hurt) are handed to the proposer with decay, keeping one unguided proposal per generation as a control. On gpt-4o-mini it lowered the fresh-task score (0.58 → 0.40–0.44, lower in all 9 runs): guided edits are only slightly worse one by one, but guided proposals are less diverse. On gpt-6.1-terra it made no difference (0.93 vs 0.94). Text advice is not a good way to pass direction to the proposer. Runs now stop on quota or auth errors instead of silently scoring zero.
 - **2026-11** · Gradient-like direction finding (`loop.group.atomize` + `merge` strategy): each proposal is split into single edits, each edit is measured against the parent on the same exam tasks (a finite difference), and every edit that helps is merged into one step. On a toy problem a very weak proposer goes from 0.61 to 0.81 (best 0.85). On a real weak LLM (gpt-4o-mini, easy secret-ops) it beats the plain loop by +0.10 on fresh tasks at equal cost, as long as the exam is not split in halves; when the model almost never proposes the right change (hard version), it does not help. New `anyrsi_llm:PatchProposer`; `chat()` retries dropped connections.
 - **2026-11** · Self-proposal tested on real LLMs (gpt-6.1-terra / gpt-6.1-sol / gpt-4o-mini): `loop.self_propose` works end to end and matches a separate prompt rewriter (0.04 → about 0.9 on the hard secret-ops task). But with the prompt as the only thing evolving, a stronger agent version does not write better edits: the edit quality depends on the model, not on the evolved prompt. Recursion needs the model itself (weights) to improve. See [benchmarks/self_propose_llm](benchmarks/self_propose_llm/README.md). The LLM components now handle models that reject `max_tokens` or a custom `temperature`.
@@ -359,7 +360,7 @@ When the weak model sometimes proposes the right change, measuring single edits 
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 357 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 371 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 
@@ -435,3 +436,7 @@ AnyRSI builds on the [Model Context Protocol](https://modelcontextprotocol.io) a
 [Apache License 2.0](LICENSE)
 
 The [controlled direction pilot](benchmarks/self_propose_llm/README.md) uses disjoint expression identities and equal search HTTP-attempt ceilings, including proposals and retries. Historical tables use the earlier protocol. CodeRewriter optionally emits bounded line hunks (`max_hunk_lines`); a hunk is a structural unit, not a guarantee of one behavioral change.
+
+### Recorded experiment audit (2026-11-05)
+
+A five-generation Terminal-Bench run using AnyRSI selection components and RSIHub native scoring completed, but verifier startup failures invalidate a method-quality conclusion. Original scores, all candidate diffs, the per-trial audit and an offline consistency checker are in [the experiment record](benchmarks/terminal_multigen_20261103/README.md). These results do not replace the unrun standard RSIHub parity recipe or establish a performance gain.

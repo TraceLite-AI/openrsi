@@ -1,0 +1,12 @@
+diff --git a/target/src/minisweagent/config/mini.yaml b/target/src/minisweagent/config/mini.yaml
+index 8b72f71..de58a2d 100644
+--- a/target/src/minisweagent/config/mini.yaml
++++ b/target/src/minisweagent/config/mini.yaml
+@@ -12,6 +12,7 @@ agent:
+ 
+     1. Analyze the codebase by finding and reading relevant files
+     2. Create a script to reproduce the issue
++       If you transcribe or convert inputs into another representation, cross-check that representation against the original before relying on downstream results.
+     3. Edit the source code to resolve the issue
+     4. Verify your fix works by running your script again
+     5. Test edge cases to ensure your fix is robust

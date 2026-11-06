@@ -1,0 +1,13 @@
+diff --git a/target/src/minisweagent/config/mini.yaml b/target/src/minisweagent/config/mini.yaml
+index 8b72f71..38fda24 100644
+--- a/target/src/minisweagent/config/mini.yaml
++++ b/target/src/minisweagent/config/mini.yaml
+@@ -18,6 +18,8 @@ agent:
+     6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+        Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+ 
++    Before submission, inspect required output files as bytes and check their exact format, including escaping and line endings.
++
+     ## Command Execution Rules
+ 
+     You are operating in an environment where

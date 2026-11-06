@@ -1,0 +1,399 @@
+{
+  "integrity": "passed",
+  "valid_for_method_comparison": false,
+  "reason": "Verifier startup failure silently recorded as ordinary zero rewards.",
+  "generations": 5,
+  "accepted": {
+    "whole": 0,
+    "best_atom": 0,
+    "merge": 0
+  },
+  "final_versions": {
+    "whole": "0",
+    "best_atom": "0",
+    "merge": "0"
+  },
+  "candidate_versions": 22,
+  "changed_file_set": [
+    "target/src/minisweagent/config/mini.yaml"
+  ],
+  "prompt_activation_traces_checked": 532,
+  "physical_trials": 1061,
+  "verifier_readonly_failures": 643,
+  "readonly_marked_ordinary_zero": 642,
+  "readonly_with_pytest_started": 0,
+  "readonly_by_phase": {
+    "final": 40,
+    "gate": 493,
+    "train": 110
+  },
+  "readonly_final_by_split": {
+    "train": 22,
+    "gate": 13,
+    "sealed": 5
+  },
+  "native_exception_codes": {
+    "NonZeroAgentExitCodeError": 10,
+    "AgentTimeoutError": 1
+  },
+  "selection_parent_runs": 10,
+  "selection_parent_passed": [
+    5,
+    5,
+    4,
+    5,
+    4,
+    5,
+    4,
+    4,
+    5,
+    4
+  ],
+  "stable_failed_gate_tasks": [
+    "adaptive-rejection-sampler",
+    "bn-fit-modify",
+    "configure-git-webserver",
+    "filter-js-from-html",
+    "financial-document-processor",
+    "mcmc-sampling-stan",
+    "merge-diff-arc-agi-task",
+    "password-recovery",
+    "path-tracing",
+    "path-tracing-reverse",
+    "prove-plus-comm",
+    "sparql-university",
+    "torch-pipeline-parallelism",
+    "train-fasttext"
+  ],
+  "stable_failed_gate_tasks_rescued": [],
+  "varying_gate_tasks": {
+    "gcode-to-text": {
+      "parent_successes": 7,
+      "parent_attempts": 10,
+      "initial_candidate_successes": 15,
+      "initial_candidate_attempts": 20
+    },
+    "portfolio-optimization": {
+      "parent_successes": 8,
+      "parent_attempts": 10,
+      "initial_candidate_successes": 18,
+      "initial_candidate_attempts": 20
+    }
+  },
+  "generated_unique_atoms_per_generation": [
+    5,
+    6,
+    6,
+    6,
+    9
+  ],
+  "explicitly_scored_singletons": 10,
+  "epochs": [
+    {
+      "generation": 1,
+      "parent_initial_passed": 4,
+      "parent_confirmation_passed": 5,
+      "initial": {
+        "1-1": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "1-2": {
+          "passed": 5,
+          "native_clean_pairs": 18,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "1-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "1-4": {
+          "passed": 4,
+          "native_clean_pairs": 19,
+          "changed": {}
+        }
+      },
+      "confirmation": {
+        "1-1": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        },
+        "1-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        }
+      }
+    },
+    {
+      "generation": 2,
+      "parent_initial_passed": 4,
+      "parent_confirmation_passed": 5,
+      "initial": {
+        "2-1": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "2-2": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "2-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "2-4": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              0.0,
+              1.0
+            ]
+          }
+        }
+      },
+      "confirmation": {
+        "2-1": {
+          "passed": 4,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              1.0,
+              0.0
+            ]
+          }
+        },
+        "2-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        },
+        "2-5": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        }
+      }
+    },
+    {
+      "generation": 3,
+      "parent_initial_passed": 4,
+      "parent_confirmation_passed": 5,
+      "initial": {
+        "3-1": {
+          "passed": 4,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              1.0,
+              0.0
+            ],
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "3-2": {
+          "passed": 4,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              1.0,
+              0.0
+            ],
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "3-3": {
+          "passed": 4,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              1.0,
+              0.0
+            ],
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "3-4": {
+          "passed": 3,
+          "native_clean_pairs": 19,
+          "changed": {
+            "gcode-to-text": [
+              1.0,
+              0.0
+            ]
+          }
+        }
+      },
+      "confirmation": {}
+    },
+    {
+      "generation": 4,
+      "parent_initial_passed": 4,
+      "parent_confirmation_passed": 5,
+      "initial": {
+        "4-1": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "4-2": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "4-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        },
+        "4-4": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {
+            "portfolio-optimization": [
+              0.0,
+              1.0
+            ]
+          }
+        }
+      },
+      "confirmation": {
+        "4-1": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        },
+        "4-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        },
+        "4-5": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        }
+      }
+    },
+    {
+      "generation": 5,
+      "parent_initial_passed": 5,
+      "parent_confirmation_passed": 4,
+      "initial": {
+        "5-1": {
+          "passed": 4,
+          "native_clean_pairs": 19,
+          "changed": {
+            "portfolio-optimization": [
+              1.0,
+              0.0
+            ]
+          }
+        },
+        "5-2": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        },
+        "5-3": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        },
+        "5-4": {
+          "passed": 5,
+          "native_clean_pairs": 19,
+          "changed": {}
+        }
+      },
+      "confirmation": {}
+    }
+  ],
+  "raw_final": {
+    "train": {
+      "pass_at_1": 0.44,
+      "passed": 22,
+      "scoreable": 49,
+      "total": 50
+    },
+    "gate": {
+      "pass_at_1": 0.21052631578947367,
+      "passed": 4,
+      "scoreable": 19,
+      "total": 19
+    },
+    "sealed": {
+      "pass_at_1": 0.45,
+      "passed": 9,
+      "scoreable": 19,
+      "total": 20
+    },
+    "all89": 0.39325842696629215
+  },
+  "native_recorded_model_calls": 18267,
+  "native_estimated_target_usd": 98.45719345,
+  "estimated_target_usd_on_readonly_trials": 65.8064261,
+  "proposer_http_attempts": 16,
+  "proposer_reported_tokens": 254469
+}

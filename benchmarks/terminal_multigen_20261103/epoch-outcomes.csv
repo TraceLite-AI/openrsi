@@ -1,0 +1,6 @@
+epoch,parent_initial,whole_1,whole_2,single_1,single_2,parent_confirmation,whole_confirmation,single_confirmation,merge_confirmation
+1,4,5,5,5,4,5,5,5,not nominated
+2,4,5,5,5,5,5,4,5,5
+3,4,4,4,4,3,5,not nominated,not nominated,not nominated
+4,4,5,5,5,5,5,5,5,5
+5,5,4,5,5,5,4,not nominated,not nominated,not nominated

@@ -85,13 +85,17 @@ class RSIHubTaskEnv(Environment):
     seed             划分种子，默认 0
     train_per_round  每代练习多少道 train 题（按代号轮换），不给就每代全部
     include          可选：只用这些题（名字列表），在划分之前筛选
+    gate             可选：直接指定考试题（名字列表），比如用 benchmarks/terminal_preflight/headroom.py 挑出的
+                     "能正常判分、起点 agent 又常做不出"的题。封存题（sealed）仍按 seed 划分、保持不动，
+                     指定的考试题不能和封存题重叠；其余的题都归练习题
     """
 
     name = "anyrsi/rsihub-task-env"
-    version = "0.4.2"
+    version = "0.4.3"
 
     def __init__(self, dataset: str, split: dict[str, float] | None = None, seed: int = 0,
-                 train_per_round: int | None = None, include: list[str] | None = None):
+                 train_per_round: int | None = None, include: list[str] | None = None,
+                 gate: list[str] | None = None):
         self.dataset = Path(dataset).expanduser().resolve()
         if not self.dataset.is_dir():
             raise ComponentError(f"找不到 Harbor 数据集目录 {self.dataset}")
@@ -106,6 +110,16 @@ class RSIHubTaskEnv(Environment):
         self.seed, self.train_per_round = seed, train_per_round
         self.ratios = dict(split or PARITY_SPLIT)
         self.splits = assign_splits(names, self.ratios, seed)
+        if gate is not None:
+            unknown = sorted(set(gate) - set(names))
+            sealed = sorted(set(gate) & set(self.splits["sealed"]))
+            if unknown:
+                raise ComponentError(f"gate 里的题不在数据集中：{unknown[:5]}")
+            if sealed:
+                raise ComponentError(f"gate 里的题是封存题，不能拿来做准入：{sealed[:5]}")
+            chosen = set(gate)
+            self.splits = {"train": [n for n in names if n not in chosen and n not in set(self.splits["sealed"])],
+                           "gate": [n for n in names if n in chosen], "sealed": list(self.splits["sealed"])}
         self.root = self.dataset if not (self.dataset / "task.toml").is_file() else self.dataset.parent
 
     def _task(self, name: str, rsihub_split: str) -> Task:
@@ -227,7 +241,7 @@ class HarborAgent(Agent):
     """
 
     name = "anyrsi/harbor-agent"
-    version = "0.4.2"
+    version = "0.4.3"
 
     def __init__(self, agent_args: list[str], repo: str | None = None, command: list[str] | None = None,
                  extra_args: list[str] | None = None, env: list[str] | None = None,
@@ -323,24 +337,73 @@ class HarborAgent(Agent):
 # ---------------------------------------------------------------- judge
 
 
+TEST_STARTED_MARKERS = ("test session starts", "collected ", "PASSED", "FAILED")
+
+
+def read_verifier(trial_dir: Path) -> dict[str, Any]:
+    """读 trial 目录下 verifier/ 里判分器留下的东西：每个测试用例的结果（ctrf.json）、
+    测试输出（test-stdout.txt）的结尾，以及测试是否真的开始跑了。verifier/ 不存在时 started = None（无从判断）。"""
+    vdir = trial_dir / "verifier"
+    out: dict[str, Any] = {"started": None, "tests": [], "stdout_tail": ""}
+    if not vdir.is_dir():
+        return out
+    stdout = ""
+    for name in ("test-stdout.txt", "test_stdout.txt", "stdout.txt"):
+        if (vdir / name).is_file():
+            stdout = (vdir / name).read_text(encoding="utf-8", errors="replace")
+            break
+    out["stdout_tail"] = "\n".join(stdout.strip().splitlines()[-8:])[-1200:]
+    ctrf = vdir / "ctrf.json"
+    if ctrf.is_file():
+        try:
+            data = json.loads(ctrf.read_text(encoding="utf-8"))
+            tests = ((data.get("results") or {}).get("tests") or []) if isinstance(data, dict) else []
+            out["tests"] = [t for t in tests if isinstance(t, dict) and t.get("name")]
+        except (OSError, json.JSONDecodeError):
+            pass
+    out["started"] = bool(out["tests"]) or any(m in stdout for m in TEST_STARTED_MARKERS)
+    return out
+
+
 class HarborRewardJudge(Judge):
     """按 Harbor 验证脚本的奖励打分：score = 奖励（截到 0–1），奖励 ≥ pass_threshold 算通过。
 
     自己重新读 result.json：文件不在、哈希和 agent 记下的不一致、或者 task_name 对不上，都判失败。
     没有奖励（验证没跑完、agent 出错）也判失败，原因写进 rubric 的 note。
+
+    判分器没跑起来（verifier/ 里既没有测试结果、输出里也看不到测试开始的迹象，例如装不上测试要的 Python），
+    这次无法评分：必需的 rubric 项 verifier_started 标成 error，运行时不把它当 0 分（见 anyrsi_runtime.scoring）。
+    require_tests_started: false 时关掉这项检查。
+
+    每个测试用例（verifier/ctrf.json）各是一条 rubric（test:<名字>，不是必需项），没通过的带上报错的开头，
+    提案器能看到具体哪个测试、为什么没过。score_by: tests 时分数改用通过的测试比例（通过与否仍看奖励）。
     """
 
     name = "anyrsi/harbor-reward-judge"
-    version = "0.4.2"
+    version = "0.4.3"
 
-    def __init__(self, pass_threshold: float = 1.0):
-        self.pass_threshold = pass_threshold
+    def __init__(self, pass_threshold: float = 1.0, require_tests_started: bool = True, score_by: str = "reward",
+                 max_tests: int = 50, message_chars: int = 300):
+        if score_by not in ("reward", "tests"):
+            raise ValueError("score_by 只能是 reward 或 tests")
+        self.pass_threshold, self.require_tests_started, self.score_by = pass_threshold, require_tests_started, score_by
+        self.max_tests, self.message_chars = max_tests, message_chars
 
     def _fail(self, task: Task, trajectory: Trajectory, why: str) -> Verdict:
         ev = Evidence.make("harbor_result", {"error": why, "task": task.id}, f"trajectory:{trajectory.id}", self.ref)
         return Verdict(passed=False, score=0.0, judge_ref=self.ref, evidence_ids=[ev.id], collected=[ev],
                        rubric=[RubricResult(id="verifier_reward", result="fail", required=True, evidence_ids=[ev.id],
                                             note=why)], notes=[why])
+
+    def _tests(self, verifier: dict[str, Any], ev_id: str) -> list[RubricResult]:
+        out = []
+        for t in verifier["tests"][: self.max_tests]:
+            status = str(t.get("status", "")).lower()
+            result = "pass" if status == "passed" else "skip" if status in ("skipped", "pending", "other") else "fail"
+            msg = str(t.get("message") or t.get("trace") or "").strip().replace("\n", " ")[: self.message_chars]
+            note = f"test {t['name']} {status}" + (f": {msg}" if msg and result == "fail" else "")
+            out.append(RubricResult(id=f"test:{t['name']}"[:200], result=result, evidence_ids=[ev_id], note=note))
+        return out
 
     def evaluate(self, task: Task, trajectory: Trajectory, evidence: list[Evidence] | None = None) -> Verdict:
         harbor = (trajectory.metadata or {}).get("harbor")
@@ -356,24 +419,39 @@ class HarborRewardJudge(Judge):
         if result.get("task_name") != expected:
             return self._fail(task, trajectory, f"result.json 是 {result.get('task_name')} 的，不是 {expected}")
         reward = read_reward(result)
+        verifier = read_verifier(path.parent)
         ev = Evidence.make("harbor_result", {"task_name": result.get("task_name"), "trial_name": result.get("trial_name"),
-                                             "reward": reward, "exception_info": result.get("exception_info")},
+                                             "reward": reward, "exception_info": result.get("exception_info"),
+                                             "tests_started": verifier["started"], "n_tests": len(verifier["tests"]),
+                                             "verifier_stdout_tail": verifier["stdout_tail"]},
                            f"file:{PurePosixPath(*path.parts[-3:])}", self.ref, uri=path.as_uri())
+        exc = result.get("exception_info")
+        agent_crashed = isinstance(exc, dict) and bool(exc.get("exception_type"))
+        if self.require_tests_started and verifier["started"] is False and not agent_crashed:
+            why = "判分器没跑到测试（环境问题，不是 agent 的错）" + \
+                  (f"：{verifier['stdout_tail'][-300:]}" if verifier["stdout_tail"] else "")
+            return Verdict(passed=False, score=0.0, judge_ref=self.ref, evidence_ids=[ev.id], collected=[ev],
+                           rubric=[RubricResult(id="verifier_started", result="error", required=True,
+                                                evidence_ids=[ev.id], note=why)], notes=[why])
+        tests = self._tests(verifier, ev.id)
         if reward is None:
             why = "验证脚本没有给出奖励"
-            exc = result.get("exception_info")
-            if isinstance(exc, dict) and exc.get("exception_type"):
+            if agent_crashed:
                 why += f"（{exc['exception_type']}）"
             return Verdict(passed=False, score=0.0, judge_ref=self.ref, evidence_ids=[ev.id], collected=[ev],
                            rubric=[RubricResult(id="verifier_reward", result="fail", required=True, evidence_ids=[ev.id],
-                                                note=why)], notes=[why])
+                                                note=why), *tests], notes=[why])
         passed = reward >= self.pass_threshold
-        note = f"验证奖励 {reward:g}（通过线 {self.pass_threshold:g}）"
-        return Verdict(passed=passed, score=max(0.0, min(1.0, reward)), judge_ref=self.ref, evidence_ids=[ev.id],
-                       collected=[ev], rubric=[RubricResult(id="verifier_reward", result="pass" if passed else "fail",
-                                                            required=True, evidence_ids=[ev.id], note=note)],
-                       notes=[note])
+        graded = [t for t in tests if t.result in ("pass", "fail")]
+        score = max(0.0, min(1.0, reward))
+        if self.score_by == "tests" and graded:
+            score = sum(t.result == "pass" for t in graded) / len(graded)
+        note = f"验证奖励 {reward:g}（通过线 {self.pass_threshold:g}）" + \
+               (f"；测试 {sum(t.result == 'pass' for t in graded)}/{len(graded)} 通过" if graded else "")
+        return Verdict(passed=passed, score=score, judge_ref=self.ref, evidence_ids=[ev.id], collected=[ev],
+                       rubric=[RubricResult(id="verifier_reward", result="pass" if passed else "fail", required=True,
+                                            evidence_ids=[ev.id], note=note), *tests], notes=[note])
 
 
 __all__ = ["DEFAULT_COMMAND", "HarborAgent", "HarborRewardJudge", "PARITY_SPLIT", "RSIHubTaskEnv", "assign_splits",
-           "atif_steps", "discover_task_names", "find_trial", "read_reward", "task_digest"]
+           "atif_steps", "discover_task_names", "find_trial", "read_reward", "read_verifier", "task_digest"]

@@ -65,6 +65,7 @@ from .cells import CellError, CellRegistry, task_key
 from .config import CellsConfig, LoopConfig
 from .group import Member, atomize, describe_op, lesson_patch, load_strategy, merge_patches, op_key, rollout_seed, split_tasks
 from .momentum import Direction, DirectionLedger, profile
+from .scoring import UnscorableError, unscorable
 from .self_propose import build_task, parse_patch
 from .records import DerivedRecord, EvidenceRecord, RecordError, RecordStore, RunManifest, sanitized_config
 
@@ -155,6 +156,7 @@ class Runner:
         self.metrics: dict[str, dict[str, float]] = {}
         self.task_scores: dict[str, dict[str, float]] = {}
         self.last_task_scores: dict[str, float] = {}
+        self.last_unscorable: dict[str, str] = {}
         self.live_meta: dict[str, str] = {}  # 提案器反馈：跨代保留的 improver 快照
         self._gen = 0                        # 当前代号（给 agent 自提案的题目编号和种子用）
         self._self_index = 0
@@ -224,8 +226,22 @@ class Runner:
         return dict(self.registry.fingerprints) if self.registry else {}
 
     async def train_episodes(self, tasks: list[Task], genome: Genome) -> list[Episode]:
-        """练习题按 loop.train_samples 各答若干次；第 2 次起轨迹 id 加 #s<i>，归因和配对不会混。"""
-        return [await self.episode(t, genome, sample=i) for t in tasks for i in range(self.cfg.train_samples)]
+        """练习题按 loop.train_samples 各答若干次；第 2 次起轨迹 id 加 #s<i>，归因和配对不会混。
+        无法评分的练习题（判分器没跑起来）不交给提案器：那是环境问题，不是 agent 的错。"""
+        eps = [await self.episode(t, genome, sample=i) for t in tasks for i in range(self.cfg.train_samples)]
+        bad = [e for e in eps if unscorable(e.verdict)]
+        self._check_unscorable("train", len(eps), bad)
+        return [e for e in eps if not unscorable(e.verdict)]
+
+    def _check_unscorable(self, prefix: str, total: int, bad: list[Episode]) -> None:
+        if not bad:
+            return
+        why = "; ".join(f"{e.task.id}: {unscorable(e.verdict)}" for e in bad[:5])
+        self.log(f"{prefix}: {len(bad)}/{total} 道题无法评分，已剔除（{why}）")
+        limit = self.cfg.max_unscorable
+        if limit is not None and total and len(bad) / total > limit:
+            raise UnscorableError(f"{prefix}: {len(bad)}/{total} 道题判分器没能正常运行，超过 loop.max_unscorable = "
+                                  f"{limit}。先修好评测环境再跑；例如 {why}")
 
     async def episode(self, task: Task, genome: Genome, exclude: set[str] | None = None, sample: int = 0) -> Episode:
         visible = for_agent(task)
@@ -305,7 +321,12 @@ class Runner:
 
     async def score(self, tasks: list[Task], genome: Genome, prefix: str) -> tuple[dict[str, float], list[Episode]]:
         await self.checkout(genome)  # 判别器按当前快照打分，所以先把所有可进化体切到这个版本
-        episodes = [await self.episode(t, genome) for t in tasks]
+        all_episodes = [await self.episode(t, genome) for t in tasks]
+        # 无法评分的题（判分器自己没跑起来）不算分：既不是通过也不是失败
+        bad = [e for e in all_episodes if unscorable(e.verdict)]
+        self._check_unscorable(prefix, len(all_episodes), bad)
+        self.last_unscorable = {self._key(e.task): unscorable(e.verdict) or "" for e in bad}
+        episodes = [e for e in all_episodes if not unscorable(e.verdict)]
         if not episodes:
             m = {prefix: 0.0, f"{prefix}_pass": 0.0, f"n_{prefix}": 0.0}
         else:
@@ -321,6 +342,8 @@ class Runner:
                     if r.result in ("pass", "fail"):
                         by_item.setdefault(r.id, []).append(1.0 if r.result == "pass" else 0.0)
             m.update({f"rubric:{k}": fmean(v) for k, v in by_item.items()})
+        if bad:
+            m[f"n_{prefix}_unscorable"] = float(len(bad))
         self.last_task_scores = {self._key(e.task): e.verdict.score for e in episodes}
         self.last_task_rubric = {self._key(e.task): {r.id: 1.0 if r.result == "pass" else 0.0 for r in e.verdict.rubric
                                                      if r.result in ("pass", "fail")} for e in episodes}
@@ -723,10 +746,10 @@ class Runner:
         m["train_of_parent"] = train_score
         m = self._with_epoch(m, self.metrics[parent].get("judge_epoch", 0.0) + (1.0 if judge_change else 0.0))
         tasks = self.last_task_scores
-        decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=self.metrics[parent], candidate=m,
+        base_m, base_t, cand_m, cand_t = self._paired(self.metrics[parent], self.task_scores.get(parent, {}), m, tasks)
+        decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=base_m, candidate=cand_m,
                                                   primary_metric="anchor" if judge_change else None,
-                                                  baseline_tasks=self.task_scores.get(parent, {}),
-                                                  candidate_tasks=tasks))
+                                                  baseline_tasks=base_t, candidate_tasks=cand_t))
         decision.checks += guard_checks  # 护栏的警告也留档
         status = "accepted" if decision.accepted else "rejected"
         await w.lineage.record(LineageEntry(id=cid, target=self.lineage_target, parent_ids=[parent], generation=gen,
@@ -846,6 +869,15 @@ class Runner:
                                                                                                self._key(t))}})
                 for t in tasks]
 
+    def _paired(self, base_m: dict[str, float], base_t: dict[str, float], cand_m: dict[str, float],
+                cand_t: dict[str, float]) -> tuple[dict[str, float], dict[str, float], dict[str, float], dict[str, float]]:
+        """两边能评分的题不一样时（有题无法评分），只在两边都有分的题上比，均值也按这些题重算。"""
+        if not base_t or not cand_t or set(base_t) == set(cand_t):
+            return base_m, base_t, cand_m, cand_t
+        common = sorted(set(base_t) & set(cand_t))
+        return ({**base_m, **self._subset(base_t, common)}, {k: base_t[k] for k in common},
+                {**cand_m, **self._subset(cand_t, common)}, {k: cand_t[k] for k in common})
+
     @staticmethod
     def _subset(scores: dict[str, float], keys: list[str]) -> dict[str, float]:
         vals = [scores[k] for k in keys if k in scores]
@@ -888,6 +920,10 @@ class Runner:
             m, _ = await self.score(tasks, member_genome, "holdout")
             results.append((m, dict(self.last_task_scores)))
             rubrics.append(dict(self.last_task_rubric))
+        # 只在父版本和每个候选都能评分的题上比（无法评分的题剔除）
+        sel = [k for k in sel if k in parent_scores and all(k in r[1] for r in results)]
+        if not sel:
+            return await reject("选择半上没有父版本和候选都能评分的题")
         group = [Member(index=i, scores={k: results[i][1][k] for k in sel}, rationale=members[i][1].rationale or "",
                         direction=members[i][3]) for i in range(len(members))]
         decision = strategy.decide({k: parent_scores[k] for k in sel}, group, g.alpha)
@@ -991,6 +1027,7 @@ class Runner:
         """组里选出的候选（或写了经验的新版本）在确认半上和父版本比，交给准入组件决定。"""
         w = self.w
         cid = genome_id(genome)
+        conf = [k for k in conf if k in parent_scores and k in scores]  # 两边都能评分的题
         base = {**{k: v for k, v in parent_m.items() if k == "anchor"}, **self._subset(parent_scores, conf)}
         cand = {**{k: v for k, v in m.items() if k == "anchor"}, **self._subset(scores, conf)}
         decision = await w.gate.check(GateRequest(candidate_id=cid, baseline=base, candidate=cand,
