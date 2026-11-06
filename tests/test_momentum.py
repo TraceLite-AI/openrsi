@@ -124,9 +124,10 @@ def test_only_gate_confirmed_edits_count_as_helped_and_losses_are_kept():
     pr = {"t1": {"ok": 0.0}, "t2": {"ok": 1.0}}
     tags = {"t1": ["⊕"], "t2": ["⊗"]}
 
-    def record(accepted):
+    def record(accepted, applied=(0, 2)):
         fake = SimpleNamespace(ledger=DirectionLedger())
-        report = GenerationReport(generation=3, parent_id="root", parent_metrics={}, train_score=0.0, group={})
+        report = GenerationReport(generation=3, parent_id="root", parent_metrics={}, train_score=0.0,
+                                  group={"applied_members": list(applied)})
         Runner._record_directions(fake, 3, members, results, rubrics, decision, accepted, parent, pr, tags,
                                   ["t1", "t2"], report)
         return fake.ledger.items, report.group["momentum"]
@@ -137,5 +138,7 @@ def test_only_gate_confirmed_edits_count_as_helped_and_losses_are_kept():
     hurt = next(d for d in items if not d.helped)
     assert hurt.advantage == -0.5 and hurt.tags == {"⊗": -1.0} and hurt.rubric == {"ok": -0.5}
     assert stats["by_label"]["guided"]["n"] == 2 and stats["by_label"]["explore"]["improved"] == 1
+    items, _ = record(True, applied=(0,))  # a conflicting edit omitted from the merge gets no credit
+    assert not any("s2:" in d.text for d in items)
     items, _ = record(False)  # 准入没过：合并的那几条不算有用的方向，变差的照样记
     assert [(d.text.split(":")[0], d.helped) for d in items] == [("replace s1", False)]

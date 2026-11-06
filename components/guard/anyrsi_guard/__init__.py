@@ -134,6 +134,8 @@ class PolicyGuard(Guard):
             if any(fnmatch.fnmatch(path, g) or (g.endswith("/**") and path.startswith(g[:-2]))
                    for g in self.protected_paths):
                 block("protected_path", f"不允许修改 {path}", i, path)
+        if self.check_harness_code and op["op"] == "diff" and any(path.endswith(".py") for path in paths):
+            block("code_unverified", "full Python source required for configured AST check", i)
         label = ", ".join(sorted(paths)) or None
         for p in self.secret_patterns:
             if p.search(added):

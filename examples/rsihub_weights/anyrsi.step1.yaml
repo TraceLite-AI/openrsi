@@ -2,6 +2,7 @@
 # 把 /path/to/... 换成你自己的路径，然后：
 #
 #   export OPENAI_API_KEY=...
+#   export ANYRSI_HARBOR_API_KEY="$OPENAI_API_KEY"  # requires Harbor env reference support; verify first
 #   anyrsi run examples/rsihub_weights/anyrsi.step1.yaml
 #   anyrsi log examples/rsihub_weights/anyrsi.step1.yaml
 #
@@ -30,15 +31,15 @@ components:
                 --job-name, "{job}", --jobs-dir, "{jobs_dir}", --n-attempts, "1", -n, "1", -y, -q]
       agent_args: [--agent-import-path, "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent",
                    --model, "{model}"]
-      extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_API_KEY=REPLACE_WITH_KEY_OR_REMOVE"]
-      env: [DOCKER_HOST, OPENAI_API_KEY]
+      extra_args: [--ae, "EVOLVE_CANDIDATE_SOURCE={repo}", --ae, "OPENAI_API_KEY=${{ANYRSI_HARBOR_API_KEY}}"]
+      env: [DOCKER_HOST, ANYRSI_HARBOR_API_KEY]
       timeout: 3600
   judge:
     python: "anyrsi_rsihub:HarborRewardJudge"
     with: {require_tests_started: true}   # 测试没开始就判"无法评分"，不记 0 分
   proposer:
     python: "anyrsi_llm:CodeRewriter"
-    with: {base_url: "https://api.openai.com/v1", model: gpt-5.4-mini, api_key_env: OPENAI_API_KEY, max_files: 2}
+    with: {base_url: "https://api.openai.com/v1", model: gpt-5.4-mini, api_key_env: OPENAI_API_KEY, max_files: 2, max_hunk_lines: 12}
   algorithm: {python: "anyrsi_algorithm:GreedyAlgorithm", with: {max_generations: 2, patience: 2}}
   gate:      {python: "anyrsi_gate:HoldoutGate", with: {max_task_regressions: 2}}
   guard:     {python: "anyrsi_guard:PolicyGuard"}

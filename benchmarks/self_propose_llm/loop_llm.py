@@ -23,13 +23,17 @@ import json
 import random
 import sys
 import time
+from contextvars import copy_context
 from pathlib import Path
+from statistics import fmean
 from typing import Any
 
 import yaml
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+from controlled_pool import ExpressionPool  # noqa: E402
+from request_budget import RequestBudget  # noqa: E402
 from probe import BASE, FORMAT, HARD, OPS, SYMBOLS  # noqa: E402
 
 from anyrsi import Environment, Task  # noqa: E402
@@ -43,6 +47,7 @@ class HardOpsEnv(Environment):
         rng = random.Random(seed)
         self.ops = {k: v for k, v in OPS.items() if k != "add"} if easy else HARD
         self.secret = dict(zip(SYMBOLS, rng.sample(sorted(self.ops), len(SYMBOLS))))
+        self.pool = ExpressionPool(SYMBOLS, seed, hold=holdout_per_symbol)
         self.seed, self.k, self.per, self.hold = seed, symbols_per_round, per_symbol, holdout_per_symbol
 
     def _task(self, split: str, key: str, sym: str, a: int, b: int) -> Task:
@@ -50,21 +55,20 @@ class HardOpsEnv(Environment):
                     reference={"expected": str(self.ops[self.secret[sym]](a, b))})
 
     def tasks(self, split: str, round: int = 0, limit: int | None = None) -> list[Task]:
-        if split == "holdout":
-            rng = random.Random(f"{self.seed}-holdout")
-            out = [self._task("holdout", f"{s}{i}", s, rng.randint(2, 9), rng.randint(2, 9))
-                   for s in SYMBOLS for i in range(self.hold)]
+        if split in ("holdout", "final"):
+            out = [self._task(split, f"{s}:{a}:{b}", s, a, b) for s, a, b in self.pool.rows(split)]
         elif split == "train":
             rng = random.Random(f"{self.seed}-train-{round}")
-            out = [self._task("train", f"{round}.{s}{i}", s, rng.randint(2, 9), rng.randint(2, 9))
-                   for s in rng.sample(SYMBOLS, self.k) for i in range(self.per)]
+            out = [self._task("train", f"{round}:{s}:{a}:{b}", s, a, b)
+                   for s in rng.sample(SYMBOLS, self.k)
+                   for a, b in rng.sample(self.pool.banks[s]["train"], self.per)]
         else:
             out = []
         return out[:limit] if limit else out
 
 
 def fresh_test(prompt: list[dict[str, Any]], seed: int, model: str, key_env: str, per_symbol: int = 6,
-               easy: bool = False) -> float:
+               easy: bool = False, audit: Path | None = None) -> float:
     """最终版本在一批没用过的新题上的分数（考试题被用来挑过，分数会偏高）。"""
     import os
     from concurrent.futures import ThreadPoolExecutor
@@ -73,12 +77,12 @@ def fresh_test(prompt: list[dict[str, Any]], seed: int, model: str, key_env: str
     from anyrsi_llm import chat, render_prompt
 
     env = HardOpsEnv(seed=seed, easy=easy)
-    rng = random.Random(f"{seed}-fresh-test")
-    tasks = [env._task("final", f"{s}{i}", s, rng.randint(2, 9), rng.randint(2, 9))
-             for s in SYMBOLS for i in range(per_symbol)]
+    if per_symbol != 6:
+        raise ValueError("final split is fixed at six distinct inputs per symbol")
+    tasks = env.tasks("final")
     system = render_prompt([Item.model_validate(d) for d in prompt]) or BASE
 
-    def one(t: Task) -> bool:
+    def one(t: Task) -> dict:
         for attempt in range(4):
             try:
                 out = chat("https://api.openai.com/v1", model, [{"role": "system", "content": system},
@@ -87,19 +91,23 @@ def fresh_test(prompt: list[dict[str, Any]], seed: int, model: str, key_env: str
                 break
             except Exception:  # noqa: BLE001
                 if attempt == 3:
-                    return False
+                    raise
                 time.sleep(2 ** (attempt + 1))
         line = out.strip().splitlines()[0] if out.strip() else ""
         import re
         m = re.findall(r"=\s*(-?\d+)\s*$", line)
-        return bool(m) and m[-1] == t.reference["expected"]
+        return {"id": t.id, "input": t.input, "reference": t.reference, "output": out,
+                "passed": bool(m) and m[-1] == t.reference["expected"]}
 
     with ThreadPoolExecutor(8) as pool:
-        return sum(pool.map(one, tasks)) / len(tasks)
+        results = [f.result() for f in [pool.submit(copy_context().run, one, t) for t in tasks]]
+    if audit:
+        audit.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in results))
+    return fmean(r["passed"] for r in results)
 
 
 def write_config(base: Path, arm: str, seed: int, model: str, key_env: str, generations: int, size: int = 4,
-                 easy: bool = False, confirm: float = 0.5) -> Path:
+                 easy: bool = False, confirm: float = 0.5, merge_step: int = 8, stop_at_perfect: bool = True) -> Path:
     mode, _, who = arm.rpartition(":")
     mode = mode or "A"
     llm = {"base_url": "https://api.openai.com/v1", "model": model, "api_key_env": key_env}
@@ -111,16 +119,20 @@ def write_config(base: Path, arm: str, seed: int, model: str, key_env: str, gene
                                                  "params": {"extract": r"=\s*(-?\d+)\s*$"}}]}}},
         "evidence": {"same_as": "judge"},
         "algorithm": {"python": "anyrsi_algorithm:GreedyAlgorithm",
-                      "with": {"max_generations": generations, "patience": generations, "target_score": 1.0}},
+                      "with": {"max_generations": generations, "patience": generations,
+                               "target_score": 1.0 if stop_at_perfect else None}},
         "gate": {"python": "anyrsi_gate:HoldoutGate", "with": {"min_gain": 0.0}},
         "lineage": {"python": "anyrsi_lineage:LineageStore", "with": {"path": "state/lineage.jsonl"}},
     }
     loop: dict[str, Any] = {"max_patches": 1}
     if mode == "bon":
         loop["group"] = {"size": size, "strategy": "best_of_n", "confirm_fraction": confirm}
+    elif mode == "atom":
+        loop["group"] = {"size": size, "strategy": "best_of_n", "confirm_fraction": confirm,
+                         "atomize": True, "max_atoms": 4 * size}
     elif mode in ("grad", "mom"):
-        loop["group"] = {"size": size, "strategy": "merge", "confirm_fraction": confirm, "atomize": True,
-                         "max_atoms": 4 * size}
+        loop["group"] = {"size": size, "strategy": {"name": "merge", "with": {"step": merge_step}},
+                         "confirm_fraction": confirm, "atomize": True, "max_atoms": 4 * size}
         if mode == "mom":
             loop["group"]["momentum"] = {"decay": 0.7, "max_items": 6, "explore": 1}
     elif mode != "A":
@@ -146,10 +158,24 @@ def write_config(base: Path, arm: str, seed: int, model: str, key_env: str, gene
 
 
 async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, generations: int,
-                  size: int = 4, easy: bool = False, confirm: float = 0.5) -> dict[str, Any]:
+                  size: int = 4, easy: bool = False, confirm: float = 0.5, request_limit: int | None = None,
+                  merge_step: int = 8) -> dict[str, Any]:
+    from anyrsi_llm import request_observer
+    base.mkdir(parents=True, exist_ok=False)  # Never reuse a v1 lineage or a previous arm.
+    meter = RequestBudget(request_limit, base / "http-attempts.jsonl")
+    mark = request_observer.set(meter)
+    try:
+        return await _measured_arm(arm, base, seed, model, key_env, generations, size, easy, confirm, meter, merge_step)
+    finally:
+        request_observer.reset(mark)
+
+
+async def _measured_arm(arm, base, seed, model, key_env, generations, size, easy, confirm, meter, merge_step):
     from anyrsi_runtime import Runner, Wiring, load_config
 
-    cfg = load_config(write_config(base, arm, seed, model, key_env, generations, size, easy, confirm))
+    cfg = load_config(write_config(base, arm, seed, model, key_env, generations, size, easy, confirm, merge_step,
+                                  meter.limit is None))
+    http_curve: list[int] = []
     curve: list[float] = []
     labels: dict[str, list[float]] = {}
     members_log: list[dict[str, Any]] = []
@@ -163,8 +189,10 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
 
             async def run(self, task: Task, context: Any, snapshot_id: str | None = None) -> Any:
                 calls[0] += 1
-                out = agent.run(task, context, snapshot_id)
-                return await out if asyncio.iscoroutine(out) else out
+                role = "self_proposal" if "self_improvement" in task.tags else "solver"
+                with meter.phase(role):
+                    out = agent.run(task, context, snapshot_id)
+                    return await out if asyncio.iscoroutine(out) else out
 
             def __getattr__(self, name: str) -> Any:
                 return getattr(agent, name)
@@ -179,6 +207,7 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
                     best[0] = c.metrics.get("holdout")
             curve.append(best[0] if best[0] is not None else report.parent_metrics.get("holdout"))
             calls_curve.append(calls[0])
+            http_curve.append(meter.report()["search_used"])
             for m in (report.group or {}).get("members", []):
                 if m.get("advantage") is not None:
                     labels.setdefault(m.get("direction") or "other", []).append(m["advantage"])
@@ -186,21 +215,29 @@ async def run_arm(arm: str, base: Path, seed: int, model: str, key_env: str, gen
                                         "advantage": m["advantage"]})
 
         runner.on_generation = track
-        await runner.run()
+        try:
+            await runner.run()
+        except Exception:
+            if not meter.denied:
+                raise
+        # On truncation use only already-admitted snapshots, never pending candidates.
         log = await w.lineage.log()
         root = next(e for e in log if e.status == "root")
         accepted = [e for e in log if e.status == "accepted"]
         final = accepted[-1] if accepted else root
         prompt = await w.evolvables["prompt"].export(final.snapshots["prompt"])
     proposals = [e for e in log if e.status in ("accepted", "rejected")]
-    test = fresh_test(prompt, seed, model, key_env, easy=easy)
+    with meter.phase("final"):
+        test = fresh_test(prompt, seed, model, key_env, easy=easy, audit=base / "sealed-cases.jsonl")
     return {"arm": arm, "seed": seed, "model": model, "task": "easy" if easy else "hard", "confirm": confirm,
             "generations": generations, "start": root.metrics.get("holdout"),
             "final": final.metrics.get("holdout"), "test": test, "curve": curve, "accepted": len(accepted),
             "proposals": len(proposals), "calls": calls_curve[-1] if calls_curve else 0,
-            "calls_curve": calls_curve,
+            "calls_curve": calls_curve, "completed_generation_search_requests": http_curve,
             "by_label": {k: {"n": len(v), "mean_advantage": sum(v) / len(v), "improved": sum(x > 0 for x in v)}
                          for k, v in labels.items()},
+            "budget": meter.report(), "split_protocol": ExpressionPool.version,
+            "pool_hash": HardOpsEnv(seed=seed, easy=easy).pool.digest,
             "members": members_log, "final_prompt": [d["text"] for d in prompt]}
 
 
@@ -208,6 +245,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="gpt-5.4-mini")  # 先用便宜的模型
     ap.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    ap.add_argument("--merge-step", type=int, default=8)
+    ap.add_argument("--search-requests", type=int, help="hard cap, includes proposer and retries; final measured separately")
     ap.add_argument("--arms", nargs="+", default=["self", "rewriter"])
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     ap.add_argument("--generations", type=int, default=8)
@@ -221,7 +260,8 @@ def main() -> None:
     async def one(arm: str, seed: int) -> None:
         t = time.monotonic()
         r = await run_arm(arm, Path(args.workdir) / f"{args.model}-{arm.replace(':', '_')}-{seed}", seed, args.model,
-                          args.api_key_env, args.generations, args.size, args.easy, args.confirm)
+                          args.api_key_env, args.generations, args.size, args.easy, args.confirm, args.search_requests,
+                          args.merge_step)
         r["secs"] = round(time.monotonic() - t)
         with open(args.out, "a") as f:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")

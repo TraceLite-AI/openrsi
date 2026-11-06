@@ -435,6 +435,8 @@ AnyRSI builds on the [Model Context Protocol](https://modelcontextprotocol.io) a
 
 [Apache License 2.0](LICENSE)
 
+The [controlled direction pilot](benchmarks/self_propose_llm/README.md) uses disjoint expression identities and equal search HTTP-attempt ceilings, including proposals and retries. Historical tables use the earlier protocol. CodeRewriter optionally emits bounded line hunks (`max_hunk_lines`); a hunk is a structural unit, not a guarantee of one behavioral change.
+
 ### Recorded experiment audit (2026-11-05)
 
 A five-generation Terminal-Bench run using AnyRSI selection components and RSIHub native scoring completed, but verifier startup failures invalidate a method-quality conclusion. Original scores, all candidate diffs, the per-trial audit and an offline consistency checker are in [the experiment record](benchmarks/terminal_multigen_20261103/README.md). These results do not replace the unrun standard RSIHub parity recipe or establish a performance gain.

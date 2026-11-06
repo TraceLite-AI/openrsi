@@ -433,6 +433,8 @@ AnyRSI 基于 [Model Context Protocol](https://modelcontextprotocol.io)，借鉴
 
 [Apache License 2.0](LICENSE)
 
+[方向对照实验的新协议](benchmarks/self_propose_llm/README.md)按算式内容隔离划分，搜索按实际 HTTP 请求设上限（包括提案与重试）。旧表仍是旧协议。CodeRewriter 可通过 `max_hunk_lines` 生成有行数上限的局部补丁；一个 hunk 是结构单位，不能保证只有一个行为变化。
+
 ### 实验审计记录（2026-11-05）
 
 一次使用 AnyRSI 选择组件与 RSIHub 原生评分接口的 Terminal-Bench 五代实验已完成，但评分器启动故障使其不能用于比较方法优劣。[实验记录](benchmarks/terminal_multigen_20261103/README.zh-CN.md)保留原始成绩、全部候选补丁、逐试次审计和离线一致性检查。这些结果不能替代尚未运行的标准 RSIHub parity 配方，也不构成性能提升证据。
