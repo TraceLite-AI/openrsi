@@ -1,6 +1,6 @@
 [project]
 name = "anyrsi-rsihub"
-version = "0.4.2"
+version = "0.4.3"
 description = "AnyRSI components as RSIHub operators, and RSIHub task banks (Harbor) as an AnyRSI environment"
 requires-python = ">=3.10"
 license = "Apache-2.0"
