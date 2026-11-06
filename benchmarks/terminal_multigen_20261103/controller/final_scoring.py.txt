@@ -1,0 +1,61 @@
+"""Evaluate the frozen snapshots on each of the 89 tasks exactly once per unique version."""
+import hashlib,json,os,shutil,subprocess,sys,tomllib
+from pathlib import Path
+import yaml
+
+def ensure_sealed_images(run,parts):
+ N,B=run.N,run.B
+ needed=set(parts['sealed'])
+ q=B/'formal-canonical-tools-20261031/quad-train-20261102'
+ sys.path.insert(0,str(q));import dual_common as dc
+ cp=q/'config.json';c=dc.load(str(cp),hashlib.sha256(cp.read_bytes()).hexdigest())
+ rc,(serial,ph,pc,w,cat,approved)=dc.serial_bundle(c)
+ events=ph.Events(N/'final-cache-events.jsonl')
+ try:
+  cache=rc.make_cache(ph,pc,w,cat,approved,c['serial_config']['path'],c['serial_config']['sha256'],events)
+  free=lambda:os.statvfs('/data3').f_bavail*os.statvfs('/data3').f_frsize
+  for t in sorted(needed):
+   image=tomllib.loads((B/'dataset'/t/'task.toml').read_text())['environment'].get('docker_image')
+   if not image or subprocess.run(['docker','image','inspect',image],capture_output=True).returncode==0:continue
+   # Rotation remains limited to previously approved identities and eligible, unused
+   # images; the entire train/gate post-freeze sweep is already finished at this point.
+   row=cat.get(t,{});need=35*1024**3+4*int(row.get('compressed_bytes') or 5*1024**3)
+   if free()<need:
+    with rc.lock(Path(serial['state'])/'controller.lock'):
+     for item in sorted((v for k,v in cat.items() if k in approved and k not in needed),key=lambda v:-v['compressed_bytes']):
+      if free()>=need:break
+      cache.delete_other(item,needed&set(approved))
+   if free()<need:raise RuntimeError('sealed image does not fit within the approved cache rotation scope')
+   subprocess.run(['docker','pull',image],check=True)
+ finally:events.close()
+
+def finish(run,env,gate,reference,frozen):
+ n=run.N;parts=json.loads((n/'splits.json').read_text())
+ assert json.loads((n/'frozen-winners.json').read_text())['versions']==frozen
+ stages={}
+ for role in ['train','gate','sealed']:
+  ds=n/('data-'+role)
+  if role=='sealed':
+   ds.mkdir();recipe=n/'recipe-sealed';shutil.copytree(n/'recipe-train',recipe)
+   f=recipe/'evolve.yaml';cfg=yaml.safe_load(f.read_text());cfg['evaluator']['tasks_per_round']=20;f.write_text(yaml.safe_dump(cfg,sort_keys=False))
+   for t in parts[role]:shutil.copytree(run.B/'dataset'/t,ds/t)
+   ensure_sealed_images(run,parts)
+  w=run.make_workspace('final-'+role,role,env)
+  root=run.score(w,'0',role,'final-'+role+'-root',env)
+  shared={run.trees(w,'0'):root};scores={'root':root}
+  for i,(arm,sid) in enumerate(frozen.items(),1):
+   src=reference if arm=='reference' else gate;tree=run.trees(src,sid)
+   if tree not in shared:
+    g=str(i);run.deep_copy_version(src,w,sid,g,env)
+    shared[tree]=run.score(w,g,role,'final-'+role+'-'+arm,env)
+   scores[arm]=shared[tree]
+  stages[role]=scores
+ report={}
+ for arm in ['root',*frozen]:
+  tasks={}
+  for role in parts:
+   p=stages[role][arm]['tasks'];assert set(p)==set(parts[role]) and not(set(tasks)&set(p));tasks.update(p)
+  assert len(tasks)==89
+  report[arm]={**run.metrics({'tasks':tasks},parts),'all89':sum(float(v['reward'] or 0) for v in tasks.values())/89}
+ run.write('final-results.json',{'split_seed':0,'method':'89 independent pass@1 trials per unique frozen version, evaluated in 50/19/20 batches after freeze','results':report})
+ run.stage(stage='complete')

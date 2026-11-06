@@ -1,0 +1,895 @@
+{
+  "runtime_proof": [
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "genesis",
+      "artifact_sha256": "fa6897417dedb877e5005f881ddd1f5269abf20fcdfd18bc9370d38003469d03",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "1-1",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "e8646dfd50eb20f349d65abb62b75e79e1fe2cc45836709d47ff8ad33cddf5a2",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "1-2",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "4ada398ab48a1690090bf73ba8580aa5616ee728ae4ef7271482a1ab902c86ef",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "1-3",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "79d98759296137ebda7c80c2c3028845f34bf1fb2b9999d0cc24c29d6a20ea5c",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "1-4",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "affe8e28e8ae13462afa9b8eee593dfe78d3ae06edd0d51a73a9a5fc34db46d9",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "0cd9e567ed801d163693e05bacb7978d50c93dd1b62969c1c9aea42c1595c1fc",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "1-1",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "c34c0f19fa3f16081e35b13baf1eb3e6095a341117ff4a41f0a70c662da893e7",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "1-3",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "5c93018b35025cfdf321487a501f5d4fac65d8c47314f4bd497122d6b5512feb",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "cc919177f2eb957f7d214a3564e91b70d31cd017dd5dd537e314f8a18f036bc9",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-1",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "9bb32b5dfe2977d69b3faeb1a64fafd1bf9e78cbab31d114f31906ec1eea7b99",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-2",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "084afffee55cc9dabd5acb44dde41209441956eadd2b7556191c7dd7e6e31cc7",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-3",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "4925d08c2588d82fa6450ef8788bd09187d5986c3809ac9a4c9dc074c4613103",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-4",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "6345f4565c76d880cca58f66011f63bca60ff022c5a081d8d8ffbea2732a9bf7",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 3,
+      "purpose": "candidate",
+      "artifact_sha256": "2c72314620a89c119588ad27a7fcf525b45e873da16f5078d482df98cc32f4d1",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-1",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "8e62249dd371dbd72ab3135e3d941b5dfb61b12def40b8744ac7e22512b59461",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-3",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "e7984718bc79359d86078872cb5b884998cd30d50c2a4de684a012458ec136a5",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "2-5",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "01723ea639c73d60319b205bfbb4fa85edc9e03d3ea5fc613ff7348ffe94ee0f",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 4,
+      "purpose": "candidate",
+      "artifact_sha256": "5e8f451dd4b6e9aeef8339c47720f7993002ffa7a00f66924174d489d976c6e2",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "3-1",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "a25061d15aa39853b40976f04cadf21f58822acbd36eedb7341c9f950d00b69e",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "3-2",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "c6523bbe6c7ade6a59df5ce2221c8770421a4056482820578e0ae3c3c259507f",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "3-3",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "d6b141f8df9ced9ae51bd73a971f72c33789d950fc30f326e6728283e5fa47fc",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "3-4",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "534d19c3b0328dcbbf109eccad27bea74f31c192772b099dc0e2fd34109c9153",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 5,
+      "purpose": "candidate",
+      "artifact_sha256": "7203c614c390c1000893683b3a9ad37599afddb5a35b97fee4db84ded41980b6",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 6,
+      "purpose": "candidate",
+      "artifact_sha256": "3801b0bd1f4bb1ade88dd85749f450fa70b953d924bda326cdfae1611c81c8d1",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-1",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "db1d3450be5e9753567593f44a8a6cdd7bb05738ad0e8cf3f7bfb88c866d1df2",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-2",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "2f0e9d36ab3106d9aade5380147bd994513234ba2f9fa6b67ac3c520b6bb365c",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-3",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "61bfdc134cebbbaae7af40db9f13bc31608854cdcdd416f0ed0614463ff1af92",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-4",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "71defdb65f5c3e121d13688e432f5de5ae9d066c3902996beda3305cc0799f06",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 7,
+      "purpose": "candidate",
+      "artifact_sha256": "763865a29f2a09c5b06290a25efb5c37c18bceaaf1211545294d6bf23f6c0535",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-1",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "fea2e10f9af8800b7ddc4e42eea9c959d6d9f199ac8aea5ccf4313c040fbf99c",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-3",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "c7db5218901ccc50698c14a0b2c0297f0f7945eb0086210f7712ea1b888aeac0",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "4-5",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "1bb0d3524e35f56885167a2c711f7ee827f8af676236003c07ea765ac01e11bd",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 8,
+      "purpose": "candidate",
+      "artifact_sha256": "576eca579dfc936e3ba46f3f1d4ed2f9ec4a8d047c64f863cee7d0589287b685",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "5-1",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "f3c7b1578c51742383c2495605594be5cd130271ffeb60d7e8103fba0c5952ac",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "5-2",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "0bf629ae64d4df6253652e6991009f6d0ff72455587ae55367fe9b56ad03245e",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "5-3",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "c185c4ded6c4f548871b8b89ff03c21e81b21fc8dc8423fabb7fd12b07704c64",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "5-4",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "93d91fafe119b1d17c76e7fbb84d8f1cec214978656ce781aefc8cc0b807c2c1",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-gate",
+      "genid": "0",
+      "attempt": 9,
+      "purpose": "candidate",
+      "artifact_sha256": "6c6e58f1a935676219632bd134310ef838f36815b45667b2982d309fad3addca",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "genesis",
+      "artifact_sha256": "519e26750a0243e2c54de258778053efefca32a583412e390acc20bf46bd244f",
+      "traces_checked": 50,
+      "matching_system_templates": 50,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "candidate",
+      "artifact_sha256": "b67874629dee18048351732af42dc65ba03d7935cc13cad1fb98c457834abdb5",
+      "traces_checked": 50,
+      "matching_system_templates": 50,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 2,
+      "purpose": "candidate",
+      "artifact_sha256": "b6f5e74db2944c59a84074cbb4921a6a8c17bfdce9f15a867adab0585ee30542",
+      "traces_checked": 50,
+      "matching_system_templates": 50,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 3,
+      "purpose": "candidate",
+      "artifact_sha256": "0d1a7242a5b6b1b1aa6ef19c6a6e5c62d4759f5c679c624376fa0b5d8fa2a081",
+      "traces_checked": 50,
+      "matching_system_templates": 50,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 4,
+      "purpose": "candidate",
+      "artifact_sha256": "79c8a58a50b0cd2441d409f5aef861d96524cd992344217e719dc2539400128f",
+      "traces_checked": 50,
+      "matching_system_templates": 50,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "final-train",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "genesis",
+      "artifact_sha256": "1e6600cf074c4a69fae7c71dd2e5273c7a4fb1bca75d1d3769abc9f15d53f13c",
+      "traces_checked": 50,
+      "matching_system_templates": 50,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "final-gate",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "genesis",
+      "artifact_sha256": "6fc83fee7382fc4f81cf6908a2abe1a18272fb39d0056be1cf8573500d0b7a25",
+      "traces_checked": 19,
+      "matching_system_templates": 19,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    },
+    {
+      "role": "final-sealed",
+      "genid": "0",
+      "attempt": 1,
+      "purpose": "genesis",
+      "artifact_sha256": "2e2b62bd60cd07163408f0a65cc6d41ed6959f6ee74bddb960ee854e07f9fb07",
+      "traces_checked": 20,
+      "matching_system_templates": 20,
+      "config_keys": [
+        "agent",
+        "agent_type",
+        "environment",
+        "environment_type",
+        "model",
+        "model_type"
+      ]
+    }
+  ],
+  "exception_codes": [
+    {
+      "role": "native-gate",
+      "genid": "1-2",
+      "attempt": 1,
+      "task": "torch-pipeline-parallelism",
+      "type": "AgentTimeoutError",
+      "api_policy": false,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 1,
+      "task": "vulnerable-secret",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 1,
+      "task": "model-extraction-relu-logits",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 1,
+      "task": "vulnerable-secret",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 2,
+      "task": "model-extraction-relu-logits",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 2,
+      "task": "vulnerable-secret",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 3,
+      "task": "model-extraction-relu-logits",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 3,
+      "task": "vulnerable-secret",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "native-train",
+      "genid": "0",
+      "attempt": 4,
+      "task": "vulnerable-secret",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "final-train",
+      "genid": "0",
+      "attempt": 1,
+      "task": "vulnerable-secret",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    },
+    {
+      "role": "final-sealed",
+      "genid": "0",
+      "attempt": 1,
+      "task": "break-filter-js-from-html",
+      "type": "NonZeroAgentExitCodeError",
+      "api_policy": true,
+      "quota": false
+    }
+  ],
+  "code_pin_match": {
+    "run.py": true,
+    "final_scoring.py": true,
+    "trials.py": true,
+    "cohort.py": true,
+    "splits.json": true,
+    "public-environment.json": true
+  }
+}
