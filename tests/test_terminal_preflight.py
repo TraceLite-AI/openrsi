@@ -138,3 +138,59 @@ def test_preflight_flags_a_verifier_that_passes_an_empty_answer(tmp_path):
     bad = [r for r in rows if not r["ok"]]
     assert [(r["task"], r["probe"]) for r in bad] == [(task, "nop")]
     assert "什么都不做却通过了" in bad[0]["problems"][0]
+
+
+def test_handpatch_analysis_separates_real_gains_from_noise():
+    import handpatch
+
+    base = {f"t{i}": [0.0, 0.0, 0.0] for i in range(10)}
+    good = handpatch.analyse(base, {t: [1.0, 1.0, 1.0] if t < "t6" else [0.0] * 3 for t in base})
+    assert good["verdict"] == "测出提升" and good["diff"] == 0.6 and len(good["better"]) == 6 and good["ci95"][0] > 0
+    bad = handpatch.analyse({t: [1.0] * 3 for t in base}, {t: [0.0] * 3 if t < "t5" else [1.0] * 3 for t in base})
+    assert bad["verdict"] == "测出变差" and len(bad["worse"]) == 5
+    # 一道题变好、一道题变差：测不出差别；起点自己不稳定的题单独列出
+    noisy_base = {**base, "t0": [1.0, 0.0, 1.0]}
+    none = handpatch.analyse(noisy_base, {**base, "t0": [0.0] * 3, "t1": [1.0, 1.0, 0.0]})
+    assert none["verdict"] == "测不出差别" and none["baseline_flaky"] == ["t0"]
+    assert none["better"] == ["t1"] and none["worse"] == ["t0"] and none["same"] == 8 and none["min_detectable"] > 0
+    # 10 道里只有 1 道变好：平均是正的，但区间包含 0，不能算测出提升
+    one = handpatch.analyse(base, {**base, "t3": [1.0, 1.0, 1.0]})
+    assert one["diff"] > 0 and one["ci95"][0] <= 0 and one["verdict"] == "测不出差别"
+    # 只比两边都有分的题
+    part = handpatch.analyse({"a": [0.0], "b": [0.0], "c": []}, {"a": [1.0], "c": [1.0]})
+    assert part["tasks"] == 1 and handpatch.analyse({"a": []}, {"a": [1.0]})["tasks"] == 0
+
+
+def test_handpatch_runs_a_diff_against_the_fake_harbor_and_restores_the_parent(tmp_path):
+    import subprocess
+
+    import handpatch
+
+    make_dataset(tmp_path / "probe" / "ds", n=12)
+    sp = splits_of(tmp_path / "probe")
+    cfg = write_config(tmp_path / "run", broken=[sp["gate"][0]], answer='"wrong"')
+    # 手写补丁：把总是答错的 agent 改对（harness 仓库里的 unified diff）
+    repo = tmp_path / "run" / "template"
+    old = (repo / "echo" / "agent.py").read_text()
+    (tmp_path / "new").mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    (repo / "echo" / "agent.py").write_text(old.replace('answer = "wrong"', "answer = n"))
+    diff = subprocess.run(["git", "diff"], cwd=repo, check=True, capture_output=True, text=True).stdout
+    (repo / "echo" / "agent.py").write_text(old)
+    shutil = __import__("shutil")
+    shutil.rmtree(repo / ".git")
+    (tmp_path / "fix.diff").write_text(diff)
+    out = tmp_path / "hp.json"
+    assert handpatch.main([str(cfg), "--diff", str(tmp_path / "fix.diff"), "--repeats", "3", "--out", str(out)]) == 0
+    rep = json.loads(out.read_text())
+    assert rep["verdict"] == "测出提升" and rep["baseline"] == 0.0 and rep["patched"] == 1.0
+    assert rep["tasks"] == len(sp["gate"]) - 1 and rep["unscorable"]["baseline"] == [sp["gate"][0]]
+    assert all(len(v) == 3 for v in rep["per_task"]["patched"].values())
+    # 最后一遍跑的是打了补丁的版本；结束后工作区切回了起点版本
+    assert 'answer = "wrong"' in (tmp_path / "run" / "harness" / "echo" / "agent.py").read_text()
+    # 提示类的可进化体用 --patch；没有这个可进化体时报错
+    (tmp_path / "p.json").write_text(json.dumps({"target": "nope", "ops": [{"op": "write", "path": "x", "content": "y"}]}))
+    import pytest
+    with pytest.raises(SystemExit, match="没有可进化体"):
+        handpatch.main([str(cfg), "--patch", str(tmp_path / "p.json"), "--out", str(out)])
