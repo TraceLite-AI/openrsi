@@ -360,7 +360,7 @@ When the weak model sometimes proposes the right change, measuring single edits 
 
 AnyRSI is alpha software (protocol `anyrsi/0.4`). Protocol versions so far have only added fields and tools, so components built for an older version still work.
 
-- **Tested in CI:** 371 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
+- **Tested in CI:** 382 tests on Python 3.10–3.13: protocol conformance, data isolation, every algorithm/gate combination, transport equivalence, cross-language components, crash and resume, and six end-to-end examples.
 - **Run on a real model:** the small-model pipeline on CPU.
 - **Not yet run for real:** GPU-scale small-model runs, verl training, RSIHub recipes. See [Experiments](#experiments).
 
