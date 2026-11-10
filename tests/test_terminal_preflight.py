@@ -156,6 +156,10 @@ def test_handpatch_analysis_separates_real_gains_from_noise():
     # 10 道里只有 1 道变好：平均是正的，但区间包含 0，不能算测出提升
     one = handpatch.analyse(base, {**base, "t3": [1.0, 1.0, 1.0]})
     assert one["diff"] > 0 and one["ci95"][0] <= 0 and one["verdict"] == "测不出差别"
+    single = handpatch.analyse({"dna": [0, 1, 1]}, {"dna": [1, 0, 0]})
+    assert single["ci95"] is None and single["min_detectable"] is None and single["diff"] < 0
+    missing = handpatch.analyse({"a": [None, 1, 0], "b": [None, 1]}, {"a": [1, 1, None], "b": [0, None]})
+    assert missing["paired_counts"] == {"a": 1, "b": 0} and missing["diff"] == 0
     # 只比两边都有分的题
     part = handpatch.analyse({"a": [0.0], "b": [0.0], "c": []}, {"a": [1.0], "c": [1.0]})
     assert part["tasks"] == 1 and handpatch.analyse({"a": []}, {"a": [1.0]})["tasks"] == 0
